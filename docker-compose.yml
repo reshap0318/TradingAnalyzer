@@ -1,9 +1,9 @@
-version: "3.8"
-
+# version: "3.8"
+name: TradingAnalyzer
 services:
-  node-service:
+  trading-analyzer:
     build: .
-    container_name: node-service
+    container_name: trading-analyzer
     expose:
       - "3000"
     restart: always
@@ -20,11 +20,11 @@ services:
       - .:/app
       - /app/node_modules
     networks:
-      - node-network
+      - trading-network
     environment:
       - NODE_ENV=development
 
 networks:
-  node-network:
-    name: node-network
+  trading-network:
+    name: trading-network
     driver: bridge
