@@ -21,6 +21,7 @@ import { calculateTPSL } from "./shared/tpslCalculator.js";
 import { calculateMoneyManagement } from "./shared/moneyManagement.js";
 import {
   logSignal,
+  closePendingSignal,
   updateOutcomes,
   getSummary as getSignalSummary,
   getHistory as getSignalHistory,
@@ -95,8 +96,8 @@ app.get("/saham/analyze", async (req, res) => {
 
     console.log(`✅ ${signalResult.signal} (${signalResult.confidence}%)`);
 
-    // Auto-log signal for performance tracking
-    if (signalResult.signal === "BUY" || signalResult.signal === "SELL") {
+    // Auto-log signal for performance tracking (BUY only — saham is long-only)
+    if (signalResult.signal === "BUY") {
       logSignal({
         symbol,
         assetType: "SAHAM",
@@ -113,6 +114,9 @@ app.get("/saham/analyze", async (req, res) => {
         timeframeAlignment: decision.multiTimeframe.alignment,
         marketTrend: ihsgAnalysis.trend,
       });
+    } else if (signalResult.signal === "SELL") {
+      // SELL = exit existing BUY (no new entry — saham can't short)
+      closePendingSignal(symbol, quote.price);
     }
 
     // Update outcomes of pending saham signals

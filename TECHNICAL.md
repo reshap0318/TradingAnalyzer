@@ -423,7 +423,7 @@ Default leverage dari config (5x) jika tidak diisi.
 | Mata uang / Capital | **Rupiah** (IDR) | **Dolar** (USD) |
 | Timeframe utama | 1D (harian) | 1H (per jam) |
 | Sentimen pasar | IHSG | BTC Market |
-| Sinyal valid | BUY saja | BUY dan SELL |
+| Sinyal valid | BUY saja (SELL muncul tapi tidak dicatat ke log) | BUY dan SELL |
 | Max stop loss | 6% | 8% |
 | Presisi harga | 0 desimal | Hingga 8 desimal |
 | Satuan | Lot (1 lot = 100 lembar) | Unit (bisa pecahan) |

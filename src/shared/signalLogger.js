@@ -127,6 +127,42 @@ export function logSignal({
 }
 
 /**
+ * Close a PENDING signal as SIGNAL_REVERSED without creating a new entry.
+ * Used for saham: SELL means "exit BUY" but doesn't open a short position.
+ */
+export function closePendingSignal(symbol, currentPrice) {
+  const log = loadLog();
+  const now = new Date();
+
+  const pending = log.find(
+    (entry) => entry.symbol === symbol && entry.outcome === "PENDING"
+  );
+  if (!pending) return { closed: false, reason: "No PENDING signal found" };
+
+  const isBuy = pending.signal === "BUY";
+  const pnl = isBuy
+    ? ((currentPrice - pending.entryPrice) / pending.entryPrice) * 100
+    : ((pending.entryPrice - currentPrice) / pending.entryPrice) * 100;
+  const ageHours = (now - new Date(pending.timestamp)) / (1000 * 60 * 60);
+
+  pending.outcome = "SIGNAL_REVERSED";
+  pending.exitPrice = currentPrice;
+  pending.exitTime = now.toISOString();
+  pending.pnlPercent = Math.round(pnl * 100) / 100;
+  pending.holdHours = Math.round(ageHours * 10) / 10;
+
+  saveLog(log);
+  console.log(
+    `🔄 Signal closed (reversed): ${
+      pending.signal
+    } ${symbol} @ ${currentPrice} | PnL: ${pnl >= 0 ? "+" : ""}${
+      pending.pnlPercent
+    }%`
+  );
+  return { closed: true, pnlPercent: pending.pnlPercent };
+}
+
+/**
  * Update outcomes of PENDING signals by checking current prices.
  * Call this periodically (e.g., every hour via cron or on each analyze call).
  *
