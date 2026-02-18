@@ -9,7 +9,8 @@ Analisis teknikal multi-timeframe untuk **Saham Indonesia** dan **Crypto** denga
 - **Sentimen Pasar** — IHSG (saham) atau BTC Market (crypto)
 - **TP & SL Otomatis** — Berdasarkan support/resistance
 - **Money Management** — Rekomendasi posisi & kalkulasi risiko
-- **Signal Log** — Evaluasi performa sinyal otomatis (win rate, profit factor)
+- **Capital Management** — Tracking modal tersedia (initial − allocated + realized PnL)
+- **Signal Log** — Evaluasi performa sinyal otomatis (win rate, profit factor, PnL dollar)
 - **Position Tracker** — Catat trade manual & hitung PnL
 - **Futures Calculator** — Leverage, liquidation price, ROE (crypto only)
 
@@ -32,10 +33,10 @@ Server berjalan di `http://localhost:3000`
 
 | Method | Endpoint | Keterangan |
 |---|---|---|
-| GET | `/saham/analyze?symbol=BBCA&capital=100000000` | Analisis lengkap saham (capital dalam **Rupiah**) |
+| GET | `/saham/analyze?symbol=BBCA&capital=10000000` | Analisis lengkap saham (capital dalam **Rupiah**, default 10jt) |
 | GET | `/saham/signal?symbol=BBCA` | Sinyal cepat (tanpa money mgmt) |
 | GET | `/saham/raw?symbol=BBCA` | Data OHLCV mentah |
-| GET | `/crypto/analyze?symbol=BTCUSDT&capital=1000&leverage=10` | Analisis lengkap crypto + futures (capital dalam **USD**) |
+| GET | `/crypto/analyze?symbol=BTCUSDT&capital=50&leverage=10` | Analisis lengkap crypto + futures (capital dalam **USD**, default 50) |
 | GET | `/crypto/raw?symbol=BTCUSDT` | Data OHLCV mentah |
 
 ### 📊 Signal Log (otomatis)
@@ -44,9 +45,9 @@ Setiap sinyal BUY/SELL otomatis dicatat dan dievaluasi. Maksimal 1 sinyal per si
 
 | Method | Endpoint | Keterangan |
 |---|---|---|
-| GET | `/saham/signals/summary` | Win rate, PnL, profit factor (saham) |
+| GET | `/saham/signals/summary?capital=10000000` | Win rate, PnL, capital status (saham) |
 | GET | `/saham/signals/history` | Riwayat sinyal saham |
-| GET | `/crypto/signals/summary` | Win rate, PnL, profit factor (crypto) |
+| GET | `/crypto/signals/summary?capital=50` | Win rate, PnL, capital status (crypto) |
 | GET | `/crypto/signals/history` | Riwayat sinyal crypto |
 
 ### 📍 Position Tracker (manual)
@@ -107,8 +108,8 @@ Edit `src/config.js` untuk menyesuaikan:
 
 | Section | Isi |
 |---|---|
-| `SAHAM` | Timeframe weights, thresholds, money management saham |
-| `CRYPTO` | Timeframe weights, thresholds, money management crypto |
+| `SAHAM` | Timeframe weights, thresholds, default capital (10jt IDR) |
+| `CRYPTO` | Timeframe weights, thresholds, default capital (50 USD) |
 | `CRYPTO.FUTURES` | Default leverage, max leverage, fee rate, funding rate |
 | `INDICATORS` | Parameter indikator teknikal (berlaku untuk keduanya) |
 

@@ -172,6 +172,9 @@ Sistem menganalisis dari 4 sudut pandang waktu yang berbeda.
 
 Rekomendasi berapa banyak yang sebaiknya diinvestasikan.
 
+> [!NOTE]
+> `isValid` bernilai `true` jika signal BUY (saham & crypto) atau SELL (crypto only) dan TP1 > SL. Saham hanya BUY karena tidak bisa short.
+
 ```json
 "moneyManagement": {
   "isValid": true,
@@ -304,11 +307,32 @@ Jam 49:00   Jika 48 jam lewat tanpa TP/SL → outcome = EXPIRED
   "expired": 4,
   "winRate": 70,
   "totalPnlPercent": 15.23,
+  "totalPnlDollar": 7.62,
   "avgWinPercent": 2.1,
+  "avgWinDollar": 1.05,
   "avgLossPercent": -1.5,
-  "profitFactor": 2.45
+  "avgLossDollar": -0.75,
+  "profitFactor": 2.45,
+  "capitalStatus": {
+    "initialCapital": 50,
+    "allocated": 12.5,
+    "realizedPnl": 7.62,
+    "available": 45.12,
+    "openPositions": 3
+  }
 }
 ```
+
+| Field | Penjelasan |
+|---|---|
+| `totalPnlDollar` | Total keuntungan/kerugian dalam mata uang (USD/IDR) |
+| `avgWinDollar` | Rata-rata keuntungan per win dalam mata uang |
+| `avgLossDollar` | Rata-rata kerugian per loss dalam mata uang |
+| `capitalStatus.initialCapital` | Modal awal (dari config / query `?capital=`) |
+| `capitalStatus.allocated` | Modal yang sedang dialokasikan untuk trade PENDING |
+| `capitalStatus.realizedPnl` | Total PnL dari trade yang sudah selesai |
+| `capitalStatus.available` | Modal tersedia = initial − allocated + realizedPnl |
+| `capitalStatus.openPositions` | Jumlah signal PENDING aktif |
 
 > `profitFactor` > 1.5 dan `winRate` > 60% menandakan script cukup reliable.
 
