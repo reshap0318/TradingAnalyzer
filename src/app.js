@@ -25,6 +25,7 @@ import {
   updateOutcomes,
   getSummary as getSignalSummary,
   getHistory as getSignalHistory,
+  getCapitalStatus,
 } from "./shared/signalLogger.js";
 import {
   openPosition,
@@ -60,10 +61,13 @@ app.get("/saham/analyze", async (req, res) => {
       return res.status(400).json({ error: "Symbol parameter is required" });
     }
     const symbol = formatSymbol(req.query.symbol);
+    const initialCapital =
+      parseInt(req.query.capital) || config.SAHAM.DEFAULT_CAPITAL;
+    const capitalStatus = getCapitalStatus("SAHAM", initialCapital);
     const portfolio = {
-      totalCapital: parseInt(req.query.capital) || 5000000,
+      totalCapital: capitalStatus.available,
       maxLossPercent: parseFloat(req.query.maxLoss) || 1, // Default 1% max loss
-      currentPositions: parseInt(req.query.positions) || 0,
+      currentPositions: capitalStatus.openPositions,
     };
     console.log(`\n📊 Analyzing ${symbol}...`);
 
@@ -113,6 +117,7 @@ app.get("/saham/analyze", async (req, res) => {
         riskReward: tpsl.riskReward,
         timeframeAlignment: decision.multiTimeframe.alignment,
         marketTrend: ihsgAnalysis.trend,
+        allocatedAmount: moneyMgmt.recommendation?.positionValue || 0,
       });
     } else if (signalResult.signal === "SELL") {
       // SELL = exit existing BUY (no new entry — saham can't short)
@@ -301,10 +306,13 @@ app.get("/crypto/analyze", async (req, res) => {
       return res.status(400).json({ error: "Symbol parameter is required" });
     }
     const symbol = req.query.symbol.toUpperCase();
+    const initialCapital =
+      parseInt(req.query.capital) || config.CRYPTO.DEFAULT_CAPITAL;
+    const capitalStatus = getCapitalStatus("CRYPTO", initialCapital);
     const portfolio = {
-      totalCapital: parseInt(req.query.capital) || 1000,
+      totalCapital: capitalStatus.available,
       maxLossPercent: parseFloat(req.query.maxLoss) || 1,
-      currentPositions: parseInt(req.query.positions) || 0,
+      currentPositions: capitalStatus.openPositions,
     };
     const leverage = req.query.leverage ? parseInt(req.query.leverage) : null;
 
@@ -377,6 +385,7 @@ app.get("/crypto/analyze", async (req, res) => {
         riskReward: tpsl.riskReward,
         timeframeAlignment: decision.multiTimeframe.alignment,
         marketTrend: btcMarket.trend,
+        allocatedAmount: moneyMgmt.recommendation?.positionValue || 0,
       });
     }
 
@@ -441,7 +450,7 @@ app.get("/crypto/analyze", async (req, res) => {
       futures:
         signalResult.signal !== "WAIT"
           ? calculateFuturesPlan({
-              capital: portfolio.totalCapital,
+              capital: capitalStatus.available,
               entryPrice: quote.price,
               slPrice: tpsl.sl?.price,
               side: signalResult.signal === "BUY" ? "LONG" : "SHORT",
@@ -493,7 +502,10 @@ app.get("/crypto/raw", async (req, res) => {
 // --- SIGNAL LOG ENDPOINTS ---
 
 app.get("/crypto/signals/summary", (req, res) => {
-  res.json(getSignalSummary("CRYPTO"));
+  const initialCapital =
+    parseInt(req.query.capital) || config.CRYPTO.DEFAULT_CAPITAL;
+  const capitalStatus = getCapitalStatus("CRYPTO", initialCapital);
+  res.json({ ...getSignalSummary("CRYPTO"), capitalStatus });
 });
 
 app.get("/crypto/signals/history", (req, res) => {
@@ -508,7 +520,10 @@ app.get("/crypto/signals/history", (req, res) => {
 });
 
 app.get("/saham/signals/summary", (req, res) => {
-  res.json(getSignalSummary("SAHAM"));
+  const initialCapital =
+    parseInt(req.query.capital) || config.SAHAM.DEFAULT_CAPITAL;
+  const capitalStatus = getCapitalStatus("SAHAM", initialCapital);
+  res.json({ ...getSignalSummary("SAHAM"), capitalStatus });
 });
 
 app.get("/saham/signals/history", (req, res) => {

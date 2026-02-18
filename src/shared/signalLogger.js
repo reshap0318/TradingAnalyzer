@@ -52,6 +52,7 @@ export function logSignal({
   riskReward,
   timeframeAlignment,
   marketTrend,
+  allocatedAmount = 0,
 }) {
   const log = loadLog();
   const now = new Date();
@@ -83,6 +84,7 @@ export function logSignal({
     pending.exitPrice = entryPrice;
     pending.exitTime = now.toISOString();
     pending.pnlPercent = Math.round(pnl * 100) / 100;
+    pending.pnlDollar = Math.round((pending.allocatedAmount || 0) * pnl) / 100;
     pending.holdHours = Math.round(ageHours * 10) / 10;
 
     const emoji = pnl >= 0 ? "✅" : "❌";
@@ -110,6 +112,7 @@ export function logSignal({
     riskReward: riskReward?.tp1 || null,
     timeframeAlignment,
     marketTrend,
+    allocatedAmount: Math.round(allocatedAmount * 100) / 100,
     // Outcome tracking
     outcome: "PENDING",
     highestPrice: entryPrice,
@@ -117,6 +120,7 @@ export function logSignal({
     exitPrice: null,
     exitTime: null,
     pnlPercent: null,
+    pnlDollar: null,
     holdHours: null,
   };
 
@@ -149,6 +153,7 @@ export function closePendingSignal(symbol, currentPrice) {
   pending.exitPrice = currentPrice;
   pending.exitTime = now.toISOString();
   pending.pnlPercent = Math.round(pnl * 100) / 100;
+  pending.pnlDollar = Math.round((pending.allocatedAmount || 0) * pnl) / 100;
   pending.holdHours = Math.round(ageHours * 10) / 10;
 
   saveLog(log);
@@ -186,6 +191,7 @@ export async function updateOutcomes(getPriceFn, assetType = null) {
       entry.outcome = "EXPIRED";
       entry.holdHours = Math.round(ageHours);
       entry.pnlPercent = 0;
+      entry.pnlDollar = 0;
       updated++;
       continue;
     }
@@ -222,6 +228,8 @@ export async function updateOutcomes(getPriceFn, assetType = null) {
         entry.pnlPercent = isBuy
           ? ((entry.sl - entry.entryPrice) / entry.entryPrice) * 100
           : ((entry.entryPrice - entry.sl) / entry.entryPrice) * 100;
+        entry.pnlDollar =
+          Math.round((entry.allocatedAmount || 0) * entry.pnlPercent) / 100;
         entry.holdHours = Math.round(ageHours);
         updated++;
         continue;
@@ -245,6 +253,8 @@ export async function updateOutcomes(getPriceFn, assetType = null) {
         entry.pnlPercent = isBuy
           ? ((tp.price - entry.entryPrice) / entry.entryPrice) * 100
           : ((entry.entryPrice - tp.price) / entry.entryPrice) * 100;
+        entry.pnlDollar =
+          Math.round((entry.allocatedAmount || 0) * entry.pnlPercent) / 100;
         entry.holdHours = Math.round(ageHours);
         updated++;
         break;
@@ -257,6 +267,36 @@ export async function updateOutcomes(getPriceFn, assetType = null) {
     console.log(`📊 Signal outcomes updated: ${updated} entries`);
   }
   return updated;
+}
+
+/**
+ * Get available capital status. Calculates:
+ * available = initialCapital - allocated(PENDING) + realized PnL
+ *
+ * @param {string} assetType - "CRYPTO" or "SAHAM"
+ * @param {number} initialCapital - Starting capital from config or query param
+ */
+export function getCapitalStatus(assetType, initialCapital) {
+  const log = loadLog();
+  const filtered = log.filter((e) => e.assetType === assetType);
+
+  const pending = filtered.filter((e) => e.outcome === "PENDING");
+  const completed = filtered.filter((e) => e.outcome !== "PENDING");
+
+  const allocated = pending.reduce(
+    (sum, e) => sum + (e.allocatedAmount || 0),
+    0
+  );
+  const realizedPnl = completed.reduce((sum, e) => sum + (e.pnlDollar || 0), 0);
+  const available = initialCapital - allocated + realizedPnl;
+
+  return {
+    initialCapital: Math.round(initialCapital * 100) / 100,
+    allocated: Math.round(allocated * 100) / 100,
+    realizedPnl: Math.round(realizedPnl * 100) / 100,
+    available: Math.round(available * 100) / 100,
+    openPositions: pending.length,
+  };
 }
 
 /**
@@ -296,6 +336,21 @@ export function getSummary(assetType = null) {
     allLosses.reduce((sum, e) => sum + (e.pnlPercent || 0), 0)
   );
 
+  // Dollar amounts
+  const totalPnlDollar = completed.reduce(
+    (sum, e) => sum + (e.pnlDollar || 0),
+    0
+  );
+  const avgWinDollar =
+    allWins.length > 0
+      ? allWins.reduce((sum, e) => sum + (e.pnlDollar || 0), 0) / allWins.length
+      : 0;
+  const avgLossDollar =
+    allLosses.length > 0
+      ? allLosses.reduce((sum, e) => sum + (e.pnlDollar || 0), 0) /
+        allLosses.length
+      : 0;
+
   return {
     totalSignals: filtered.length,
     pending: pending.length,
@@ -311,8 +366,11 @@ export function getSummary(assetType = null) {
           ) / 100
         : 0,
     totalPnlPercent: Math.round(totalPnl * 100) / 100,
+    totalPnlDollar: Math.round(totalPnlDollar * 100) / 100,
     avgWinPercent: Math.round(avgWin * 100) / 100,
+    avgWinDollar: Math.round(avgWinDollar * 100) / 100,
     avgLossPercent: Math.round(avgLoss * 100) / 100,
+    avgLossDollar: Math.round(avgLossDollar * 100) / 100,
     profitFactor:
       grossLoss > 0 ? Math.round((grossProfit / grossLoss) * 100) / 100 : 0,
     bestTrade:

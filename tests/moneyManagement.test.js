@@ -110,7 +110,7 @@ describe("calculateMoneyManagement — BUY Scenarios", () => {
 // 2. calculateMoneyManagement — Negative scenarios
 // ============================================================
 describe("calculateMoneyManagement — Negative Scenarios", () => {
-  it("should return isValid=false when signal is SELL", () => {
+  it("should return isValid=false when signal is SELL for STOCK", () => {
     const result = calculateMoneyManagement(
       { totalCapital: 100_000_000 },
       8600,
@@ -121,7 +121,7 @@ describe("calculateMoneyManagement — Negative Scenarios", () => {
       "STOCK"
     );
     assert.equal(result.isValid, false);
-    assert.ok(result.warnings.some((w) => w.includes("not BUY")));
+    assert.ok(result.warnings.some((w) => w.includes("not valid")));
   });
 
   it("should return error if no stop loss", () => {

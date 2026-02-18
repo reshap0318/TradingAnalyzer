@@ -26,7 +26,11 @@ export function calculateMoneyManagement(
   // Calculate validity of the trade setup
   const tp1Percent = tpsl?.tp1?.percent ? Math.abs(tpsl.tp1.percent) : 0;
   const slPercent = slPrice ? Math.abs(((slPrice - price) / price) * 100) : 0;
-  const isValid = signal === "BUY" && slPrice && tp1Percent > slPercent;
+  const validSignal =
+    assetType === "CRYPTO"
+      ? signal === "BUY" || signal === "SELL"
+      : signal === "BUY"; // Stock = long-only
+  const isValid = validSignal && slPrice && tp1Percent > slPercent;
 
   // If no stop loss, we cannot calculate risk
   if (!slPrice) {
@@ -103,7 +107,8 @@ export function calculateMoneyManagement(
     warnings.push("Posisi > 10% dari total capital");
   if (currentPositions >= 5) warnings.push("Sudah memiliki 5 posisi terbuka");
   if (riskRewardRatio < 1.5) warnings.push("Risk/Reward ratio kurang dari 1.5");
-  if (!isValid && signal !== "BUY") warnings.push("Signal is not BUY");
+  if (!isValid && !validSignal)
+    warnings.push("Signal is not valid for this asset type");
   if (!isValid && tp1Percent <= slPercent)
     warnings.push(
       `TP1 (${tp1Percent.toFixed(2)}%) < SL (${slPercent.toFixed(2)}%)`

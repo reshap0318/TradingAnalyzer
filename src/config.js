@@ -26,6 +26,7 @@ export default {
 
   // ─── Saham (Stock) Specific ───
   SAHAM: {
+    DEFAULT_CAPITAL: 10_000_000, // 10 juta IDR
     IHSG_SYMBOL: "^JKSE",
 
     TIMEFRAMES: {
@@ -72,6 +73,7 @@ export default {
 
   // ─── Crypto Specific ───
   CRYPTO: {
+    DEFAULT_CAPITAL: 50, // 50 USD
     TIMEFRAMES: {
       "15m": { weight: 0.1 },
       "1h": { weight: 0.35 }, // Primary entry timeframe
