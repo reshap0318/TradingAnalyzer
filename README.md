@@ -33,20 +33,22 @@ Server berjalan di `http://localhost:3000`
 
 | Method | Endpoint | Keterangan |
 |---|---|---|
-| GET | `/saham/analyze?symbol=BBCA&capital=10000000` | Analisis lengkap saham (capital dalam **Rupiah**, default 10jt) |
-| GET | `/saham/signal?symbol=BBCA` | Sinyal cepat (tanpa money mgmt) |
-| GET | `/saham/raw?symbol=BBCA` | Data OHLCV mentah |
-| GET | `/crypto/analyze?symbol=BTCUSDT&capital=50&leverage=10` | Analisis lengkap crypto + futures (capital dalam **USD**, default 50) |
-| GET | `/crypto/raw?symbol=BTCUSDT` | Data OHLCV mentah |
+| GET | `/saham/analyze?symbol=BBCA&capital=10000000&interval=1d` | Analisis lengkap saham (capital dalam **Rupiah**, default 10jt) |
+| GET | `/saham/signal?symbol=BBCA&interval=1d` | Sinyal cepat (tanpa money mgmt) |
+| GET | `/saham/raw?symbol=BBCA&interval=1d` | Data OHLCV mentah |
+| GET | `/crypto/analyze?symbol=BTCUSDT&capital=50&leverage=10&interval=1h` | Analisis lengkap crypto + futures (capital dalam **USD**, default 50) |
+| GET | `/crypto/raw?symbol=BTCUSDT&interval=1h` | Data OHLCV mentah |
 
 ### 📊 Signal Log (otomatis)
 
-Setiap sinyal BUY/SELL otomatis dicatat dan dievaluasi. Maksimal 1 sinyal per simbol — sinyal baru yang searah diabaikan, sinyal berlawanan menutup yang lama.
+Setiap evaluasi performa sinyal dapat dicatat secara manual via endpoint POST atau dilihat summarynya.
 
 | Method | Endpoint | Keterangan |
 |---|---|---|
+| POST| `/saham/signals/log` | Catat sinyal analisa manual terbaru |
 | GET | `/saham/signals/summary?capital=10000000` | Win rate, PnL, capital status (saham) |
 | GET | `/saham/signals/history` | Riwayat sinyal saham |
+| POST| `/crypto/signals/log` | Catat sinyal analisa manual terbaru |
 | GET | `/crypto/signals/summary?capital=50` | Win rate, PnL, capital status (crypto) |
 | GET | `/crypto/signals/history` | Riwayat sinyal crypto |
 

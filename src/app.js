@@ -69,7 +69,9 @@ app.get("/saham/analyze", async (req, res) => {
     const capitalStatus = getCapitalStatus("SAHAM", initialCapital);
     const portfolio = {
       totalCapital: capitalStatus.available,
-      maxLossPercent: parseFloat(req.query.maxLoss) || 1, // Default 1% max loss
+      maxLossPercent:
+        parseFloat(req.query.maxLoss) ||
+        config.SAHAM.MONEY_MANAGEMENT.MAX_RISK_PER_TRADE * 100,
       currentPositions: capitalStatus.openPositions,
     };
     console.log(`\n📊 Analyzing ${symbol} [${interval}]...`);
@@ -315,7 +317,9 @@ app.get("/crypto/analyze", async (req, res) => {
     const capitalStatus = getCapitalStatus("CRYPTO", initialCapital);
     const portfolio = {
       totalCapital: capitalStatus.available,
-      maxLossPercent: parseFloat(req.query.maxLoss) || 1,
+      maxLossPercent:
+        parseFloat(req.query.maxLoss) ||
+        config.CRYPTO.MONEY_MANAGEMENT.MAX_RISK_PER_TRADE * 100,
       currentPositions: capitalStatus.openPositions,
     };
     const leverage = req.query.leverage ? parseInt(req.query.leverage) : null;
@@ -499,7 +503,6 @@ app.get("/crypto/raw", async (req, res) => {
 });
 
 // --- SIGNAL LOG ENDPOINTS ---
-
 app.post("/saham/signals/log", (req, res) => {
   try {
     const data = req.body;

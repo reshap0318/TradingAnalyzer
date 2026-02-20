@@ -19,32 +19,45 @@ import {
   updateOutcomes,
   getSummary,
   getHistory,
+  getActive,
 } from "../src/shared/signalLogger.js";
 
-const LOG_FILE = path.join(__dirname, "../data/signal_log.json");
+const ACTIVE_FILE = path.join(__dirname, "../data/active_trade.json");
+const HISTORY_FILE = path.join(__dirname, "../data/history.json");
+const SUMMARY_FILE = path.join(__dirname, "../data/summary.json");
 
-function cleanLog() {
-  if (fs.existsSync(LOG_FILE)) {
-    fs.writeFileSync(LOG_FILE, "[]");
-  }
+function cleanLogs() {
+  if (!fs.existsSync(path.dirname(ACTIVE_FILE)))
+    fs.mkdirSync(path.dirname(ACTIVE_FILE), { recursive: true });
+  fs.writeFileSync(ACTIVE_FILE, "[]");
+  fs.writeFileSync(HISTORY_FILE, "[]");
+  fs.writeFileSync(SUMMARY_FILE, "{}");
 }
 
-// Backup & restore real log
-let backup = null;
+let backups = {};
 
 beforeEach(() => {
-  if (fs.existsSync(LOG_FILE)) {
-    backup = fs.readFileSync(LOG_FILE, "utf8");
-  }
-  cleanLog();
+  backups = {
+    active: fs.existsSync(ACTIVE_FILE)
+      ? fs.readFileSync(ACTIVE_FILE, "utf8")
+      : null,
+    history: fs.existsSync(HISTORY_FILE)
+      ? fs.readFileSync(HISTORY_FILE, "utf8")
+      : null,
+    summary: fs.existsSync(SUMMARY_FILE)
+      ? fs.readFileSync(SUMMARY_FILE, "utf8")
+      : null,
+  };
+  cleanLogs();
 });
 
 afterEach(() => {
-  if (backup !== null) {
-    fs.writeFileSync(LOG_FILE, backup);
-  } else if (fs.existsSync(LOG_FILE)) {
-    fs.unlinkSync(LOG_FILE);
-  }
+  if (backups.active !== null) fs.writeFileSync(ACTIVE_FILE, backups.active);
+  else if (fs.existsSync(ACTIVE_FILE)) fs.unlinkSync(ACTIVE_FILE);
+  if (backups.history !== null) fs.writeFileSync(HISTORY_FILE, backups.history);
+  else if (fs.existsSync(HISTORY_FILE)) fs.unlinkSync(HISTORY_FILE);
+  if (backups.summary !== null) fs.writeFileSync(SUMMARY_FILE, backups.summary);
+  else if (fs.existsSync(SUMMARY_FILE)) fs.unlinkSync(SUMMARY_FILE);
 });
 
 // ============================================================
@@ -59,11 +72,9 @@ function dummySignal(overrides = {}) {
     confidence: 72,
     score: 65,
     strength: "STRONG",
-    tp1: { price: 70000 },
-    tp2: { price: 72000 },
-    tp3: { price: 75000 },
+    tp: { price: 70000 },
     sl: { price: 66000 },
-    riskReward: { tp1: 1.5 },
+    riskReward: { tp: 1.5 },
     timeframeAlignment: "BULLISH_ALIGNED",
     marketTrend: "BULLISH",
     ...overrides,
@@ -79,7 +90,7 @@ describe("logSignal", () => {
     assert.equal(result.logged, true);
     assert.ok(result.id);
 
-    const history = getHistory({ assetType: "CRYPTO" });
+    const history = getActive({ assetType: "CRYPTO" });
     assert.equal(history.length, 1);
     assert.equal(history[0].signal, "BUY");
     assert.equal(history[0].outcome, "PENDING");
@@ -90,16 +101,14 @@ describe("logSignal", () => {
     const result = logSignal(dummySignal({ signal: "SELL" }));
     assert.equal(result.logged, true);
 
-    const history = getHistory({ assetType: "CRYPTO" });
+    const history = getActive({ assetType: "CRYPTO" });
     assert.equal(history[0].signal, "SELL");
   });
 
   it("should correctly store TP/SL values", () => {
     logSignal(dummySignal());
-    const history = getHistory({ assetType: "CRYPTO" });
-    assert.equal(history[0].tp1, 70000);
-    assert.equal(history[0].tp2, 72000);
-    assert.equal(history[0].tp3, 75000);
+    const history = getActive({ assetType: "CRYPTO" });
+    assert.equal(history[0].tp, 70000);
     assert.equal(history[0].sl, 66000);
   });
 });
@@ -117,7 +126,7 @@ describe("logSignal — Dedup", () => {
     assert.ok(r2.reason.includes("Already tracking"));
 
     // Still only 1 entry
-    const history = getHistory({ assetType: "CRYPTO" });
+    const history = getActive({ assetType: "CRYPTO" });
     assert.equal(history.length, 1);
     assert.equal(history[0].entryPrice, 68000); // Original price kept
   });
@@ -127,7 +136,7 @@ describe("logSignal — Dedup", () => {
     const r2 = logSignal(dummySignal({ symbol: "ETHUSDT", entryPrice: 3400 }));
     assert.equal(r2.logged, true);
 
-    const history = getHistory({ assetType: "CRYPTO" });
+    const history = getActive({ assetType: "CRYPTO" });
     assert.equal(history.length, 2);
   });
 });
@@ -145,17 +154,20 @@ describe("logSignal — SIGNAL_REVERSED (Crypto)", () => {
     assert.equal(r2.logged, true);
 
     const history = getHistory({ assetType: "CRYPTO" });
-    assert.equal(history.length, 2);
+    const active = getActive({ assetType: "CRYPTO" });
+    assert.equal(history.length, 1);
+    assert.equal(active.length, 1);
 
-    // Newest first — SELL is [0], reversed BUY is [1]
-    assert.equal(history[0].signal, "SELL");
-    assert.equal(history[0].outcome, "PENDING");
+    // active has the SELL
+    assert.equal(active[0].signal, "SELL");
+    assert.equal(active[0].outcome, "PENDING");
 
-    assert.equal(history[1].signal, "BUY");
-    assert.equal(history[1].outcome, "SIGNAL_REVERSED");
-    assert.equal(history[1].exitPrice, 67000);
+    // history has the reversed BUY
+    assert.equal(history[0].signal, "BUY");
+    assert.equal(history[0].outcome, "SIGNAL_REVERSED");
+    assert.equal(history[0].exitPrice, 67000);
     // BUY @ 68000, exit @ 67000 → -1.47%
-    assert.ok(history[1].pnlPercent < 0);
+    assert.ok(history[0].pnlPercent < 0);
   });
 
   it("should reverse SELL→BUY and create new BUY entry", () => {
@@ -245,8 +257,8 @@ describe("Asset Type Isolation", () => {
       })
     );
 
-    const sahamHistory = getHistory({ assetType: "SAHAM" });
-    const cryptoHistory = getHistory({ assetType: "CRYPTO" });
+    const sahamHistory = getActive({ assetType: "SAHAM" });
+    const cryptoHistory = getActive({ assetType: "CRYPTO" });
 
     assert.equal(sahamHistory.length, 1);
     assert.equal(sahamHistory[0].symbol, "BBCA.JK");
@@ -285,26 +297,15 @@ describe("Asset Type Isolation", () => {
 // 6. updateOutcomes — TP/SL/Expire
 // ============================================================
 describe("updateOutcomes", () => {
-  it("should mark TP1 hit when price reaches target", async () => {
+  it("should mark TP hit when price reaches target", async () => {
     logSignal(dummySignal({ signal: "BUY", entryPrice: 68000 }));
-    // tp1 = 70000
+    // tp = 70000
 
-    // Mock price function that returns 70500 (above TP1)
+    // Mock price function that returns 70500 (above TP)
     await updateOutcomes(async () => 70500, "CRYPTO");
 
     const history = getHistory({ assetType: "CRYPTO" });
-    // TP3 > TP2 > TP1 — checks highest first, so TP1 should hit since 70500 < 72000 (tp2)
-    assert.equal(history[0].outcome, "TP1_HIT");
-  });
-
-  it("should mark TP3 hit when price reaches highest target", async () => {
-    logSignal(dummySignal({ signal: "BUY", entryPrice: 68000 }));
-    // tp3 = 75000
-
-    await updateOutcomes(async () => 76000, "CRYPTO");
-
-    const history = getHistory({ assetType: "CRYPTO" });
-    assert.equal(history[0].outcome, "TP3_HIT");
+    assert.equal(history[0].outcome, "TP_HIT");
   });
 
   it("should mark SL hit when price drops to stop loss", async () => {
@@ -324,14 +325,14 @@ describe("updateOutcomes", () => {
         signal: "BUY",
         entryPrice: 68000,
         sl: { price: 65000 },
-        tp1: { price: 72000 },
+        tp: { price: 72000 },
       })
     );
 
     // Price at 69000 — above SL, below TP → should stay PENDING
     await updateOutcomes(async () => 69000, "CRYPTO");
 
-    const history = getHistory({ assetType: "CRYPTO" });
+    const history = getActive({ assetType: "CRYPTO" });
     assert.equal(history[0].outcome, "PENDING");
   });
 
@@ -342,14 +343,14 @@ describe("updateOutcomes", () => {
         assetType: "SAHAM",
         signal: "BUY",
         entryPrice: 8600,
-        tp1: { price: 8800 },
+        tp: { price: 8800 },
       })
     );
 
     // Update only CRYPTO — saham should remain PENDING
     await updateOutcomes(async () => 9000, "CRYPTO");
 
-    const history = getHistory({ assetType: "SAHAM" });
+    const history = getActive({ assetType: "SAHAM" });
     assert.equal(history[0].outcome, "PENDING");
   });
 
@@ -360,7 +361,7 @@ describe("updateOutcomes", () => {
       throw new Error("API error");
     }, "CRYPTO");
 
-    const history = getHistory({ assetType: "CRYPTO" });
+    const history = getActive({ assetType: "CRYPTO" });
     assert.equal(history[0].outcome, "PENDING"); // Unchanged
   });
 
@@ -369,7 +370,7 @@ describe("updateOutcomes", () => {
       dummySignal({
         signal: "SELL",
         entryPrice: 68000,
-        tp1: { price: 66000 }, // For SELL, price must go DOWN to hit TP
+        tp: { price: 66000 }, // For SELL, price must go DOWN to hit TP
         sl: { price: 70000 }, // For SELL, price going UP hits SL
       })
     );
@@ -395,7 +396,7 @@ describe("getSummary", () => {
         assetType: "CRYPTO",
         signal: "BUY",
         entryPrice: 60000,
-        outcome: "TP1_HIT",
+        outcome: "TP_HIT",
         pnlPercent: 3.0,
       },
       {
@@ -404,7 +405,7 @@ describe("getSummary", () => {
         assetType: "CRYPTO",
         signal: "BUY",
         entryPrice: 3000,
-        outcome: "TP2_HIT",
+        outcome: "TP_HIT",
         pnlPercent: 5.0,
       },
       {
@@ -443,13 +444,28 @@ describe("getSummary", () => {
         outcome: "PENDING",
       },
     ];
-    fs.writeFileSync(LOG_FILE, JSON.stringify(log, null, 2));
+    fs.writeFileSync(
+      HISTORY_FILE,
+      JSON.stringify(
+        log.filter((l) => l.outcome !== "PENDING"),
+        null,
+        2
+      )
+    );
+    fs.writeFileSync(
+      ACTIVE_FILE,
+      JSON.stringify(
+        log.filter((l) => l.outcome === "PENDING"),
+        null,
+        2
+      )
+    );
 
     const summary = getSummary("CRYPTO");
     assert.equal(summary.totalSignals, 6);
     assert.equal(summary.pending, 1);
     assert.equal(summary.completed, 5);
-    // Wins: TP1_HIT, TP2_HIT, SIGNAL_REVERSED (+1.5%) = 3
+    // Wins: TP_HIT, TP_HIT, SIGNAL_REVERSED (+1.5%) = 3
     assert.equal(summary.wins, 3);
     // Losses: SL_HIT = 1
     assert.equal(summary.losses, 1);

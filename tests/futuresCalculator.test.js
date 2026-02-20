@@ -13,9 +13,7 @@ describe("calculateFuturesPlan — LONG", () => {
     side: "LONG",
     leverage: 10,
     tpsl: {
-      tp1: { price: 70000 },
-      tp2: { price: 72000 },
-      tp3: { price: 75000 },
+      tp: { price: 70000 },
     },
   };
 
@@ -40,14 +38,12 @@ describe("calculateFuturesPlan — LONG", () => {
 
   it("should calculate positive TP targets", () => {
     const result = calculateFuturesPlan(base);
-    assert.ok(result.targets.tp1.pnl > 0);
-    assert.ok(result.targets.tp2.pnl > result.targets.tp1.pnl);
-    assert.ok(result.targets.tp3.pnl > result.targets.tp2.pnl);
+    assert.ok(result.targets.tp.pnl > 0);
 
     // ROE should be leverage-amplified and positive
-    assert.ok(result.targets.tp1.roe > 0);
+    assert.ok(result.targets.tp.roe > 0);
     // ROE = (diff/entry) * leverage * 100, should be roughly 29.41% for 10x
-    assert.ok(result.targets.tp1.roe > 20);
+    assert.ok(result.targets.tp.roe > 20);
   });
 
   it("should calculate risk metrics", () => {
@@ -90,7 +86,7 @@ describe("calculateFuturesPlan — SHORT", () => {
       slPrice: 70000,
       side: "SHORT",
       leverage: 10,
-      tpsl: { tp1: { price: 66000 } },
+      tpsl: { tp: { price: 66000 } },
     });
     // SHORT liqPrice = entry * (1 + 1/lev - maintenanceRate)
     // = 68000 * (1 + 0.1 - 0.005) = 68000 * 1.095 = 74460
@@ -105,11 +101,11 @@ describe("calculateFuturesPlan — SHORT", () => {
       side: "SHORT",
       leverage: 10,
       tpsl: {
-        tp1: { price: 66000 }, // Price going DOWN = profit for SHORT
+        tp: { price: 66000 }, // Price going DOWN = profit for SHORT
       },
     });
-    assert.ok(result.targets.tp1.pnl > 0);
-    assert.ok(result.targets.tp1.roe > 0);
+    assert.ok(result.targets.tp.pnl > 0);
+    assert.ok(result.targets.tp.roe > 0);
   });
 });
 
@@ -180,9 +176,7 @@ describe("calculateFuturesPlan — Edge Cases", () => {
       leverage: 5,
       tpsl: {}, // No TP levels
     });
-    assert.equal(result.targets.tp1, null);
-    assert.equal(result.targets.tp2, null);
-    assert.equal(result.targets.tp3, null);
+    assert.equal(result.targets.tp, null);
   });
 
   it("should use default leverage when not specified", () => {
@@ -205,9 +199,9 @@ describe("calculateFuturesPlan — Edge Cases", () => {
       slPrice: 0.000008,
       side: "LONG",
       leverage: 5,
-      tpsl: { tp1: { price: 0.000012 } },
+      tpsl: { tp: { price: 0.000012 } },
     });
     assert.ok(result.position.quantity > 0);
-    assert.ok(result.targets.tp1.roe > 0);
+    assert.ok(result.targets.tp.roe > 0);
   });
 });

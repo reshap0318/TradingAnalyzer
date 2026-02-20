@@ -44,7 +44,7 @@ describe("openPosition", () => {
       entryPrice: 68000,
       quantity: 0.01,
       sl: 66000,
-      tp1: 70000,
+      tp: 70000,
     });
     assert.equal(result.success, true);
     assert.equal(result.position.symbol, "BTCUSDT");
@@ -116,14 +116,14 @@ describe("closePosition", () => {
       symbol: "BTCUSDT",
       assetType: "CRYPTO",
       exitPrice: 70000,
-      reason: "TP1",
+      reason: "TP",
     });
     assert.equal(result.success, true);
     assert.equal(result.position.status, "CLOSED");
     assert.ok(result.position.pnlPercent > 0);
     // (70000-68000)/68000 * 100 = 2.94%
     assert.equal(result.position.pnlPercent, 2.94);
-    assert.equal(result.position.reason, "TP1");
+    assert.equal(result.position.reason, "TP");
   });
 
   it("should close position and calculate negative PnL", () => {
@@ -257,7 +257,7 @@ describe("getPositionSummary", () => {
       symbol: "BTCUSDT",
       assetType: "CRYPTO",
       exitPrice: 70000,
-      reason: "TP1",
+      reason: "TP",
     });
 
     openPosition({
@@ -271,7 +271,7 @@ describe("getPositionSummary", () => {
       symbol: "ETHUSDT",
       assetType: "CRYPTO",
       exitPrice: 3300,
-      reason: "TP2",
+      reason: "TP",
     });
 
     openPosition({

@@ -1,6 +1,7 @@
 import { analyzeATR } from "./indicators/atr.js";
 import { findSupportResistance } from "./supportResistance.js";
 import { calculateEMA } from "./indicators/movingAverages.js";
+import config from "../config.js";
 
 export function calculateTPSL(ohlcData, signal, price, assetType = "STOCK") {
   const sr = findSupportResistance(ohlcData);
@@ -26,7 +27,11 @@ export function calculateTPSL(ohlcData, signal, price, assetType = "STOCK") {
       : Math.round(p * 100) / 100;
   };
 
-  const maxSlPercent = assetType === "CRYPTO" ? 0.92 : 0.94; // 8% for crypto, 6% for stock
+  // Convert 8 and 6 to percentages (0.92 and 0.94 multipliers for SL)
+  const maxSlPercent =
+    assetType === "CRYPTO"
+      ? 1 - config.CRYPTO.MAX_SL_PERCENT / 100
+      : 1 - config.SAHAM.MAX_SL_PERCENT / 100;
 
   // Default to LONG (BUY) logic if signal is WAIT
   const isShort = signal === "SELL";
@@ -90,7 +95,10 @@ export function calculateTPSL(ohlcData, signal, price, assetType = "STOCK") {
 
     // EMA/ATR Logic for Short not prioritized by user script, but let's mirror it
     const atrSl = price + atr * 2;
-    const maxSlMultiplierShort = assetType === "CRYPTO" ? 1.08 : 1.06;
+    const maxSlMultiplierShort =
+      assetType === "CRYPTO"
+        ? 1 + config.CRYPTO.MAX_SL_PERCENT / 100
+        : 1 + config.SAHAM.MAX_SL_PERCENT / 100;
     if (!slPrice || slPrice > price * maxSlMultiplierShort) {
       slPrice = Math.min(slPrice || 999999, price * maxSlMultiplierShort);
       slDate = `Max Risk (${assetType === "CRYPTO" ? "8" : "6"}%)`;

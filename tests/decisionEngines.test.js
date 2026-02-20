@@ -69,9 +69,12 @@ function mockBTCMarket(trend = "BULLISH") {
 // ============================================================
 describe("makeDecision (Saham)", () => {
   it("should return a valid decision structure", () => {
-    const data = generateOHLC(250);
     const multiTf = generateMultiTF();
-    const decision = makeDecision(data, multiTf, mockIHSG());
+    const decision = makeDecision(multiTf["1D"], multiTf, mockIHSG(), [
+      "1D",
+      "1W",
+      "1M",
+    ]);
 
     assert.ok(["BUY", "SELL", "WAIT"].includes(decision.signal));
     assert.ok(
@@ -83,8 +86,12 @@ describe("makeDecision (Saham)", () => {
   });
 
   it("should include indicator breakdown", () => {
-    const data = generateOHLC(250);
-    const decision = makeDecision(data, generateMultiTF(), mockIHSG());
+    const multiTf = generateMultiTF();
+    const decision = makeDecision(multiTf["1D"], multiTf, mockIHSG(), [
+      "1D",
+      "1W",
+      "1M",
+    ]);
 
     assert.ok(Array.isArray(decision.breakdown));
     const indicators = decision.breakdown.map((b) => b.indicator);
@@ -94,21 +101,23 @@ describe("makeDecision (Saham)", () => {
   });
 
   it("should include multi-timeframe analysis", () => {
-    const decision = makeDecision(
-      generateOHLC(250),
-      generateMultiTF(),
-      mockIHSG()
-    );
+    const multiTf = generateMultiTF();
+    const decision = makeDecision(multiTf["1D"], multiTf, mockIHSG(), [
+      "1D",
+      "1W",
+      "1M",
+    ]);
     assert.ok(decision.multiTimeframe);
     assert.ok(decision.multiTimeframe.alignment);
   });
 
   it("should include candle patterns", () => {
-    const decision = makeDecision(
-      generateOHLC(250),
-      generateMultiTF(),
-      mockIHSG()
-    );
+    const multiTf = generateMultiTF();
+    const decision = makeDecision(multiTf["1D"], multiTf, mockIHSG(), [
+      "1D",
+      "1W",
+      "1M",
+    ]);
     assert.ok(decision.patterns);
     assert.ok(typeof decision.patterns === "object");
   });
@@ -120,18 +129,24 @@ describe("makeDecision (Saham)", () => {
       isCrash: true,
       details: ["IHSG Crash > 1.5%"],
     };
-    const decision = makeDecision(
-      generateOHLC(250, 100, "up"),
-      generateMultiTF("up"),
-      crash
-    );
+    const multiTf = generateMultiTF("up");
+    const decision = makeDecision(multiTf["1D"], multiTf, crash, [
+      "1D",
+      "1W",
+      "1M",
+    ]);
     assert.equal(decision.signal, "WAIT");
     assert.equal(decision.strength, "WEAK");
   });
 
   it("should return IHSG analysis in output", () => {
     const ihsg = mockIHSG("BULLISH");
-    const decision = makeDecision(generateOHLC(250), generateMultiTF(), ihsg);
+    const multiTf = generateMultiTF();
+    const decision = makeDecision(multiTf["1D"], multiTf, ihsg, [
+      "1D",
+      "1W",
+      "1M",
+    ]);
     assert.ok(decision.ihsg);
     assert.equal(decision.ihsg.trend, "BULLISH");
   });
@@ -142,23 +157,23 @@ describe("makeDecision (Saham)", () => {
 // ============================================================
 describe("makeDecision — Negative Scenarios", () => {
   it("should produce bearish signal for downtrend", () => {
-    const data = generateOHLC(250, 200, "down");
-    const decision = makeDecision(
-      data,
-      generateMultiTF("down"),
-      mockIHSG("BEARISH")
-    );
+    const multiTf = generateMultiTF("down");
+    const decision = makeDecision(multiTf["1D"], multiTf, mockIHSG("BEARISH"), [
+      "1D",
+      "1W",
+      "1M",
+    ]);
     // In a strong downtrend, score should be negative
     assert.ok(decision.score < 0 || decision.signal !== "BUY");
   });
 
   it("should handle neutral market (not BUY)", () => {
-    const flat = generateOHLC(250, 100, "flat");
-    const decision = makeDecision(
-      flat,
-      generateMultiTF("flat"),
-      mockIHSG("NEUTRAL")
-    );
+    const multiTf = generateMultiTF("flat");
+    const decision = makeDecision(multiTf["1D"], multiTf, mockIHSG("NEUTRAL"), [
+      "1D",
+      "1W",
+      "1M",
+    ]);
     // In flat market, may be WAIT
     assert.ok(["WAIT", "SELL", "BUY"].includes(decision.signal));
   });
@@ -169,9 +184,13 @@ describe("makeDecision — Negative Scenarios", () => {
 // ============================================================
 describe("makeCryptoDecision", () => {
   it("should return a valid decision structure", () => {
-    const hourly = generateOHLC(250, 68000);
     const multiTf = generateCryptoMultiTF();
-    const decision = makeCryptoDecision(hourly, multiTf, mockBTCMarket());
+    const decision = makeCryptoDecision(
+      multiTf["1h"],
+      multiTf,
+      mockBTCMarket(),
+      ["1h", "4h", "1d"]
+    );
 
     assert.ok(["BUY", "SELL", "WAIT"].includes(decision.signal));
     assert.ok(typeof decision.score === "number");
@@ -180,10 +199,12 @@ describe("makeCryptoDecision", () => {
   });
 
   it("should include indicator breakdown", () => {
+    const multiTf = generateCryptoMultiTF();
     const decision = makeCryptoDecision(
-      generateOHLC(250, 68000),
-      generateCryptoMultiTF(),
-      mockBTCMarket()
+      multiTf["1h"],
+      multiTf,
+      mockBTCMarket(),
+      ["1h", "4h", "1d"]
     );
     assert.ok(Array.isArray(decision.breakdown));
     assert.ok(decision.breakdown.length > 0);
@@ -191,11 +212,12 @@ describe("makeCryptoDecision", () => {
 
   it("should include BTC market analysis", () => {
     const btc = mockBTCMarket("BEARISH");
-    const decision = makeCryptoDecision(
-      generateOHLC(250, 68000),
-      generateCryptoMultiTF(),
-      btc
-    );
+    const multiTf = generateCryptoMultiTF();
+    const decision = makeCryptoDecision(multiTf["1h"], multiTf, btc, [
+      "1h",
+      "4h",
+      "1d",
+    ]);
     assert.ok(decision.btcMarket);
     assert.equal(decision.btcMarket.trend, "BEARISH");
   });
@@ -207,29 +229,34 @@ describe("makeCryptoDecision", () => {
       isCrash: true,
       details: ["BTC Crash Detected"],
     };
-    const decision = makeCryptoDecision(
-      generateOHLC(250, 68000, "up"),
-      generateCryptoMultiTF("up"),
-      crash
-    );
+    const multiTf = generateCryptoMultiTF("up");
+    const decision = makeCryptoDecision(multiTf["1h"], multiTf, crash, [
+      "1h",
+      "4h",
+      "1d",
+    ]);
     // Crash should force WAIT
     assert.equal(decision.signal, "WAIT");
   });
 
   it("should include multi-timeframe analysis for crypto", () => {
+    const multiTf = generateCryptoMultiTF();
     const decision = makeCryptoDecision(
-      generateOHLC(250, 68000),
-      generateCryptoMultiTF(),
-      mockBTCMarket()
+      multiTf["1h"],
+      multiTf,
+      mockBTCMarket(),
+      ["1h", "4h", "1d"]
     );
     assert.ok(decision.multiTimeframe);
   });
 
   it("should include candle patterns", () => {
+    const multiTf = generateCryptoMultiTF();
     const decision = makeCryptoDecision(
-      generateOHLC(250, 68000),
-      generateCryptoMultiTF(),
-      mockBTCMarket()
+      multiTf["1h"],
+      multiTf,
+      mockBTCMarket(),
+      ["1h", "4h", "1d"]
     );
     assert.ok(decision.patterns);
   });
@@ -240,11 +267,12 @@ describe("makeCryptoDecision", () => {
 // ============================================================
 describe("makeCryptoDecision — Negative Scenarios", () => {
   it("should produce bearish signal in downtrend with bearish BTC", () => {
-    const data = generateOHLC(250, 70000, "down");
+    const multiTf = generateCryptoMultiTF("down");
     const decision = makeCryptoDecision(
-      data,
-      generateCryptoMultiTF("down"),
-      mockBTCMarket("BEARISH")
+      multiTf["1h"],
+      multiTf,
+      mockBTCMarket("BEARISH"),
+      ["1h", "4h", "1d"]
     );
     assert.ok(decision.score < 0 || decision.signal !== "BUY");
   });
@@ -258,7 +286,12 @@ describe("makeCryptoDecision — Negative Scenarios", () => {
       "1d": generateOHLC(50, 68000),
     };
     // Should not throw
-    const decision = makeCryptoDecision(minimal, multiTf, mockBTCMarket());
+    const decision = makeCryptoDecision(
+      multiTf["1h"],
+      multiTf,
+      mockBTCMarket(),
+      ["1h", "4h", "1d"]
+    );
     assert.ok(["BUY", "SELL", "WAIT"].includes(decision.signal));
   });
 });

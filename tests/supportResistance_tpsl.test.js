@@ -89,11 +89,9 @@ describe("calculateTPSL — BUY", () => {
   const data = generateOHLC(200, 100);
   const price = data[data.length - 1].close;
 
-  it("should calculate TP1, TP2, TP3 above entry for BUY", () => {
+  it("should calculate TP above entry for BUY", () => {
     const result = calculateTPSL(data, "BUY", price);
-    assert.ok(result.tp1.price > price, "TP1 should be above entry");
-    assert.ok(result.tp2.price > result.tp1.price, "TP2 > TP1");
-    assert.ok(result.tp3.price > result.tp2.price, "TP3 > TP2");
+    assert.ok(result.tp.price > price, "TP should be above entry");
   });
 
   it("should calculate SL below entry for BUY", () => {
@@ -103,15 +101,7 @@ describe("calculateTPSL — BUY", () => {
 
   it("should include risk/reward ratios", () => {
     const result = calculateTPSL(data, "BUY", price);
-    assert.ok(result.riskReward.tp1 >= 1, "TP1 R:R >= 1");
-    assert.ok(
-      result.riskReward.tp2 > result.riskReward.tp1,
-      "TP2 R:R > TP1 R:R"
-    );
-    assert.ok(
-      result.riskReward.tp3 > result.riskReward.tp2,
-      "TP3 R:R > TP2 R:R"
-    );
+    assert.ok(result.riskReward.tp >= 1, "TP R:R >= 1");
   });
 
   it("should include ATR value", () => {
@@ -133,11 +123,9 @@ describe("calculateTPSL — SELL", () => {
   const data = generateOHLC(200, 100);
   const price = data[data.length - 1].close;
 
-  it("should calculate TP1, TP2, TP3 below entry for SELL", () => {
+  it("should calculate TP below entry for SELL", () => {
     const result = calculateTPSL(data, "SELL", price, "CRYPTO");
-    assert.ok(result.tp1.price < price, "TP1 should be below entry");
-    assert.ok(result.tp2.price < result.tp1.price, "TP2 < TP1");
-    assert.ok(result.tp3.price < result.tp2.price, "TP3 < TP2");
+    assert.ok(result.tp.price < price, "TP should be below entry");
   });
 
   it("should calculate SL above entry for SELL", () => {
@@ -155,7 +143,7 @@ describe("calculateTPSL — Crypto Precision", () => {
     const price = data[data.length - 1].close;
     const result = calculateTPSL(data, "BUY", price, "CRYPTO");
     // Round(x * 100) / 100 → at most 2 decimal places
-    const dp = String(result.tp1.price).split(".")[1]?.length || 0;
+    const dp = String(result.tp.price).split(".")[1]?.length || 0;
     assert.ok(dp <= 2, `Expected <= 2dp, got ${dp}`);
   });
 
@@ -163,6 +151,6 @@ describe("calculateTPSL — Crypto Precision", () => {
     const data = generateOHLC(200, 8000);
     const price = data[data.length - 1].close;
     const result = calculateTPSL(data, "BUY", price, "STOCK");
-    assert.equal(result.tp1.price, Math.round(result.tp1.price));
+    assert.equal(result.tp.price, Math.round(result.tp.price));
   });
 });

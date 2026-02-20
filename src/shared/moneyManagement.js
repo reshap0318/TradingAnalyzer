@@ -124,7 +124,8 @@ export function calculateMoneyManagement(
     );
   }
   if (riskRewardRatio < 1.5) warnings.push("Risk/Reward ratio kurang dari 1.5");
-  if (!validSignal) warnings.push("Signal is not valid for this asset type");
+  if (!validSignal && signal !== "WAIT")
+    warnings.push("Signal is not valid for this asset type");
   if (validSignal && slPrice && tpPercent <= slPercent)
     warnings.push(
       `TP (${tpPercent.toFixed(2)}%) < SL (${slPercent.toFixed(2)}%)`

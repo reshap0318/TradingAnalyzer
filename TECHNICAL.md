@@ -13,7 +13,9 @@ Berikut penjelasan lengkap setiap field dalam response `/saham/analyze` dan `/cr
 ```json
 {
   "symbol": "BBCA.JK",
+  "interval": "15m",
   "timestamp": "17/02/2026, 00.30.00",
+  "capitalStatus": { ... },
   "currentPrice": 8625,
   "change": -75,
   "changePercent": -0.86,
@@ -54,14 +56,10 @@ Berikut penjelasan lengkap setiap field dalam response `/saham/analyze` dan `/cr
   "valid": true,
   "signal": "BUY",
   "strength": "STRONG",
-  "confidence": 72.5,
-  "score": 72.5,
   "entry": { "low": 8600, "high": 8650 },
-  "tp1": { "price": 8850, "percent": 2.6, "reason": "R1 Resistance (Pivot)" },
-  "tp2": { "price": 9050, "percent": 4.9, "reason": "R2 Resistance (Pivot)" },
-  "tp3": { "price": 9300, "percent": 7.8, "reason": "R3 Resistance (Fib)" },
-  "sl":  { "price": 8400, "percent": -2.6, "reason": "S1 Support (Pivot)" },
-  "riskReward": { "tp1": 1.5, "tp2": 3.1, "tp3": 5.0 }
+  "tp": { "price": 9050, "percent": 4.9, "reason": "Risk 1.5x / Res" },
+  "sl": { "price": 8400, "percent": -2.6, "reason": "S1 Support (Pivot)" },
+  "riskReward": { "tp": 1.5 }
 }
 ```
 
@@ -73,13 +71,11 @@ Berikut penjelasan lengkap setiap field dalam response `/saham/analyze` dan `/cr
 | `confidence` | Tingkat keyakinan dalam persen (0-100). Semakin tinggi semakin yakin |
 | `score` | Skor mentah dari semua indikator. Positif = cenderung beli, negatif = cenderung jual |
 | `entry` | **Zona masuk** — rentang harga ideal untuk membuka posisi |
-| `tp1` | **Target Profit 1** — target terdekat. `percent` = berapa % keuntungan dari harga masuk |
-| `tp2` | **Target Profit 2** — target menengah |
-| `tp3` | **Target Profit 3** — target terjauh (paling optimis) |
+| `tp` | **Target Profit** — target taking profit. `percent` = berapa % keuntungan dari harga masuk |
 | `sl` | **Stop Loss** — harga dimana kamu harus keluar untuk membatasi kerugian |
 | `riskReward` | Rasio keuntungan vs kerugian. Misal `1.5` artinya potensi untung 1.5x lipat dari risiko rugi |
 
-> **Tips**: Idealnya `riskReward.tp1` minimal **1.5** — artinya potensi untung minimal 1.5x dari potensi rugi.
+> **Tips**: Idealnya `riskReward.tp` minimal **1.5** — artinya potensi untung minimal 1.5x dari potensi rugi.
 
 ---
 
@@ -179,45 +175,32 @@ Rekomendasi berapa banyak yang sebaiknya diinvestasikan.
 "moneyManagement": {
   "isValid": true,
   "signal": "BUY",
-  "recommendation": {
-    "lots": 5,
-    "totalShares": 500,
-    "positionValue": 4312500,
-    "maxLossAmount": 62500,
-    "maxLossPercent": 0.63
+  "totalLot": 5,
+  "priceLot": {
+    "satuan": 8625,
+    "totalBelanja": 4312500
   },
-  "analysis": {
-    "riskPerShare": 125,
-    "riskPerSharePercent": 1.45,
-    "riskRewardRatio": 1.5
-  },
-  "potentialProfit": {
-    "atTP1": 112500,
-    "atTP2": 237500,
-    "atTP3": 375000
-  },
-  "trailingStop": {
-    "activationPrice": 8812,
-    "distance": 62
-  }
+  "tpPercent": 4.9,
+  "slPercent": 2.6,
+  "riskRewardRatio": 1.5,
+  "maksimalKerugian": 112500,
+  "potensiKeuntungan": 211312,
+  "warnings": [
+    "Mendekati batas maksimal kerugian"
+  ]
 }
 ```
 
 | Field | Penjelasan |
 |---|---|
-| **recommendation** | |
-| `lots` | Jumlah lot yang disarankan (1 lot = 100 lembar saham, crypto = unit) |
-| `positionValue` | Total nilai posisi dalam Rupiah / USD |
-| `maxLossAmount` | Kerugian maksimal jika kena stop loss |
-| `maxLossPercent` | Kerugian maksimal sebagai % dari total modal |
-| **analysis** | |
-| `riskPerShare` | Risiko per lembar saham (selisih harga masuk dan stop loss) |
-| `riskRewardRatio` | Rasio potensi untung vs rugi |
-| **potentialProfit** | |
-| `atTP1` / `atTP2` / `atTP3` | Potensi keuntungan di masing-masing target |
-| **trailingStop** | |
-| `activationPrice` | Harga di mana trailing stop aktif (mengunci keuntungan) |
-| `distance` | Jarak trailing stop dari harga tertinggi |
+| `totalLot` | Jumlah lot yang disarankan (1 lot = 100 lembar saham, crypto = unit) |
+| `priceLot.satuan` | Harga beli per lembar aset |
+| `priceLot.totalBelanja` | Rekomendasi total nilai uang yang di-belanjakan (position value) |
+| `tpPercent` | Keuntungan kotor (%) bilamana TP tercapai |
+| `slPercent` | Kerugian kotor (%) bilamana SL tercapai |
+| `riskRewardRatio` | Rasio ganjaran banding resiko (idealnya >= 1.5) |
+| `maksimalKerugian` | Kerugian nilai *fiat* modal maksimal bila kena SL |
+| `potensiKeuntungan` | Keuntungan nilai *fiat* uang ekspektasi jika menyentuh target profit |
 
 ---
 
@@ -260,17 +243,17 @@ Rekomendasi berapa banyak yang sebaiknya diinvestasikan.
 
 ### Alur Data
 
-```
-Jam 01:00   Cron hit /crypto/analyze → Sinyal SELL @ 67900
-            → Auto-log: outcome = PENDING, tp1 = 66500, sl = 69000
+```text
+1. User menembakkan POST /crypto/signals/log dengan payload sinyal BUY @ 67900
+   → System insert ke active_trades: outcome = PENDING, tp = 69000, sl = 66000
 
-Jam 02:00   Cron hit lagi (sinyal masih SELL) → Skip (sudah ada PENDING SELL)
-            → updateOutcomes: cek harga 67200 → tp1 & sl belum kena → tetap PENDING
+2. Jam 02:00: Trigger `updateOutcomes` dipicu oleh sembarang call /analyze lain 
+   → cek harga saat ini 67200 → tp & sl belum kena → status tetap PENDING
 
-Jam 05:00   Cron hit lagi → Harga sekarang 66400
-            → tp1 (66500) KENA! → outcome = TP1_HIT, pnl = +2.06%
+3. Jam 05:00: Trigger `updateOutcomes` dipicu lagi → Harga sekarang 69100
+   → tp (69000) KENA! → outcome = TP_HIT, pnl = +1.62%
 
-Jam 49:00   Jika 48 jam lewat tanpa TP/SL → outcome = EXPIRED
+4. Jam 49:00: Jika 48 jam lewat tanpa TP/SL tersentuh → outcome = EXPIRED
 ```
 
 ### Aturan Dedup (1 PENDING per simbol)
@@ -287,9 +270,7 @@ Jam 49:00   Jika 48 jam lewat tanpa TP/SL → outcome = EXPIRED
 | Status | Artinya |
 |---|---|
 | `PENDING` | Sinyal baru, menunggu TP/SL tercapai |
-| `TP1_HIT` | Target profit 1 tercapai ✅ |
-| `TP2_HIT` | Target profit 2 tercapai ✅✅ |
-| `TP3_HIT` | Target profit 3 tercapai ✅✅✅ |
+| `TP_HIT` | Target profit tercapai ✅ |
 | `SL_HIT` | Stop loss kena ❌ |
 | `SIGNAL_REVERSED` | Sinyal berbalik (BUY→SELL / SELL→BUY) 🔄 |
 | `EXPIRED` | 48 jam (crypto) / 10 hari (saham) lewat tanpa TP/SL ⏰ |
@@ -359,7 +340,7 @@ POST /crypto/position/open
   "entryPrice": 67500,
   "quantity": 0.01,
   "sl": 66000,
-  "tp1": 69000,
+  "tp": 69000,
   "notes": "Sinyal dari analyze tadi pagi"
 }
 ```
@@ -371,7 +352,7 @@ POST /crypto/position/close
 {
   "symbol": "BTCUSDT",
   "exitPrice": 68000,
-  "reason": "TP1"
+  "reason": "TP"
 }
 // Response: { pnlPercent: +0.74%, pnlTotal: 5 USD }
 ```
@@ -412,9 +393,7 @@ Default leverage dari config (5x) jika tidak diisi.
     "effectiveRisk": "3.35% ROE"
   },
   "targets": {
-    "tp1": { "price": 67840, "pnl": 5.02, "roe": 5.02 },
-    "tp2": { "price": 67497, "pnl": 10.04, "roe": 10.04 },
-    "tp3": { "price": 67041, "pnl": 16.73, "roe": 16.73 }
+    "tp": { "price": 67840, "pnl": 5.02, "roe": 5.02 }
   },
   "fees": { "openFee": 0.4, "closeFee": 0.4, "totalFees": 0.8, "fundingPer8h": 0.1 },
   "warnings": []
@@ -432,7 +411,7 @@ Default leverage dari config (5x) jika tidak diisi.
 | `liquidation.distancePercent` | Jarak dari entry ke liquidation (%) |
 | `liquidation.slBeyondLiquidation` | `true` = **BAHAYA**: SL melewati harga liquidasi |
 | `risk.effectiveRisk` | Risiko sebenarnya (slPercent × leverage) |
-| `targets.tp1.roe` | **Return on Equity** — profit sebagai % dari margin |
+| `targets.tp.roe` | **Return on Equity** — profit sebagai % dari margin |
 | `fees.totalFees` | Total biaya buka + tutup posisi |
 | `fees.fundingPer8h` | Estimasi biaya funding rate setiap 8 jam |
 

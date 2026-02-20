@@ -96,7 +96,7 @@ export default {
     // IHSG crash = >1.5% drop
     CRASH_THRESHOLD: -1.5,
     // Max SL for stocks = 6%
-    MAX_SL_PERCENT: 0.06,
+    MAX_SL_PERCENT: 6,
   },
 
   // ─── Crypto Specific ───
@@ -141,7 +141,7 @@ export default {
     // BTC crash = >5% drop in 24h
     CRASH_THRESHOLD: -5,
     // Max SL for crypto = 8%
-    MAX_SL_PERCENT: 0.08,
+    MAX_SL_PERCENT: 8,
 
     // Futures-specific settings
     FUTURES: {

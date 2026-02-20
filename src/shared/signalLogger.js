@@ -427,3 +427,10 @@ export function getHistory({ assetType, symbol, limit = 50 } = {}) {
   if (symbol) log = log.filter((e) => e.symbol === symbol);
   return log.slice(-limit).reverse();
 }
+
+export function getActive({ assetType, symbol, limit = 50 } = {}) {
+  let log = loadJson(ACTIVE_FILE, []);
+  if (assetType) log = log.filter((e) => e.assetType === assetType);
+  if (symbol) log = log.filter((e) => e.symbol === symbol);
+  return log.slice(-limit).reverse();
+}
