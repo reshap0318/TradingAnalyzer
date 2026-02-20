@@ -93,12 +93,12 @@ export default {
     },
 
     THRESHOLDS: {
-      STRONG_BUY: 60,
-      BUY: 35,
-      WAIT_UPPER: 35,
-      WAIT_LOWER: -35,
-      SELL: -35,
-      STRONG_SELL: -60,
+      STRONG_BUY: 70,
+      BUY: 45,
+      WAIT_UPPER: 45,
+      WAIT_LOWER: -45,
+      SELL: -45,
+      STRONG_SELL: -70,
     },
 
     MONEY_MANAGEMENT: {
