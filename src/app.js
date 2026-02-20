@@ -110,9 +110,7 @@ app.get("/saham/analyze", async (req, res) => {
         confidence: signalResult.confidence,
         score: signalResult.score,
         strength: signalResult.strength,
-        tp1: tpsl.tp1,
-        tp2: tpsl.tp2,
-        tp3: tpsl.tp3,
+        tp: tpsl.tp,
         sl: tpsl.sl,
         riskReward: tpsl.riskReward,
         timeframeAlignment: decision.multiTimeframe.alignment,
@@ -137,6 +135,7 @@ app.get("/saham/analyze", async (req, res) => {
     res.json({
       symbol,
       timestamp: getCurrentWIB(),
+      capitalStatus,
       currentPrice: quote.price,
       change: quote.change,
       changePercent: quote.changePercent,
@@ -145,14 +144,17 @@ app.get("/saham/analyze", async (req, res) => {
         valid: signalResult.signal === "BUY",
         signal: signalResult.signal,
         strength: signalResult.strength,
-        confidence: signalResult.confidence,
-        score: signalResult.score,
+        // confidence: signalResult.confidence,
+        // score: signalResult.score,
         entry: signalResult.entryZone,
-        tp1: tpsl.tp1,
-        tp2: tpsl.tp2,
-        tp3: tpsl.tp3,
+        tp: tpsl.tp,
         sl: tpsl.sl,
         riskReward: tpsl.riskReward,
+      },
+      scoring: {
+        totalScore: signalResult.score,
+        confidence: signalResult.confidence,
+        breakdown: decision.breakdown || [],
       },
       market_sentiment: {
         index: "IHSG",
@@ -220,9 +222,7 @@ app.get("/saham/signal", async (req, res) => {
         strength: signalResult.strength,
         confidence: signalResult.confidence,
         entry: signalResult.entryZone,
-        tp1: tpsl.tp1,
-        tp2: tpsl.tp2,
-        tp3: tpsl.tp3,
+        tp: tpsl.tp,
         sl: tpsl.sl,
       },
       patterns: decision.patterns, // Added patterns output
@@ -378,9 +378,7 @@ app.get("/crypto/analyze", async (req, res) => {
         confidence: signalResult.confidence,
         score: signalResult.score,
         strength: signalResult.strength,
-        tp1: tpsl.tp1,
-        tp2: tpsl.tp2,
-        tp3: tpsl.tp3,
+        tp: tpsl.tp,
         sl: tpsl.sl,
         riskReward: tpsl.riskReward,
         timeframeAlignment: decision.multiTimeframe.alignment,
@@ -402,6 +400,7 @@ app.get("/crypto/analyze", async (req, res) => {
     res.json({
       symbol,
       timestamp: getCurrentWIB(),
+      capitalStatus,
       currentPrice: quote.price,
       change: quote.change,
       changePercent: quote.changePercent,
@@ -410,14 +409,17 @@ app.get("/crypto/analyze", async (req, res) => {
         valid: signalResult.signal === "BUY" || signalResult.signal === "SELL",
         signal: signalResult.signal,
         strength: signalResult.strength,
-        confidence: signalResult.confidence,
-        score: signalResult.score,
+        // confidence: signalResult.confidence,
+        // score: signalResult.score,
         entry: signalResult.entryZone,
-        tp1: tpsl.tp1,
-        tp2: tpsl.tp2,
-        tp3: tpsl.tp3,
+        tp: tpsl.tp,
         sl: tpsl.sl,
         riskReward: tpsl.riskReward,
+      },
+      scoring: {
+        totalScore: signalResult.score,
+        confidence: signalResult.confidence,
+        breakdown: decision.breakdown || [],
       },
       market_sentiment: {
         index: "BTC Market",
@@ -540,8 +542,7 @@ app.get("/saham/signals/history", (req, res) => {
 // --- POSITION TRACKER ENDPOINTS ---
 
 app.post("/crypto/position/open", (req, res) => {
-  const { symbol, side, entryPrice, quantity, sl, tp1, tp2, tp3, notes } =
-    req.body;
+  const { symbol, side, entryPrice, quantity, sl, tp, notes } = req.body;
   if (!symbol || !entryPrice || !quantity) {
     return res
       .status(400)
@@ -555,9 +556,7 @@ app.post("/crypto/position/open", (req, res) => {
       entryPrice: parseFloat(entryPrice),
       quantity: parseFloat(quantity),
       sl: sl ? parseFloat(sl) : null,
-      tp1: tp1 ? parseFloat(tp1) : null,
-      tp2: tp2 ? parseFloat(tp2) : null,
-      tp3: tp3 ? parseFloat(tp3) : null,
+      tp: tp ? parseFloat(tp) : null,
       notes: notes || "",
     })
   );
@@ -600,8 +599,7 @@ app.get("/crypto/positions/summary", (req, res) => {
 // --- SAHAM POSITION TRACKER ENDPOINTS ---
 
 app.post("/saham/position/open", (req, res) => {
-  const { symbol, side, entryPrice, quantity, sl, tp1, tp2, tp3, notes } =
-    req.body;
+  const { symbol, side, entryPrice, quantity, sl, tp, notes } = req.body;
   if (!symbol || !entryPrice || !quantity) {
     return res
       .status(400)
@@ -618,9 +616,7 @@ app.post("/saham/position/open", (req, res) => {
       entryPrice: parseFloat(entryPrice),
       quantity: parseFloat(quantity),
       sl: sl ? parseFloat(sl) : null,
-      tp1: tp1 ? parseFloat(tp1) : null,
-      tp2: tp2 ? parseFloat(tp2) : null,
-      tp3: tp3 ? parseFloat(tp3) : null,
+      tp: tp ? parseFloat(tp) : null,
       notes: notes || "",
     })
   );

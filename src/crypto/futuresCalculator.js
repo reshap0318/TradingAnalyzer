@@ -89,9 +89,7 @@ export function calculateFuturesPlan({
   const fundingPer8h = positionValue * estimatedFundingRate;
 
   // --- Effective PnL at each TP (minus fees) ---
-  const tp1Data = tpCalc(tpsl.tp1?.price);
-  const tp2Data = tpCalc(tpsl.tp2?.price);
-  const tp3Data = tpCalc(tpsl.tp3?.price);
+  const tpData = tpCalc(tpsl.tp?.price);
 
   // --- Warnings ---
   const warnings = [];
@@ -146,9 +144,7 @@ export function calculateFuturesPlan({
       effectiveRisk: Math.round(slPercent * lev * 100) / 100 + "% ROE",
     },
     targets: {
-      tp1: tp1Data,
-      tp2: tp2Data,
-      tp3: tp3Data,
+      tp: tpData,
     },
     fees: {
       openFee: Math.round(openFee * 100) / 100,

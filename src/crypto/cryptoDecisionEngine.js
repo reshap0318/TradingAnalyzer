@@ -143,7 +143,9 @@ export function makeCryptoDecision(hourlyData, multiTfData, btcMarket) {
   const patterns = {};
   const HISTORY_COUNT = 5;
 
-  Object.entries(multiTfData).forEach(([tf, data]) => {
+  const tfOrder = ["15m", "1h", "4h", "1D"];
+  tfOrder.forEach((tf) => {
+    const data = multiTfData[tf];
     if (!data || data.length < 10) {
       patterns[tf] = [];
       return;

@@ -8,7 +8,7 @@ import config from "../config.js";
  * @param {number} portfolio.currentPositions - Current open positions
  * @param {number} price - Current stock price
  * @param {number} slPrice - Stop loss price
- * @param {Object} tpsl - TP/SL data with tp1, tp2, tp3 percentages
+ * @param {Object} tpsl - TP/SL data with tp percentage
  * @param {string} signal - BUY/SELL/WAIT
  * @param {number} trendStrength - Trend strength score (0-100)
  */
@@ -24,13 +24,24 @@ export function calculateMoneyManagement(
   const { totalCapital, maxLossPercent = 2, currentPositions = 0 } = portfolio;
 
   // Calculate validity of the trade setup
-  const tp1Percent = tpsl?.tp1?.percent ? Math.abs(tpsl.tp1.percent) : 0;
+  const tpPercent = tpsl?.tp?.percent ? Math.abs(tpsl.tp.percent) : 0;
   const slPercent = slPrice ? Math.abs(((slPrice - price) / price) * 100) : 0;
+  const maxPositionsConfig =
+    assetType === "CRYPTO"
+      ? config.CRYPTO.MONEY_MANAGEMENT.MAX_POSITIONS
+      : config.SAHAM.MONEY_MANAGEMENT.MAX_POSITIONS;
+
   const validSignal =
     assetType === "CRYPTO"
       ? signal === "BUY" || signal === "SELL"
       : signal === "BUY"; // Stock = long-only
-  const isValid = validSignal && slPrice && tp1Percent > slPercent;
+
+  let isValid = validSignal && slPrice && tpPercent > slPercent;
+
+  // Enforce Max Positions constraint
+  if (currentPositions >= maxPositionsConfig) {
+    isValid = false;
+  }
 
   // If no stop loss, we cannot calculate risk
   if (!slPrice) {
@@ -92,27 +103,33 @@ export function calculateMoneyManagement(
 
   // Calculate potential profit at each TP
   const potentialProfit = {
-    tp1: tpsl?.tp1 ? recommendedShares * Math.abs(tpsl.tp1.price - price) : 0,
-    tp2: tpsl?.tp2 ? recommendedShares * Math.abs(tpsl.tp2.price - price) : 0,
-    tp3: tpsl?.tp3 ? recommendedShares * Math.abs(tpsl.tp3.price - price) : 0,
+    tp: tpsl?.tp ? recommendedShares * Math.abs(tpsl.tp.price - price) : 0,
   };
 
   // Risk/Reward ratio
-  const riskRewardRatio = slPercent > 0 ? tp1Percent / slPercent : 0;
+  const riskRewardRatio = slPercent > 0 ? tpPercent / slPercent : 0;
 
   const warnings = [];
   if (actualRiskPercent > maxLossPercent * 0.9)
     warnings.push("Mendekati batas maksimal kerugian");
   if (positionValue > totalCapital * 0.1)
     warnings.push("Posisi > 10% dari total capital");
-  if (currentPositions >= 5) warnings.push("Sudah memiliki 5 posisi terbuka");
-  if (riskRewardRatio < 1.5) warnings.push("Risk/Reward ratio kurang dari 1.5");
-  if (!isValid && !validSignal)
-    warnings.push("Signal is not valid for this asset type");
-  if (!isValid && tp1Percent <= slPercent)
+  if (currentPositions >= maxPositionsConfig) {
     warnings.push(
-      `TP1 (${tp1Percent.toFixed(2)}%) < SL (${slPercent.toFixed(2)}%)`
+      `Sudah mencapai batas maksimal posisi (${maxPositionsConfig})`
     );
+  }
+  if (riskRewardRatio < 1.5) warnings.push("Risk/Reward ratio kurang dari 1.5");
+  if (!validSignal) warnings.push("Signal is not valid for this asset type");
+  if (validSignal && slPrice && tpPercent <= slPercent)
+    warnings.push(
+      `TP (${tpPercent.toFixed(2)}%) < SL (${slPercent.toFixed(2)}%)`
+    );
+
+  const finalPositionValue =
+    assetType === "CRYPTO"
+      ? Number(positionValue.toFixed(4)) // Preserve decimals to prevent rounding down to 0 for small crypto allocations
+      : Math.round(positionValue);
 
   return {
     isValid, // New key as requested
@@ -120,7 +137,7 @@ export function calculateMoneyManagement(
     recommendation: {
       lots: recommendedLots,
       totalShares: recommendedShares,
-      positionValue: Math.round(positionValue),
+      positionValue: finalPositionValue,
       maxLossAmount: Math.round(actualRiskAmount),
       maxLossPercent: Math.round(actualRiskPercent * 100) / 100,
     },
@@ -133,14 +150,12 @@ export function calculateMoneyManagement(
     analysis: {
       riskPerShare: Math.round(riskPerShare),
       riskPerSharePercent: Math.round(riskPerSharePercent * 100) / 100,
-      tp1Percent: Math.round(tp1Percent * 100) / 100,
+      tpPercent: Math.round(tpPercent * 100) / 100,
       slPercent: Math.round(slPercent * 100) / 100,
       riskRewardRatio: Math.round(riskRewardRatio * 100) / 100,
     },
     potentialProfit: {
-      atTP1: Math.round(potentialProfit.tp1),
-      atTP2: Math.round(potentialProfit.tp2),
-      atTP3: Math.round(potentialProfit.tp3),
+      atTP: Math.round(potentialProfit.tp),
     },
     trailingStop: {
       activationPrice:
@@ -157,12 +172,12 @@ export function calculateMoneyManagement(
  * Check if trade should be taken based on TP/SL ratio
  */
 export function shouldTrade(tpsl, minProfitLossRatio = 1.5) {
-  if (!tpsl || !tpsl.tp1 || !tpsl.sl)
+  if (!tpsl || !tpsl.tp || !tpsl.sl)
     return { trade: false, reason: "TP atau SL tidak tersedia" };
 
-  const tp1Percent = Math.abs(tpsl.tp1.percent);
+  const tpPercent = Math.abs(tpsl.tp.percent);
   const slPercent = Math.abs(tpsl.sl.percent);
-  const ratio = tp1Percent / slPercent;
+  const ratio = tpPercent / slPercent;
 
   if (ratio < minProfitLossRatio) {
     return {

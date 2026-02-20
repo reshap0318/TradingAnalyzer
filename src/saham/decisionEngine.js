@@ -35,7 +35,11 @@ export function makeDecision(
   const patterns = {};
   const HISTORY_COUNT = 5;
 
-  Object.entries(multiTfData).forEach(([tf, data]) => {
+  const tfOrder = ["15m", "1h", "4h", "1D"];
+  tfOrder.forEach((tf) => {
+    const data = multiTfData[tf];
+    if (!data) return;
+
     const tfPatterns = [];
     // Iterate from newest (end) to back
     for (let i = 0; i < HISTORY_COUNT; i++) {

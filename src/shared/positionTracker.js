@@ -37,9 +37,7 @@ export function openPosition({
   entryPrice,
   quantity,
   sl = null,
-  tp1 = null,
-  tp2 = null,
-  tp3 = null,
+  tp = null,
   notes = "",
 }) {
   const positions = loadPositions();
@@ -64,9 +62,7 @@ export function openPosition({
     entryPrice,
     quantity,
     sl,
-    tp1,
-    tp2,
-    tp3,
+    tp,
     notes,
     openTime: new Date().toISOString(),
     status: "OPEN",

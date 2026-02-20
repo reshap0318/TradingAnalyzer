@@ -22,7 +22,7 @@ export default {
   },
 
   SR_SETTINGS: { LOOKBACK_PERIODS: 100, TOLERANCE: 0.005, MIN_TOUCHES: 2 },
-  SERVER: { PORT: 3000 },
+  SERVER: { PORT: 1000 },
 
   // ─── Saham (Stock) Specific ───
   SAHAM: {
