@@ -47,17 +47,22 @@ function analyzeCryptoTimeframe(ohlcData, timeframe) {
 /**
  * Multi-timeframe analysis for crypto using crypto-specific weights
  */
-function analyzeCryptoMultiTimeframe(multiTfData) {
-  const cryptoTfConfig = config.CRYPTO.TIMEFRAMES;
+function analyzeCryptoMultiTimeframe(multiTfData, timeframes) {
+  const genericWeights = [0.1, 0.35, 0.3, 0.25];
   const results = {};
   let weighted = 0;
   let total = 0;
 
-  for (const [tf, settings] of Object.entries(cryptoTfConfig)) {
-    results[tf] = analyzeCryptoTimeframe(multiTfData[tf], tf);
-    weighted += results[tf].signal * settings.weight;
-    total += settings.weight;
-  }
+  timeframes.forEach((tf, index) => {
+    const data = multiTfData[tf];
+    if (data) {
+      results[tf] = analyzeCryptoTimeframe(data, tf);
+      // Use fallback weight if timeframes array > 4
+      const weight = genericWeights[index] || 0.1;
+      weighted += results[tf].signal * weight;
+      total += weight;
+    }
+  });
 
   const trends = Object.values(results).map((r) => r.trend);
   const bull = trends.filter((t) => t === "BULLISH").length;
@@ -97,8 +102,13 @@ function analyzeCryptoMultiTimeframe(multiTfData) {
  * @param {Object} btcMarket - BTC market analysis from btcMarketAnalyzer
  * @returns {Object} - Decision result
  */
-export function makeCryptoDecision(hourlyData, multiTfData, btcMarket) {
-  if (!hourlyData || hourlyData.length < 30) {
+export function makeCryptoDecision(
+  primaryData,
+  multiTfData,
+  btcMarket,
+  timeframes
+) {
+  if (!primaryData || primaryData.length < 30) {
     return {
       signal: "WAIT",
       strength: "NEUTRAL",
@@ -108,7 +118,7 @@ export function makeCryptoDecision(hourlyData, multiTfData, btcMarket) {
         {
           indicator: "DATA",
           contribution: 0,
-          details: ["Insufficient 1H data"],
+          details: ["Insufficient primary data"],
         },
       ],
       indicators: {},
@@ -123,27 +133,27 @@ export function makeCryptoDecision(hourlyData, multiTfData, btcMarket) {
     };
   }
 
-  const closes = hourlyData.map((d) => d.close);
+  const closes = primaryData.map((d) => d.close);
   const w = config.CRYPTO.WEIGHTS;
 
-  // --- Primary Indicators (from 1H data) ---
+  // --- Primary Indicators (from primary data) ---
   const ind = {
     ma: analyzeMA(closes),
     rsi: analyzeRSI(closes),
     macd: analyzeMACD(closes),
     bb: analyzeBollingerBands(closes),
-    stoch: analyzeStochastic(hourlyData),
-    volume: analyzeVolume(hourlyData),
+    stoch: analyzeStochastic(primaryData),
+    volume: analyzeVolume(primaryData),
   };
 
   // --- Multi-Timeframe Analysis ---
-  const mtf = analyzeCryptoMultiTimeframe(multiTfData);
+  const mtf = analyzeCryptoMultiTimeframe(multiTfData, timeframes);
 
   // --- Candle Patterns (all timeframes, last 5 candles) ---
   const patterns = {};
   const HISTORY_COUNT = 5;
 
-  const tfOrder = ["15m", "1h", "4h", "1D"];
+  const tfOrder = timeframes;
   tfOrder.forEach((tf) => {
     const data = multiTfData[tf];
     if (!data || data.length < 10) {

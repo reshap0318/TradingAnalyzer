@@ -28,15 +28,21 @@ export function analyzeTimeframe(ohlcData, timeframe) {
   };
 }
 
-export function analyzeMultiTimeframe(multiTfData) {
+export function analyzeMultiTimeframe(multiTfData, timeframes) {
+  const genericWeights = [0.15, 0.25, 0.3, 0.3];
   const results = {};
   let weighted = 0,
     total = 0;
-  for (const [tf, settings] of Object.entries(config.SAHAM.TIMEFRAMES)) {
-    results[tf] = analyzeTimeframe(multiTfData[tf], tf);
-    weighted += results[tf].signal * settings.weight;
-    total += settings.weight;
-  }
+
+  timeframes.forEach((tf, index) => {
+    const data = multiTfData[tf];
+    if (data) {
+      results[tf] = analyzeTimeframe(data, tf);
+      const weight = genericWeights[index] || 0.15;
+      weighted += results[tf].signal * weight;
+      total += weight;
+    }
+  });
   const trends = Object.values(results).map((r) => r.trend);
   const bull = trends.filter((t) => t === "BULLISH").length,
     bear = trends.filter((t) => t === "BEARISH").length;

@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import config from "./config.js";
+import config, { TIMEFRAME_MAP } from "./config.js";
 import {
   fetchMultiTimeframe,
   fetchIHSG,
@@ -61,6 +61,9 @@ app.get("/saham/analyze", async (req, res) => {
       return res.status(400).json({ error: "Symbol parameter is required" });
     }
     const symbol = formatSymbol(req.query.symbol);
+    const interval = req.query.interval || config.DEFAULT_INTERVAL;
+    const timeframes = TIMEFRAME_MAP[interval] || TIMEFRAME_MAP["1d"];
+
     const initialCapital =
       parseInt(req.query.capital) || config.SAHAM.DEFAULT_CAPITAL;
     const capitalStatus = getCapitalStatus("SAHAM", initialCapital);
@@ -69,22 +72,29 @@ app.get("/saham/analyze", async (req, res) => {
       maxLossPercent: parseFloat(req.query.maxLoss) || 1, // Default 1% max loss
       currentPositions: capitalStatus.openPositions,
     };
-    console.log(`\n📊 Analyzing ${symbol}...`);
+    console.log(`\n📊 Analyzing ${symbol} [${interval}]...`);
 
     const [multiTfData, ihsgData, quote] = await Promise.all([
-      fetchMultiTimeframe(symbol),
+      fetchMultiTimeframe(symbol, timeframes),
       fetchIHSG(),
       getCurrentPrice(symbol),
     ]);
-    const dailyData = multiTfData["1D"];
-    if (!dailyData || dailyData.length < 50)
-      return res.status(400).json({ error: "Insufficient data" });
+    const primaryData = multiTfData[interval];
+    if (!primaryData || primaryData.length < 50)
+      return res
+        .status(400)
+        .json({ error: "Insufficient data for " + interval });
 
     const ihsgAnalysis = analyzeIHSG(ihsgData);
-    const correlation = calculateCorrelation(dailyData, ihsgData);
-    const decision = makeDecision(dailyData, multiTfData, ihsgAnalysis);
+    const correlation = calculateCorrelation(primaryData, ihsgData);
+    const decision = makeDecision(
+      primaryData,
+      multiTfData,
+      ihsgAnalysis,
+      timeframes
+    );
     const signalResult = generateSignal(decision, quote.price, symbol);
-    const tpsl = calculateTPSL(dailyData, signalResult.signal, quote.price);
+    const tpsl = calculateTPSL(primaryData, signalResult.signal, quote.price);
 
     // Calculate trend strength from decision confidence
     const trendStrength = Math.abs(decision.score);
@@ -100,28 +110,6 @@ app.get("/saham/analyze", async (req, res) => {
 
     console.log(`✅ ${signalResult.signal} (${signalResult.confidence}%)`);
 
-    // Auto-log signal for performance tracking (BUY only — saham is long-only)
-    if (signalResult.signal === "BUY") {
-      logSignal({
-        symbol,
-        assetType: "SAHAM",
-        signal: signalResult.signal,
-        entryPrice: quote.price,
-        confidence: signalResult.confidence,
-        score: signalResult.score,
-        strength: signalResult.strength,
-        tp: tpsl.tp,
-        sl: tpsl.sl,
-        riskReward: tpsl.riskReward,
-        timeframeAlignment: decision.multiTimeframe.alignment,
-        marketTrend: ihsgAnalysis.trend,
-        allocatedAmount: moneyMgmt.recommendation?.positionValue || 0,
-      });
-    } else if (signalResult.signal === "SELL") {
-      // SELL = exit existing BUY (no new entry — saham can't short)
-      closePendingSignal(symbol, quote.price);
-    }
-
     // Update outcomes of pending saham signals
     updateOutcomes(async (sym) => {
       try {
@@ -134,6 +122,7 @@ app.get("/saham/analyze", async (req, res) => {
 
     res.json({
       symbol,
+      interval,
       timestamp: getCurrentWIB(),
       capitalStatus,
       currentPrice: quote.price,
@@ -198,19 +187,29 @@ app.get("/saham/signal", async (req, res) => {
       return res.status(400).json({ error: "Symbol parameter is required" });
     }
     const symbol = formatSymbol(req.query.symbol);
+    const interval = req.query.interval || config.DEFAULT_INTERVAL;
+    const timeframes = TIMEFRAME_MAP[interval] || TIMEFRAME_MAP["1d"];
+
     const [multiTfData, ihsgData, quote] = await Promise.all([
-      fetchMultiTimeframe(symbol),
+      fetchMultiTimeframe(symbol, timeframes),
       fetchIHSG(),
       getCurrentPrice(symbol),
     ]);
-    const dailyData = multiTfData["1D"];
-    if (!dailyData || dailyData.length < 50)
-      return res.status(400).json({ error: "Insufficient data" });
+    const primaryData = multiTfData[interval];
+    if (!primaryData || primaryData.length < 50)
+      return res
+        .status(400)
+        .json({ error: "Insufficient data for " + interval });
 
     const ihsgAnalysis = analyzeIHSG(ihsgData);
-    const decision = makeDecision(dailyData, multiTfData, ihsgAnalysis);
+    const decision = makeDecision(
+      primaryData,
+      multiTfData,
+      ihsgAnalysis,
+      timeframes
+    );
     const signalResult = generateSignal(decision, quote.price, symbol);
-    const tpsl = calculateTPSL(dailyData, signalResult.signal, quote.price);
+    const tpsl = calculateTPSL(primaryData, signalResult.signal, quote.price);
 
     res.json({
       symbol,
@@ -242,12 +241,14 @@ app.get("/saham/raw", async (req, res) => {
       return res.status(400).json({ error: "Symbol parameter is required" });
     }
     const symbol = formatSymbol(req.query.symbol);
+    const interval = req.query.interval || config.DEFAULT_INTERVAL;
+    const timeframes = TIMEFRAME_MAP[interval] || TIMEFRAME_MAP["1d"];
     const count = parseInt(req.query.count) || 10;
 
-    console.log(`\n📦 Fetching raw data for ${symbol}...`);
+    console.log(`\n📦 Fetching raw data for ${symbol} [${interval}]...`);
 
     const [multiTfData, ihsgData] = await Promise.all([
-      fetchMultiTimeframe(symbol),
+      fetchMultiTimeframe(symbol, timeframes),
       fetchIHSG(),
     ]);
 
@@ -265,12 +266,12 @@ app.get("/saham/raw", async (req, res) => {
     };
 
     // Get last N candles for each timeframe
-    const raw = {
-      "15m": multiTfData["15m"].slice(-count).reverse().map(formatCandle),
-      "1h": multiTfData["1h"].slice(-count).reverse().map(formatCandle),
-      "4h": multiTfData["4h"].slice(-count).reverse().map(formatCandle),
-      "1d": multiTfData["1D"].slice(-count).reverse().map(formatCandle),
-    };
+    const raw = {};
+    timeframes.forEach((tf) => {
+      if (multiTfData[tf]) {
+        raw[tf] = multiTfData[tf].slice(-count).reverse().map(formatCandle);
+      }
+    });
 
     // Fetch IHSG hourly data (none)
     const getDateStr = (daysAgo) => {
@@ -306,6 +307,9 @@ app.get("/crypto/analyze", async (req, res) => {
       return res.status(400).json({ error: "Symbol parameter is required" });
     }
     const symbol = req.query.symbol.toUpperCase();
+    const interval = req.query.interval || config.DEFAULT_INTERVAL;
+    const timeframes = TIMEFRAME_MAP[interval] || TIMEFRAME_MAP["1d"];
+
     const initialCapital =
       parseInt(req.query.capital) || config.CRYPTO.DEFAULT_CAPITAL;
     const capitalStatus = getCapitalStatus("CRYPTO", initialCapital);
@@ -316,25 +320,32 @@ app.get("/crypto/analyze", async (req, res) => {
     };
     const leverage = req.query.leverage ? parseInt(req.query.leverage) : null;
 
-    console.log(`\n💎 Analyzing Crypto ${symbol}...`);
+    console.log(`\n💎 Analyzing Crypto ${symbol} [${interval}]...`);
 
     // Fetch data in parallel
     const [multiTfData, btcDomData, quote] = await Promise.all([
-      fetchBinanceMultiTf(symbol),
+      fetchBinanceMultiTf(symbol, timeframes),
       fetchBTCDominance(),
       getBinancePrice(symbol),
     ]);
 
-    // Use 1H data as primary (for H1 trading)
-    const hourlyData = multiTfData["1h"];
-    if (!hourlyData || hourlyData.length < 30)
-      return res.status(400).json({ error: "Insufficient 1H data" });
+    // Use interval data as primary
+    const primaryData = multiTfData[interval];
+    if (!primaryData || primaryData.length < 30)
+      return res
+        .status(400)
+        .json({ error: "Insufficient data for " + interval });
 
     // BTC Market Sentiment (replaces IHSG for crypto)
     const btcMarket = analyzeBTCMarket(btcDomData, symbol);
 
-    // Crypto Decision Engine (H1-optimized)
-    const decision = makeCryptoDecision(hourlyData, multiTfData, btcMarket);
+    // Crypto Decision Engine
+    const decision = makeCryptoDecision(
+      primaryData,
+      multiTfData,
+      btcMarket,
+      timeframes
+    );
 
     // Generate Signal
     const signalResult = generateSignal(
@@ -346,7 +357,7 @@ app.get("/crypto/analyze", async (req, res) => {
 
     // TP/SL with crypto precision
     const tpsl = calculateTPSL(
-      hourlyData,
+      primaryData,
       signalResult.signal,
       quote.price,
       "CRYPTO"
@@ -368,25 +379,6 @@ app.get("/crypto/analyze", async (req, res) => {
 
     console.log(`✅ ${signalResult.signal} (${signalResult.confidence}%)`);
 
-    // Auto-log signal for performance tracking
-    if (signalResult.signal === "BUY" || signalResult.signal === "SELL") {
-      logSignal({
-        symbol,
-        assetType: "CRYPTO",
-        signal: signalResult.signal,
-        entryPrice: quote.price,
-        confidence: signalResult.confidence,
-        score: signalResult.score,
-        strength: signalResult.strength,
-        tp: tpsl.tp,
-        sl: tpsl.sl,
-        riskReward: tpsl.riskReward,
-        timeframeAlignment: decision.multiTimeframe.alignment,
-        marketTrend: btcMarket.trend,
-        allocatedAmount: moneyMgmt.recommendation?.positionValue || 0,
-      });
-    }
-
     // Update outcomes of pending crypto signals
     updateOutcomes(async (sym) => {
       try {
@@ -399,6 +391,7 @@ app.get("/crypto/analyze", async (req, res) => {
 
     res.json({
       symbol,
+      interval,
       timestamp: getCurrentWIB(),
       capitalStatus,
       currentPrice: quote.price,
@@ -472,12 +465,14 @@ app.get("/crypto/raw", async (req, res) => {
     if (!req.query.symbol)
       return res.status(400).json({ error: "Symbol required" });
     const symbol = req.query.symbol.toUpperCase();
+    const interval = req.query.interval || config.DEFAULT_INTERVAL;
+    const timeframes = TIMEFRAME_MAP[interval] || TIMEFRAME_MAP["1d"];
     const count = parseInt(req.query.count) || 20;
 
-    console.log(`\n📦 Fetching raw crypto data for ${symbol}...`);
+    console.log(`\n📦 Fetching raw crypto data for ${symbol} [${interval}]...`);
 
     const [multiTfData, btcDomData] = await Promise.all([
-      fetchBinanceMultiTf(symbol),
+      fetchBinanceMultiTf(symbol, timeframes),
       fetchBTCDominance(),
     ]);
 
@@ -485,15 +480,17 @@ app.get("/crypto/raw", async (req, res) => {
     // We can just send data as is because it's already formatted by binanceData.js
     const sliceData = (data) => data.slice(-count).reverse();
 
+    const raw = {};
+    timeframes.forEach((tf) => {
+      if (multiTfData[tf]) {
+        raw[tf] = sliceData(multiTfData[tf]);
+      }
+    });
+
     res.json({
       symbol,
       timestamp: getCurrentWIB(),
-      raw: {
-        "15m": sliceData(multiTfData["15m"]),
-        "1h": sliceData(multiTfData["1h"]),
-        "4h": sliceData(multiTfData["4h"]),
-        "1d": sliceData(multiTfData["1D"]),
-      },
+      raw,
       btc_dominance: sliceData(btcDomData),
     });
   } catch (error) {
@@ -502,6 +499,42 @@ app.get("/crypto/raw", async (req, res) => {
 });
 
 // --- SIGNAL LOG ENDPOINTS ---
+
+app.post("/saham/signals/log", (req, res) => {
+  try {
+    const data = req.body;
+    if (!data.symbol || !data.signal || !data.entryPrice) {
+      return res
+        .status(400)
+        .json({ error: "Missing fields (symbol, signal, entryPrice)" });
+    }
+
+    if (data.signal === "SELL") {
+      closePendingSignal(data.symbol, data.entryPrice);
+    } else {
+      logSignal({ ...data, assetType: "SAHAM" });
+    }
+    res.json({ success: true, message: "Saham signal logged" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/crypto/signals/log", (req, res) => {
+  try {
+    const data = req.body;
+    if (!data.symbol || !data.signal || !data.entryPrice) {
+      return res
+        .status(400)
+        .json({ error: "Missing fields (symbol, signal, entryPrice)" });
+    }
+
+    logSignal({ ...data, assetType: "CRYPTO" });
+    res.json({ success: true, message: "Crypto signal logged" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 app.get("/crypto/signals/summary", (req, res) => {
   const initialCapital =
@@ -680,6 +713,7 @@ app.listen(config.SERVER.PORT, "0.0.0.0", () =>
 ║  SAHAM:                                                      ║
 ║  GET  /saham/analyze?symbol=CODE     Full analysis           ║
 ║  GET  /saham/signal?symbol=CODE      Quick signal            ║
+║  POST /saham/signals/log             Log a signal manually   ║
 ║  GET  /saham/signals/summary         Signal perf stats       ║
 ║  POST /saham/position/open           Open position           ║
 ║  POST /saham/position/close          Close position          ║
@@ -687,6 +721,7 @@ app.listen(config.SERVER.PORT, "0.0.0.0", () =>
 ║                                                              ║
 ║  CRYPTO:                                                     ║
 ║  GET  /crypto/analyze?symbol=PAIR    Full analysis           ║
+║  POST /crypto/signals/log            Log a signal manually   ║
 ║  GET  /crypto/signals/summary        Signal perf stats       ║
 ║  POST /crypto/position/open          Open position           ║
 ║  POST /crypto/position/close         Close position          ║

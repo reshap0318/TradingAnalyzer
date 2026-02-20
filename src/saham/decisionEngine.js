@@ -12,6 +12,7 @@ export function makeDecision(
   ohlcData,
   multiTfData,
   ihsgAnalysis,
+  timeframes,
   marketIndexLabel = "IHSG"
 ) {
   const opens = ohlcData.map((d) => d.open);
@@ -28,14 +29,14 @@ export function makeDecision(
     stoch: analyzeStochastic(ohlcData),
     volume: analyzeVolume(ohlcData),
   };
-  const mtf = analyzeMultiTimeframe(multiTfData);
+  const mtf = analyzeMultiTimeframe(multiTfData, timeframes);
 
   // Detect Patterns for ALL timeframes
   // Detect Patterns for ALL timeframes (Last 5 candles)
   const patterns = {};
   const HISTORY_COUNT = 5;
 
-  const tfOrder = ["15m", "1h", "4h", "1D"];
+  const tfOrder = timeframes;
   tfOrder.forEach((tf) => {
     const data = multiTfData[tf];
     if (!data) return;

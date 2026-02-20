@@ -3,7 +3,35 @@
  * Separated into SAHAM (stock) and CRYPTO sections
  * Shared settings (INDICATORS, SR_SETTINGS, SERVER) at top level
  */
+export const TIMEFRAME_MAP = {
+  // Scalping (sangat cepat, 1-15 menit hold)
+  "1m": ["1m", "3m", "5m", "15m"],
+  "3m": ["1m", "3m", "5m", "15m"],
+  "5m": ["1m", "5m", "15m", "1h"],
+
+  // Short-term scalping (15-30 menit hold)
+  "15m": ["5m", "15m", "1h", "4h"],
+  "30m": ["15m", "30m", "1h", "4h"],
+
+  // Day trading (beberapa jam hold)
+  "1h": ["15m", "1h", "4h", "1d"],
+  "2h": ["30m", "1h", "2h", "4h"],
+  "4h": ["1h", "4h", "1d", "1w"],
+  "6h": ["1h", "4h", "6h", "1d"],
+  "8h": ["4h", "8h", "1d", "1w"],
+  "12h": ["4h", "12h", "1d", "1w"],
+
+  // Swing trading (beberapa hari hold)
+  "1d": ["4h", "1d", "3d", "1w"],
+  "3d": ["1d", "3d", "1w", "1M"],
+
+  // Position trading (mingguan/bulanan)
+  "1w": ["1d", "1w", "1M"],
+  "1M": ["1w", "1M"],
+};
+
 export default {
+  DEFAULT_INTERVAL: "1d",
   // ─── Shared Settings (used by both saham & crypto) ───
   INDICATORS: {
     MA: { SMA_PERIODS: [20, 50, 200], EMA_PERIODS: [12, 26] },

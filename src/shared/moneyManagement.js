@@ -93,6 +93,10 @@ export function calculateMoneyManagement(
     recommendedLots = parseFloat((maxLotsRaw * lotMultiplier).toFixed(8)); // 8 decimals for crypto
   } else {
     recommendedLots = Math.floor(maxLotsRaw * lotMultiplier);
+    // Prevent lot multiplier from dropping a 1-lot capacity down to 0
+    if (recommendedLots === 0 && maxLotsRaw >= 1) {
+      recommendedLots = 1;
+    }
   }
 
   const recommendedShares = recommendedLots * lotSize;
@@ -132,38 +136,24 @@ export function calculateMoneyManagement(
       : Math.round(positionValue);
 
   return {
-    isValid, // New key as requested
+    isValid,
     signal,
-    recommendation: {
-      lots: recommendedLots,
-      totalShares: recommendedShares,
-      positionValue: finalPositionValue,
-      maxLossAmount: Math.round(actualRiskAmount),
-      maxLossPercent: Math.round(actualRiskPercent * 100) / 100,
+    totalLot: recommendedLots,
+    priceLot: {
+      satuan: price,
+      totalBelanja: finalPositionValue,
     },
-    input: {
-      totalCapital,
-      maxLossTolerancePercent: maxLossPercent,
-      trendStrength,
-      lotMultiplier,
-    },
-    analysis: {
-      riskPerShare: Math.round(riskPerShare),
-      riskPerSharePercent: Math.round(riskPerSharePercent * 100) / 100,
-      tpPercent: Math.round(tpPercent * 100) / 100,
-      slPercent: Math.round(slPercent * 100) / 100,
-      riskRewardRatio: Math.round(riskRewardRatio * 100) / 100,
-    },
-    potentialProfit: {
-      atTP: Math.round(potentialProfit.tp),
-    },
-    trailingStop: {
-      activationPrice:
-        signal === "BUY"
-          ? Math.round(price + riskPerShare * 1.5)
-          : Math.round(price - riskPerShare * 1.5),
-      distance: Math.round(riskPerShare * 0.5),
-    },
+    tpPercent: Math.round(tpPercent * 100) / 100,
+    slPercent: Math.round(slPercent * 100) / 100,
+    riskRewardRatio: Math.round(riskRewardRatio * 100) / 100,
+    maksimalKerugian:
+      assetType === "CRYPTO"
+        ? Math.round(actualRiskAmount * 100) / 100
+        : Math.round(actualRiskAmount),
+    potensiKeuntungan:
+      assetType === "CRYPTO"
+        ? Math.round(potentialProfit.tp * 100) / 100
+        : Math.round(potentialProfit.tp),
     warnings,
   };
 }

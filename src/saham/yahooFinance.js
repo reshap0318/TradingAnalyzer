@@ -11,20 +11,56 @@ const getDateStr = (daysAgo) => {
   return d.toISOString().split("T")[0];
 };
 
-export async function fetchMultiTimeframe(symbol) {
-  // Define start dates for each timeframe
-  const startDaily = getDateStr(400); // ~1 year for daily (EMA200)
-  const start4h = getDateStr(90); // 3 months for 4h
-  const startHourly = getDateStr(30); // 1 month for hourly
-  const start15m = getDateStr(7); // 7 days for 15m (Yahoo max ~60 days for 15m)
+export async function fetchMultiTimeframe(
+  symbol,
+  timeframes = ["15m", "1h", "4h", "1d"]
+) {
+  const resultObj = {};
 
   try {
-    // Fetch all timeframes from Yahoo Finance
-    const [daily, hourly, min15] = await Promise.all([
-      yahooFinance.chart(symbol, { period1: startDaily, interval: "1d" }),
-      yahooFinance.chart(symbol, { period1: startHourly, interval: "1h" }),
-      yahooFinance.chart(symbol, { period1: start15m, interval: "15m" }),
-    ]);
+    // Determine required Yahoo intervals
+    const fetchPromises = [];
+    const fetchMaps = [];
+
+    // Map requested to Yahoo supported
+    const yfMap = {
+      "1m": "1m",
+      "5m": "5m",
+      "15m": "15m",
+      "30m": "30m",
+      "1h": "1h",
+      "1d": "1d",
+      "1w": "1wk",
+      "1M": "1mo",
+    };
+
+    // Period mapping
+    const getDaysForTf = (tf) => {
+      if (tf.endsWith("m")) return 7; // Intraday limits
+      if (tf.endsWith("h")) return 30;
+      return 400; // Daily/Weekly/Monthly
+    };
+
+    // If '4h' or '2h' is requested, we need '1h' to aggregate
+    let needsHourly = timeframes.some((tf) =>
+      ["2h", "4h", "6h", "8h", "12h"].includes(tf)
+    );
+    let tfsToFetch = [...timeframes];
+    if (needsHourly && !tfsToFetch.includes("1h")) tfsToFetch.push("1h");
+
+    for (const tf of tfsToFetch) {
+      if (yfMap[tf]) {
+        fetchPromises.push(
+          yahooFinance.chart(symbol, {
+            period1: getDateStr(getDaysForTf(tf)),
+            interval: yfMap[tf],
+          })
+        );
+        fetchMaps.push(tf);
+      }
+    }
+
+    const fetchedData = await Promise.all(fetchPromises);
 
     const parseQuotes = (result) => {
       if (!result || !result.quotes || result.quotes.length === 0) return [];
@@ -40,10 +76,9 @@ export async function fetchMultiTimeframe(symbol) {
             minute: "2-digit",
             second: "2-digit",
             hour12: false,
-          }); // e.g. "14/02/2026, 14:00:00" (format varies by locale, let's trust it or enforce)
-
+          });
           return {
-            date: wibDate, // User wants this to be Indonesia time
+            date: wibDate,
             open: q.open,
             high: q.high,
             low: q.low,
@@ -54,16 +89,32 @@ export async function fetchMultiTimeframe(symbol) {
         .filter((q) => q.open && q.high && q.low && q.close);
     };
 
-    // Convert 1h data to 4h by aggregating every 4 candles
-    const hourlyData = parseQuotes(hourly);
-    const data4h = aggregate4hFromHourly(hourlyData);
+    const parsedTfs = {};
+    fetchMaps.forEach((tf, idx) => {
+      parsedTfs[tf] = parseQuotes(fetchedData[idx]);
+    });
 
-    return {
-      "1D": parseQuotes(daily),
-      "4h": data4h,
-      "1h": hourlyData,
-      "15m": parseQuotes(min15),
-    };
+    // Handle standard requested outputs
+    for (const tf of timeframes) {
+      if (parsedTfs[tf]) {
+        resultObj[tf] = parsedTfs[tf];
+      } else if (
+        ["2h", "4h", "6h", "8h", "12h"].includes(tf) &&
+        parsedTfs["1h"]
+      ) {
+        // Fallback or aggregate
+        if (tf === "4h") {
+          resultObj[tf] = aggregate4hFromHourly(parsedTfs["1h"]);
+        } else {
+          // For other unsupported ones, just use 1h for now or empty
+          resultObj[tf] = [];
+        }
+      } else {
+        resultObj[tf] = []; // Unsupported
+      }
+    }
+
+    return resultObj;
   } catch (error) {
     console.error(
       `Error fetching multi-timeframe for ${symbol}:`,

@@ -9,26 +9,29 @@ const client = Binance.default({
 
 /**
  * Fetch Multi-Timeframe Data for Crypto
- * @param {string} symbol - e.g. "BTCUSDT"
- * @returns {Promise<Object>} - { "1D": [...], "4h": [...], "1h": [...] }
+ * @param {string[]} timeframes - Array of timeframes like ["15m", "1h", "4h", "1d"]
+ * @returns {Promise<Object>} - { "15m": [...], "1h": [...], ... }
  */
-export async function fetchMultiTimeframe(symbol) {
+export async function fetchMultiTimeframe(
+  symbol,
+  timeframes = ["15m", "1h", "4h", "1d"]
+) {
   try {
-    // Fetch 1h, 4h, 1d, 15m candles
-    // Limit 500 candles is standard
-    const [candles1d, candles4h, candles1h, candles15m] = await Promise.all([
-      client.candles({ symbol, interval: "1d", limit: 500 }),
-      client.candles({ symbol, interval: "4h", limit: 500 }),
-      client.candles({ symbol, interval: "1h", limit: 500 }),
-      client.candles({ symbol, interval: "15m", limit: 500 }),
-    ]);
+    const promises = timeframes.map((tf) => {
+      // Ensure specific binance intervals, though the map generally aligns closely
+      let binanceTf = tf;
+      if (tf === "1D") binanceTf = "1d";
+      return client.candles({ symbol, interval: binanceTf, limit: 500 });
+    });
 
-    return {
-      "1D": candles1d.map(formatCandle),
-      "4h": candles4h.map(formatCandle),
-      "1h": candles1h.map(formatCandle),
-      "15m": candles15m.map(formatCandle),
-    };
+    const resultsArray = await Promise.all(promises);
+
+    const resultObj = {};
+    timeframes.forEach((tf, index) => {
+      resultObj[tf] = resultsArray[index].map(formatCandle);
+    });
+
+    return resultObj;
   } catch (error) {
     console.error(`Error fetching Binance data for ${symbol}:`, error.message);
     throw error;
