@@ -50,13 +50,13 @@ export default {
   },
 
   SR_SETTINGS: { LOOKBACK_PERIODS: 100, TOLERANCE: 0.005, MIN_TOUCHES: 2 },
-  SERVER: { PORT: 1000 },
 
   // ─── Auto Trading System ───
   AUTO_TRADING: {
     ENABLED: false, // Master switch
     MODE: "paper", // "paper" | "live"
-    USE_TESTNET: true, // Binance Testnet
+    USE_TESTNET:
+      process.env.USE_TESTNET === "true" || process.env.USE_TESTNET === "1", // Driven by .env now
     SAFETY: {
       MIN_CONFIDENCE: 70, // Minimum confidence score untuk eksekusi trade
       MAX_DAILY_TRADES: 5, // Menghentikan bot setelah eksekusi trade ke-5

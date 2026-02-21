@@ -84,9 +84,12 @@ export function calculateMoneyManagement(
     recommendedLots = parseFloat((maxLotsRaw * lotMultiplier).toFixed(8)); // 8 decimals for crypto
   } else {
     recommendedLots = Math.floor(maxLotsRaw * lotMultiplier);
-    // Prevent lot multiplier from dropping a 1-lot capacity down to 0
-    if (recommendedLots === 0 && maxLotsRaw >= 1) {
-      recommendedLots = 1;
+    // User Requirement: Prevent 0 lot recommendation if they can actually afford 1 lot
+    if (recommendedLots === 0) {
+      const minimumCost = lotSize * price;
+      if (totalCapital >= minimumCost) {
+        recommendedLots = 1; // Force 1 lot minimum if affordable
+      }
     }
   }
 
@@ -105,10 +108,38 @@ export function calculateMoneyManagement(
   const riskRewardRatio = slPercent > 0 ? tpPercent / slPercent : 0;
 
   const warnings = [];
-  if (actualRiskPercent > maxLossPercent * 0.9)
-    warnings.push("Mendekati batas maksimal kerugian");
-  if (positionValue > totalCapital * 0.1)
-    warnings.push("Posisi > 10% dari total capital");
+
+  if (recommendedLots === 0) {
+    warnings.push("Modal tidak cukup untuk membeli lot minimal");
+  }
+
+  const currencyStr = assetType === "CRYPTO" ? "$" : "Rp";
+  const formatCurrency = (val) => {
+    return assetType === "CRYPTO"
+      ? `${currencyStr}${val.toFixed(2)}`
+      : `${currencyStr}${Math.round(val).toLocaleString("id-ID")}`;
+  };
+
+  if (actualRiskPercent > maxLossPercent * 0.9) {
+    warnings.push(
+      `Mendekati batas maksimal kerugian: Risiko posisi ${formatCurrency(
+        actualRiskAmount
+      )} mendekati/melebihi batas toleransi Anda ${formatCurrency(
+        maxLossAmount
+      )} (${maxLossPercent}%)`
+    );
+  }
+
+  if (positionValue > totalCapital * 0.1) {
+    const maxPositionAllowed = totalCapital * 0.1;
+    warnings.push(
+      `Posisi terlalu besar: Nilai pembelian ${formatCurrency(
+        positionValue
+      )} melebihi 10% dari modal. (Batas anjuran: ${formatCurrency(
+        maxPositionAllowed
+      )})`
+    );
+  }
   if (riskRewardRatio < 1.5) warnings.push("Risk/Reward ratio kurang dari 1.5");
   if (!validSignal && signal !== "WAIT")
     warnings.push("Signal is not valid for this asset type");

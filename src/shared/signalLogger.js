@@ -145,6 +145,7 @@ function calculateSummaryStats(assetType) {
 export function logSignal({
   symbol,
   assetType = "CRYPTO",
+  interval = "1d",
   signal,
   entryPrice,
   confidence,
@@ -204,6 +205,7 @@ export function logSignal({
     id: `${symbol}_${now.getTime()}`,
     symbol,
     assetType,
+    interval,
     signal,
     timestamp: getWIBTimestamp(now),
     entryPrice,
