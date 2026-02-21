@@ -16,6 +16,7 @@ import {
   updateOutcomes,
   getSummary as getSignalSummary,
   getHistory as getSignalHistory,
+  getActive as getSignalActive,
   getCapitalStatus,
 } from "../shared/signalLogger.js";
 
@@ -316,6 +317,17 @@ export const getHistoryLogs = (req, res) => {
   const { symbol, limit } = req.query;
   res.json(
     getSignalHistory({
+      assetType: "SAHAM",
+      symbol: symbol?.toUpperCase(),
+      limit: parseInt(limit) || 50,
+    })
+  );
+};
+
+export const getActiveLogs = (req, res) => {
+  const { symbol, limit } = req.query;
+  res.json(
+    getSignalActive({
       assetType: "SAHAM",
       symbol: symbol?.toUpperCase(),
       limit: parseInt(limit) || 50,

@@ -68,6 +68,7 @@ app.listen(PORT, "0.0.0.0", () => {
 ║  POST /saham/simulate/trade          Simulate trade          ║
 ║  GET  /saham/simulate/summary        Simulation summary      ║
 ║  GET  /saham/simulate/history        Simulation history      ║
+║  GET  /saham/simulate/active         Active simulation logs  ║
 ║                                                              ║
 ║  CRYPTO:                                                     ║
 ║  GET  /crypto/analyze?symbol=PAIR    Full analysis           ║
@@ -75,10 +76,9 @@ app.listen(PORT, "0.0.0.0", () => {
 ║  POST /crypto/simulate/trade         Simulate trade          ║
 ║  GET  /crypto/simulate/summary       Simulation summary      ║
 ║  GET  /crypto/simulate/history       Simulation history      ║
+║  GET  /crypto/simulate/active        Active simulation logs  ║
 ║  GET  /crypto/trade/status           Auto-trade status       ║
 ║  POST /crypto/trade/auto             Start auto-trade        ║
-║  POST /crypto/trade/start            Start auto-trade        ║
-║  POST /crypto/trade/stop             Stop auto-trade         ║
 ╚══════════════════════════════════════════════════════════════╝
 `);
 
