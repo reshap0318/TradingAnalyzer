@@ -98,7 +98,6 @@ src/
     ├── tpslCalculator.js
     ├── moneyManagement.js
     ├── signalLogger.js
-    ├── positionTracker.js
     └── indicators/     # Semua indikator teknikal
 ```
 
@@ -119,6 +118,6 @@ Edit `src/config.js` untuk menyesuaikan:
 
 ## Dokumentasi Teknis
 
-Detail lengkap response, field, signal log, position tracker, dan futures ada di:
+Detail lengkap response, field, signal log, dan futures ada di:
 
 👉 **[TECHNICAL.md](TECHNICAL.md)**

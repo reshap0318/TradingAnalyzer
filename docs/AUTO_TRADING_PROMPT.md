@@ -13,11 +13,11 @@ Ada implementation plan detail di file `docs/AUTO_TRADING_PLAN.md` — tolong ba
 
 Ringkasan aplikasi saat ini:
 - Express.js API untuk analisis teknikal saham & crypto
-- 7 indikator teknikal, multi-timeframe analysis (15m, 1h, 4h, 1D)
+- 7 indikator teknikal + pola candlestick, dynamic multi-timeframe analysis (misal `?interval=15m` memicu `[15m, 1h, 4h, 1d]`)
 - Signal generation (BUY/SELL/WAIT) dengan confidence scoring
-- Money management + capital tracking (available = initial - allocated + realized PnL)
-- Signal logger otomatis dengan PnL tracking (dollar & percent)
-- Futures calculator (leverage, liquidation, ROE)
+- Money management: properti bahasa indonesia (`alokasiDana`, `potensiKeuntungan`) + capital tracking
+- Sistem Logger Terpisah: Endpoint khusus `POST /crypto/signals/log` untuk mencatat status (file terpisah: `active_trade.json`, `history.json`, `summary.json`)
+- Futures calculator (leverage, liquidation, ROE) dengan flat `tp` dan `sl` object
 - Data dari Binance API (sudah ada di src/crypto/binanceData.js)
 
 Yang ingin saya tambahkan:

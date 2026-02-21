@@ -27,13 +27,6 @@ import {
   getHistory as getSignalHistory,
   getCapitalStatus,
 } from "./shared/signalLogger.js";
-import {
-  openPosition,
-  closePosition,
-  getOpenPositions,
-  getPositionHistory,
-  getPositionSummary,
-} from "./shared/positionTracker.js";
 
 const app = express();
 app.use(cors());
@@ -506,16 +499,38 @@ app.get("/crypto/raw", async (req, res) => {
 app.post("/saham/signals/log", (req, res) => {
   try {
     const data = req.body;
-    if (!data.symbol || !data.signal || !data.entryPrice) {
+    // Intelligent Mapping: Allow users to post the raw JSON from /analyze
+    const signalPayload = {
+      symbol: data.symbol,
+      assetType: "SAHAM",
+      signal: data.trade_plan?.signal || data.signal,
+      entryPrice: data.currentPrice || data.entryPrice,
+      confidence: data.trade_plan?.confidence || data.confidence,
+      score: data.scoring?.totalScore || data.score,
+      strength: data.trade_plan?.strength || data.strength,
+      tp: data.trade_plan?.tp || data.tp,
+      sl: data.trade_plan?.sl || data.sl,
+      allocatedAmount:
+        data.moneyManagement?.alokasiDana || data.allocatedAmount,
+    };
+
+    if (
+      !signalPayload.symbol ||
+      !signalPayload.signal ||
+      !signalPayload.entryPrice
+    ) {
       return res
         .status(400)
-        .json({ error: "Missing fields (symbol, signal, entryPrice)" });
+        .json({
+          error:
+            "Missing minimum fields (symbol, signal/trade_plan.signal, currentPrice/entryPrice)",
+        });
     }
 
-    if (data.signal === "SELL") {
-      closePendingSignal(data.symbol, data.entryPrice);
+    if (signalPayload.signal === "SELL") {
+      closePendingSignal(signalPayload.symbol, signalPayload.entryPrice);
     } else {
-      logSignal({ ...data, assetType: "SAHAM" });
+      logSignal(signalPayload);
     }
     res.json({ success: true, message: "Saham signal logged" });
   } catch (error) {
@@ -526,13 +541,35 @@ app.post("/saham/signals/log", (req, res) => {
 app.post("/crypto/signals/log", (req, res) => {
   try {
     const data = req.body;
-    if (!data.symbol || !data.signal || !data.entryPrice) {
+    // Intelligent Mapping: Allow users to post the raw JSON from /analyze
+    const signalPayload = {
+      symbol: data.symbol,
+      assetType: "CRYPTO",
+      signal: data.trade_plan?.signal || data.signal,
+      entryPrice: data.currentPrice || data.entryPrice,
+      confidence: data.trade_plan?.confidence || data.confidence,
+      score: data.scoring?.totalScore || data.score,
+      strength: data.trade_plan?.strength || data.strength,
+      tp: data.trade_plan?.tp || data.tp,
+      sl: data.trade_plan?.sl || data.sl,
+      allocatedAmount:
+        data.moneyManagement?.alokasiDana || data.allocatedAmount,
+    };
+
+    if (
+      !signalPayload.symbol ||
+      !signalPayload.signal ||
+      !signalPayload.entryPrice
+    ) {
       return res
         .status(400)
-        .json({ error: "Missing fields (symbol, signal, entryPrice)" });
+        .json({
+          error:
+            "Missing minimum fields (symbol, signal/trade_plan.signal, currentPrice/entryPrice)",
+        });
     }
 
-    logSignal({ ...data, assetType: "CRYPTO" });
+    logSignal(signalPayload);
     res.json({ success: true, message: "Crypto signal logged" });
   } catch (error) {
     res.status(500).json({ error: error.message });

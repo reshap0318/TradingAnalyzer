@@ -32,7 +32,7 @@
 ### Flow Diagram
 
 ```
-POST /crypto/trade/auto { symbol, mode: "live"|"paper" }
+POST /crypto/trade/auto { symbol, interval: "15m", mode: "live"|"paper" }
   │
   ├─ 1. analyzeSymbol(symbol)        ← Reuse existing analyze logic
   │     ├─ fetchMultiTimeframe
@@ -70,29 +70,36 @@ POST /crypto/trade/auto { symbol, mode: "live"|"paper" }
 
 ### 1. [NEW] `src/crypto/binanceTrader.js`
 
-Modul untuk interact dengan Binance API.
+Modul untuk interact dengan Binance API dan mencatat tracking order ke database lokal terdedikasi (`data/binance_orders.json`). Ini secara drastis mengurangi *rate-limiting* API karena riwayat & status order dicek via lokal.
 
 ```js
 // Dependencies: binance-api-node (npm install binance-api-node)
 // Environment: BINANCE_API_KEY, BINANCE_API_SECRET di .env
 
-// Functions:
+// File DB Lokal:
+// data/binance_orders.json -> Format: { "paper": [...orders], "live": [...orders] }
+
+// API Internal (Local DB Management):
+export function loadBinanceOrders(mode = "paper")
+export function saveBinanceOrder(orderData, mode = "paper")
+export function updateBinanceOrder(requestId, updates, mode = "paper")
+
+// API Binance (Execution Layer):
 export async function initClient(testnet = false)
 export async function getAccountBalance()
-export async function placeSpotOrder({ symbol, side, quantity, type })
-export async function placeFuturesOrder({ symbol, side, quantity, leverage, type })
-export async function setStopLoss({ symbol, side, stopPrice, quantity })
-export async function setTakeProfit({ symbol, side, price, quantity })
-export async function cancelAllOrders(symbol)
-export async function getOpenOrders(symbol)
-export async function getOrderStatus(orderId)
+export async function placeSpotOrder({ symbol, side, quantity, type, mode })
+export async function placeFuturesOrder({ symbol, side, quantity, leverage, type, mode })
+export async function setTakeProfitStopLoss({ symbol, side, tpPrice, slPrice, quantity, mode, parentOrderId })
+export async function cancelAllOrders(symbol, mode)
+export async function syncOrderStatus(requestId, mode)  // Cek lokal dulu, kalau pending baru tembak Binance API
 ```
 
 **Key considerations:**
-- Support both **Testnet** dan **Production** via config flag
-- Retry logic untuk network errors
-- Rate limiting (max 1200 req/min)
-- Error handling untuk insufficient balance, min notional, dll
+- **Database Lokal Terpisah:** `binance_orders.json` menyimpan semua order dengan struktur `{ requestId, orderId, symbol, side, status, type, mode, timestamp }`.
+- **Mode Isolation:** Filter mutlak antara array data `live` dan `paper` memakai 1 *key parameter*.
+- **Efisiensi Request:** Method seperti pengecekan status hanya memanggil API Binance jika status lokal masih `NEW` atau `PARTIALLY_FILLED`.
+- Support baik **Testnet** maupun **Production** via *config flag*.
+- Retry logic untuk *network errors* dan Rate-limiting (max 1200 req/min).
 
 ---
 
@@ -102,7 +109,7 @@ Safety layer + orchestrator. Menggabungkan analisis → safety check → executi
 
 ```js
 // Functions:
-export async function executeTrade({ symbol, mode, capital, leverage })
+export async function executeTrade({ symbol, interval, mode, capital, leverage })
 // → Calls analyze logic, safety checks, then execute
 
 export function checkSafetyRules(analysis, capitalStatus, config)
@@ -170,7 +177,7 @@ Tambah 3 endpoint baru:
 ```js
 // Auto-trade endpoint
 POST /crypto/trade/auto
-  Body: { symbol: "BTCUSDT", mode: "paper"|"live" }
+  Body: { symbol: "BTCUSDT", interval: "15m", mode: "paper"|"live" }
   Response: { analysis, execution, capitalStatus }
 
 // Trading status
@@ -191,16 +198,16 @@ Extract core analyze logic ke fungsi terpisah agar bisa dipanggil internal:
 
 ```js
 // Before: semua logic di dalam app.get("/crypto/analyze", ...)
-// After:  extract ke async function analyzeSymbol(symbol, capital)
+// After:  extract ke async function analyzeSymbol(symbol, interval, capital)
 
-export async function analyzeSymbol(symbol, capital) {
-  // ... existing analyze logic ...
+export async function analyzeSymbol(symbol, interval, capital) {
+  // ... existing analyze logic (needs TIMEFRAME_MAP mapping) ...
   return { quote, decision, signalResult, tpsl, moneyMgmt, btcMarket };
 }
 
 // Endpoint tetap pakai fungsi ini:
 app.get("/crypto/analyze", async (req, res) => {
-  const result = await analyzeSymbol(symbol, capital);
+  const result = await analyzeSymbol(symbol, interval, capital);
   res.json(formatResponse(result));
 });
 ```
@@ -248,13 +255,13 @@ npm install binance-api-node dotenv
 - `tests/tradeExecutor.test.js` — Safety rules, edge cases
 
 ### Integration Tests
-- Paper trade → cek signal_log updated correctly
+- Paper trade → cek `active_trade.json` dan `history.json` updated correctly
 - Testnet → cek order actually placed
 - Kill switch → verify trading stops immediately
 
 ### Manual Testing
-1. `POST /crypto/trade/auto` dengan mode "paper" → verify response
-2. Check signal_log.json → entry harus ada `allocatedAmount` dan `executionDetails`
+1. `POST /crypto/trade/auto` dengan interval "15m" dan mode "paper" → verify response
+2. Check `active_trade.json` → entry harus ada `allocatedAmount` dan `executionDetails`
 3. Run beberapa kali → verify max daily trades limit works
 4. Simulate crash condition → verify trade blocked
 
