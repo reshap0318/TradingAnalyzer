@@ -267,3 +267,58 @@ export async function syncOrderStatus(requestId) {
     }
   }
 }
+
+export async function getPosition(symbol) {
+  ensureClient();
+  try {
+    const risk = await client.futuresPositionRisk({ symbol });
+    const position = risk.find((p) => parseFloat(p.positionAmt) !== 0);
+    if (!position) return null;
+
+    const amount = parseFloat(position.positionAmt);
+    return {
+      symbol: position.symbol,
+      amount,
+      entryPrice: parseFloat(position.entryPrice),
+      side: amount > 0 ? "BUY" : "SELL",
+      unRealizedProfit: parseFloat(position.unRealizedProfit),
+      leverage: parseInt(position.leverage),
+    };
+  } catch (err) {
+    console.error(`❌ Error fetching position (${symbol}):`, err.message);
+    return null;
+  }
+}
+
+export async function closePosition(symbol) {
+  ensureClient();
+  try {
+    const pos = await getPosition(symbol);
+    if (!pos) return false;
+
+    const side = pos.side === "BUY" ? "SELL" : "BUY";
+    const quantity = Math.abs(pos.amount);
+
+    console.log(
+      `[CLOSING POSITION] ${symbol} | Amount: ${quantity} | Direction: ${side}`
+    );
+
+    // 1. Cancel active TP/SL traps
+    await cancelAllOrders(symbol);
+
+    // 2. Market close the position
+    await client.futuresOrder({
+      symbol,
+      side,
+      type: "MARKET",
+      quantity,
+      reduceOnly: "true",
+    });
+
+    console.log(`✅ [POSITION CLOSED] ${symbol}`);
+    return true;
+  } catch (err) {
+    console.error(`❌ Error closing position (${symbol}):`, err.message);
+    return false;
+  }
+}

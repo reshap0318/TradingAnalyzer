@@ -63,7 +63,7 @@ export default {
       MIN_RISK_REWARD: 1.5, // Rasio RisktoReward minimum
       BLOCK_ON_CRASH: true,
     },
-    ORDER_TYPE: "MARKET", // "MARKET" | "LIMIT"
+    ORDER_TYPE: "LIMIT", // "MARKET" | "LIMIT"
     DEFAULT_LEVERAGE: 5,
     AUTO_SET_TP_SL: true, // Auto place TP/SL orders
   },

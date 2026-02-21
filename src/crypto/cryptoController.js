@@ -114,7 +114,6 @@ export const analyzeCrypto = async (req, res) => {
       reasoning: analysis.signalResult.reasoning,
       warnings: analysis.signalResult.warnings,
       moneyManagement: analysis.moneyMgmt,
-      binance_execution: analysis.futures?.binance_execution || null,
       patterns: analysis.decision.patterns,
       indicators: {
         ma: analysis.decision.indicators.ma,
@@ -124,6 +123,7 @@ export const analyzeCrypto = async (req, res) => {
         stoch: analysis.decision.indicators.stoch,
         volume: analysis.decision.indicators.volume,
       },
+      binance_execution: analysis.futures?.binance_execution || null,
     });
   } catch (error) {
     console.error("Error:", error);

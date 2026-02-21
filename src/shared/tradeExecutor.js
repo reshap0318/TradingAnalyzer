@@ -2,6 +2,8 @@ import config from "../config.js";
 import {
   placeFuturesOrder,
   setTakeProfitStopLoss,
+  getPosition,
+  closePosition,
 } from "../crypto/binanceTrader.js";
 import { getSummary } from "./signalLogger.js";
 
@@ -128,6 +130,38 @@ export async function executeTrade(analysis) {
   }
 
   try {
+    // Overlap Prevention & Reverse Logic (Only for Crypto)
+    if (analysis.btcMarket) {
+      const currentPos = await getPosition(symbol);
+
+      if (currentPos) {
+        if (currentPos.side === side) {
+          console.log(
+            `[TRADE_BLOCKED] ${symbol} -> Already holding an active ${side} position.`
+          );
+          return {
+            executed: false,
+            reasons: [
+              `Already holding an active ${side} position for ${symbol}`,
+            ],
+          };
+        } else {
+          console.log(
+            `[REVERSE_SIGNAL] ${symbol} -> Closing ${currentPos.side} to flip ${side}.`
+          );
+          const closed = await closePosition(symbol);
+          if (!closed) {
+            return {
+              executed: false,
+              reasons: [
+                `Failed to close overlapping ${currentPos.side} position for ${symbol}`,
+              ],
+            };
+          }
+        }
+      }
+    }
+
     tradesToday++;
     // 1. Enter the Position
     const order = await placeFuturesOrder({
