@@ -19,7 +19,8 @@ export function calculateMoneyManagement(
   tpsl,
   signal,
   trendStrength = 50,
-  assetType = "STOCK"
+  assetType = "STOCK",
+  leverage = 1
 ) {
   const { totalCapital, maxLossPercent = 2, currentPositions = 0 } = portfolio;
 
@@ -82,6 +83,16 @@ export function calculateMoneyManagement(
   let recommendedLots;
   if (assetType === "CRYPTO") {
     recommendedLots = parseFloat((maxLotsRaw * lotMultiplier).toFixed(8)); // 8 decimals for crypto
+
+    // Ensure crypto position doesn't exceed maximum allowed percentage of capital
+    const maxPositionSize = config.CRYPTO.MONEY_MANAGEMENT.MAX_POSITION_SIZE;
+    const maxPositionAllowed = totalCapital * maxPositionSize;
+    const allocatedCapital = (recommendedLots * price) / leverage;
+
+    if (allocatedCapital > maxPositionAllowed) {
+      const maxLotsByPosition = (maxPositionAllowed * leverage) / price;
+      recommendedLots = parseFloat(maxLotsByPosition.toFixed(8));
+    }
   } else {
     recommendedLots = Math.floor(maxLotsRaw * lotMultiplier);
     // User Requirement: Prevent 0 lot recommendation if they can actually afford 1 lot
@@ -93,15 +104,15 @@ export function calculateMoneyManagement(
     }
 
     // POSITION SIZING LIMIT: Auto-adjust if position exceeds configurable % of capital
-    const maxPositionSize = assetType === "CRYPTO"
-      ? config.CRYPTO.MONEY_MANAGEMENT.MAX_POSITION_SIZE
-      : config.SAHAM.MONEY_MANAGEMENT.MAX_POSITION_SIZE;
+    const maxPositionSize = config.SAHAM.MONEY_MANAGEMENT.MAX_POSITION_SIZE;
 
     const maxPositionAllowed = totalCapital * maxPositionSize;
     const positionValue = recommendedLots * lotSize * price;
 
     if (positionValue > maxPositionAllowed) {
-      const maxLotsByPosition = Math.floor(maxPositionAllowed / (lotSize * price));
+      const maxLotsByPosition = Math.floor(
+        maxPositionAllowed / (lotSize * price)
+      );
 
       if (maxLotsByPosition === 0) {
         // Even 1 lot exceeds limit
@@ -183,7 +194,7 @@ export function calculateMoneyManagement(
 
   const finalPositionValue =
     assetType === "CRYPTO"
-      ? Number(positionValue.toFixed(4)) // Preserve decimals to prevent rounding down to 0 for small crypto allocations
+      ? Number((positionValue / leverage).toFixed(4)) // Preserve decimals for crypto, scaled by leverage
       : Math.round(positionValue);
 
   return {

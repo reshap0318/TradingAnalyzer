@@ -54,7 +54,6 @@ export default {
   // ─── Auto Trading System ───
   AUTO_TRADING: {
     ENABLED: true, // Master switch
-    MODE: "paper", // "paper" | "live"
     USE_TESTNET:
       process.env.USE_TESTNET === "true" || process.env.USE_TESTNET === "1", // Driven by .env now
     SAFETY: {

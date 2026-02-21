@@ -43,7 +43,9 @@ export const analyzeCrypto = async (req, res) => {
     const maxLossPercent = req.query.maxloss
       ? parseFloat(req.query.maxloss)
       : null;
-    const leverage = req.query.leverage ? parseInt(req.query.leverage) : null;
+    const leverage = req.query.leverage
+      ? parseInt(req.query.leverage)
+      : config.AUTO_TRADING.DEFAULT_LEVERAGE;
 
     console.log(`\n💎 Analyzing Crypto ${symbol} [${interval}]...`);
     const analysis = await analyzeCryptoSymbol(
@@ -111,6 +113,16 @@ export const analyzeCrypto = async (req, res) => {
       reasoning: analysis.signalResult.reasoning,
       warnings: analysis.signalResult.warnings,
       moneyManagement: analysis.moneyMgmt,
+      binance_execution: analysis.futures?.binance_execution || null,
+      patterns: analysis.decision.patterns,
+      indicators: {
+        ma: analysis.decision.indicators.ma,
+        rsi: analysis.decision.indicators.rsi,
+        macd: analysis.decision.indicators.macd,
+        bb: analysis.decision.indicators.bb,
+        stoch: analysis.decision.indicators.stoch,
+        volume: analysis.decision.indicators.volume,
+      },
     });
   } catch (error) {
     console.error("Error:", error);
@@ -156,15 +168,7 @@ export const tradeAuto = async (req, res) => {
     const maxLossPercent = req.body.maxloss
       ? parseFloat(req.body.maxloss)
       : null;
-    const mode = req.body.mode || config.AUTO_TRADING.MODE;
     const leverage = req.body.leverage || config.AUTO_TRADING.DEFAULT_LEVERAGE;
-
-    if (mode === "paper") {
-      return res.status(400).json({
-        error:
-          "Paper mode has been migrated. Please use /crypto/trade/simulate instead.",
-      });
-    }
 
     console.log(`\n🤖 AutoTrader triggered for ${symbol} [${interval}] ...`);
 
@@ -175,13 +179,13 @@ export const tradeAuto = async (req, res) => {
       initialCapital,
       maxLossPercent
     );
-    const result = await executeTrade(analysis, mode);
+    const result = await executeTrade(analysis);
 
     res.json({
       symbol,
       interval,
       executed: result.executed,
-      mode: result.mode,
+      network: result.network,
       reasons: result.reasons, // If blocked
       trade_plan: analysis.signalResult,
       capitalStatus: analysis.capitalStatus,
@@ -220,7 +224,7 @@ export const simulateTrade = async (req, res) => {
       initialCapital,
       maxLossPercent
     );
-    const safety = checkSafetyRules(analysis, "CRYPTO");
+    const safety = checkSafetyRules(analysis, "CRYPTO", true);
 
     if (!safety.safe) {
       return res.status(403).json({
@@ -243,6 +247,7 @@ export const simulateTrade = async (req, res) => {
       allocatedAmount:
         analysis.moneyMgmt?.alokasiDana ||
         analysis.moneyMgmt?.priceLot?.totalBelanja,
+      binance_execution: analysis.futures?.binance_execution || null,
     };
 
     if (signalPayload.signal !== "WAIT") {
@@ -254,6 +259,7 @@ export const simulateTrade = async (req, res) => {
       message: "Crypto simulation logged",
       safety,
       trade_plan: analysis.signalResult,
+      binance_execution: signalPayload.binance_execution,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

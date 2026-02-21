@@ -157,7 +157,7 @@ export const simulateTrade = async (req, res) => {
       initialCapital,
       maxLossPercent
     );
-    const safety = checkSafetyRules(analysis, "SAHAM");
+    const safety = checkSafetyRules(analysis, "SAHAM", true);
 
     if (!safety.safe) {
       return res.status(403).json({

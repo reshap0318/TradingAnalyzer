@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -83,7 +84,6 @@ app.listen(PORT, "0.0.0.0", () => {
 
   if (config.AUTO_TRADING.ENABLED) {
     console.log(`\n⚠️ AUTO TRADING IS ENABLED`);
-    console.log(`- Mode: ${config.AUTO_TRADING.MODE.toUpperCase()}`);
     console.log(
       `- Network: ${config.AUTO_TRADING.USE_TESTNET ? "TESTNET" : "LIVE"}`
     );

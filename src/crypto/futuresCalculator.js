@@ -152,6 +152,16 @@ export function calculateFuturesPlan({
       totalFees: Math.round(totalFees * 100) / 100,
       fundingPer8h: Math.round(fundingPer8h * 100) / 100,
     },
+    binance_execution: {
+      side: side,
+      leverage: lev,
+      marginMode: "ISOLATED",
+      entryPrice: entryPrice,
+      marginUsd: Math.round(margin * 100) / 100,
+      notionalUsd: Math.round(positionValue * 100) / 100,
+      takeProfit: tpData?.price || null,
+      stopLoss: slPrice || null,
+    },
     warnings,
   };
 }

@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import config from "../config.js";
 
 dotenv.config();
 
@@ -15,7 +16,7 @@ let client;
 // ─── Local JSON DB Management ───
 export function loadBinanceOrders() {
   if (!fs.existsSync(ORDERS_FILE)) {
-    saveBinanceOrders({ paper: [], live: [] });
+    saveBinanceOrders({ testnet: [], prod: [] });
   }
   return JSON.parse(fs.readFileSync(ORDERS_FILE, "utf-8"));
 }
@@ -26,19 +27,22 @@ export function saveBinanceOrders(data) {
   fs.writeFileSync(ORDERS_FILE, JSON.stringify(data, null, 2), "utf-8");
 }
 
-export function saveBinanceOrder(orderData, mode = "paper") {
+export function saveBinanceOrder(orderData) {
   const db = loadBinanceOrders();
-  if (!db[mode]) db[mode] = [];
-  db[mode].push(orderData);
+  const network = config.AUTO_TRADING.USE_TESTNET ? "testnet" : "prod";
+  if (!db[network]) db[network] = [];
+  db[network].push(orderData);
   saveBinanceOrders(db);
 }
 
-export function updateBinanceOrder(requestId, updates, mode = "paper") {
+export function updateBinanceOrder(requestId, updates) {
   const db = loadBinanceOrders();
-  const idx = db[mode].findIndex((o) => o.requestId === requestId);
+  const network = config.AUTO_TRADING.USE_TESTNET ? "testnet" : "prod";
+  if (!db[network]) db[network] = [];
+  const idx = db[network].findIndex((o) => o.requestId === requestId);
   if (idx !== -1) {
-    db[mode][idx] = {
-      ...db[mode][idx],
+    db[network][idx] = {
+      ...db[network][idx],
       ...updates,
       updatedAt: new Date().toISOString(),
     };
@@ -90,10 +94,10 @@ export async function placeFuturesOrder({
   quantity,
   leverage,
   type = "MARKET",
-  mode = "paper",
 }) {
   ensureClient();
-  const requestId = `${mode}_${symbol}_${Date.now()}`;
+  const network = config.AUTO_TRADING.USE_TESTNET ? "testnet" : "prod";
+  const requestId = `${network}_${symbol}_${Date.now()}`;
   const timestamp = new Date().toISOString();
 
   const localState = {
@@ -101,7 +105,7 @@ export async function placeFuturesOrder({
     symbol,
     side,
     type,
-    mode,
+    network,
     quantity,
     leverage,
     status: "NEW",
@@ -118,15 +122,17 @@ export async function placeFuturesOrder({
       status: order.status || "FILLED",
       executedQty: order.executedQty,
     };
-    saveBinanceOrder(filledOrder, mode);
+    saveBinanceOrder(filledOrder);
     console.log(
-      `[LIVE_MODE] Binance Futures Order Sent: ${side} ${symbol}. Status: ${filledOrder.status}`
+      `[${network.toUpperCase()}_MODE] Binance Futures Order Sent: ${side} ${symbol}. Status: ${
+        filledOrder.status
+      }`
     );
     return filledOrder;
   } catch (err) {
     localState.status = "REJECTED";
     localState.error = err.message;
-    saveBinanceOrder(localState, mode);
+    saveBinanceOrder(localState);
     console.error(`❌ Binance Futures Order Error (${symbol}):`, err.message);
     throw err;
   }
@@ -138,14 +144,14 @@ export async function setTakeProfitStopLoss({
   tpPrice,
   slPrice,
   quantity,
-  mode = "paper",
   parentOrderId,
 }) {
   ensureClient();
+  const network = config.AUTO_TRADING.USE_TESTNET ? "testnet" : "prod";
   const oppositeSide = side === "BUY" ? "SELL" : "BUY";
 
-  const tpReqId = `${mode}_tp_${symbol}_${Date.now()}`;
-  const slReqId = `${mode}_sl_${symbol}_${Date.now()}`;
+  const tpReqId = `${network}_tp_${symbol}_${Date.now()}`;
+  const slReqId = `${network}_sl_${symbol}_${Date.now()}`;
 
   const localTp = {
     requestId: tpReqId,
@@ -155,7 +161,7 @@ export async function setTakeProfitStopLoss({
     type: "TAKE_PROFIT_MARKET",
     stopPrice: tpPrice,
     status: "NEW",
-    mode,
+    network,
   };
   const localSl = {
     requestId: slReqId,
@@ -165,7 +171,7 @@ export async function setTakeProfitStopLoss({
     type: "STOP_MARKET",
     stopPrice: slPrice,
     status: "NEW",
-    mode,
+    network,
   };
 
   try {
@@ -190,11 +196,13 @@ export async function setTakeProfitStopLoss({
     localTp.status = tpRes.status || "NEW";
     localSl.orderId = slRes.orderId;
     localSl.status = slRes.status || "NEW";
-    saveBinanceOrder(localTp, mode);
-    saveBinanceOrder(localSl, mode);
+    saveBinanceOrder(localTp);
+    saveBinanceOrder(localSl);
 
     console.log(
-      `[LIVE_MODE] TP & SL Traps Sent -> TP_ID: ${tpRes.orderId}, SL_ID: ${slRes.orderId}`
+      `[${network.toUpperCase()}_MODE] TP & SL Traps Sent -> TP_ID: ${
+        tpRes.orderId
+      }, SL_ID: ${slRes.orderId}`
     );
     return { tp: localTp, sl: localSl };
   } catch (err) {
@@ -203,7 +211,7 @@ export async function setTakeProfitStopLoss({
   }
 }
 
-export async function cancelAllOrders(symbol, mode = "live") {
+export async function cancelAllOrders(symbol) {
   ensureClient();
 
   try {
@@ -211,12 +219,15 @@ export async function cancelAllOrders(symbol, mode = "live") {
 
     // Sync local DB
     const db = loadBinanceOrders();
-    db["live"] = db["live"].map((o) =>
-      o.symbol === symbol && o.status === "NEW"
-        ? { ...o, status: "CANCELED" }
-        : o
-    );
-    saveBinanceOrders(db);
+    const network = config.AUTO_TRADING.USE_TESTNET ? "testnet" : "prod";
+    if (db[network]) {
+      db[network] = db[network].map((o) =>
+        o.symbol === symbol && o.status === "NEW"
+          ? { ...o, status: "CANCELED" }
+          : o
+      );
+      saveBinanceOrders(db);
+    }
     return true;
   } catch (err) {
     console.error(`❌ Error canceling orders (${symbol}):`, err.message);
@@ -226,7 +237,10 @@ export async function cancelAllOrders(symbol, mode = "live") {
 
 export async function syncOrderStatus(requestId) {
   const db = loadBinanceOrders();
-  const order = db.live.find((o) => o.requestId === requestId);
+  const network = config.AUTO_TRADING.USE_TESTNET ? "testnet" : "prod";
+  if (!db[network]) return;
+
+  const order = db[network].find((o) => o.requestId === requestId);
   if (
     !order ||
     !order.orderId ||
@@ -242,14 +256,14 @@ export async function syncOrderStatus(requestId) {
       orderId: order.orderId,
     });
     if (apiOrder.status !== order.status) {
-      updateBinanceOrder(requestId, { status: apiOrder.status }, "live");
+      updateBinanceOrder(requestId, { status: apiOrder.status });
       console.log(
         `[SYNC] Order ${order.orderId} status shifted: ${order.status} -> ${apiOrder.status}`
       );
     }
   } catch (err) {
     if (err.message.includes("does not exist")) {
-      updateBinanceOrder(requestId, { status: "CANCELED" }, "live");
+      updateBinanceOrder(requestId, { status: "CANCELED" });
     }
   }
 }

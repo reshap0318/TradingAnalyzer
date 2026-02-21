@@ -32,7 +32,7 @@ export function getTradingStatus(assetType = "CRYPTO") {
       config.AUTO_TRADING.ENABLED &&
       tradesToday < config.AUTO_TRADING.SAFETY.MAX_DAILY_TRADES &&
       drawdownPercent < config.AUTO_TRADING.SAFETY.MAX_DRAWDOWN_PERCENT,
-    mode: config.AUTO_TRADING.MODE,
+    network: config.AUTO_TRADING.USE_TESTNET ? "testnet" : "prod",
     todayTrades: tradesToday,
     drawdownPercent: Math.round(drawdownPercent * 100) / 100,
     maxDailyTradesTriggered:
@@ -42,23 +42,29 @@ export function getTradingStatus(assetType = "CRYPTO") {
   };
 }
 
-export function checkSafetyRules(analysis, assetType = "CRYPTO") {
+export function checkSafetyRules(
+  analysis,
+  assetType = "CRYPTO",
+  isSimulation = false
+) {
   resetDailyTrades();
   const status = getTradingStatus(assetType);
   const reasons = [];
 
-  if (!status.enabled)
-    reasons.push("Auto-Trading is globally disabled in config.js");
-  if (!status.active)
-    reasons.push("Bot is in Standby (Maximum limits reached)");
-  if (status.maxDailyTradesTriggered)
-    reasons.push(
-      `Daily Trade Limit Hit (${config.AUTO_TRADING.SAFETY.MAX_DAILY_TRADES})`
-    );
-  if (status.maxDrawdownTriggered)
-    reasons.push(
-      `Maximum Drawdown Limit Hit (${config.AUTO_TRADING.SAFETY.MAX_DRAWDOWN_PERCENT}%)`
-    );
+  if (!isSimulation) {
+    if (!status.enabled)
+      reasons.push("Auto-Trading is globally disabled in config.js");
+    if (!status.active)
+      reasons.push("Bot is in Standby (Maximum limits reached)");
+    if (status.maxDailyTradesTriggered)
+      reasons.push(
+        `Daily Trade Limit Hit (${config.AUTO_TRADING.SAFETY.MAX_DAILY_TRADES})`
+      );
+    if (status.maxDrawdownTriggered)
+      reasons.push(
+        `Maximum Drawdown Limit Hit (${config.AUTO_TRADING.SAFETY.MAX_DRAWDOWN_PERCENT}%)`
+      );
+  }
 
   if (analysis.signalResult?.signal === "WAIT") reasons.push("Signal is WAIT");
   if (
@@ -98,8 +104,7 @@ export function checkSafetyRules(analysis, assetType = "CRYPTO") {
   return { safe: reasons.length === 0, reasons };
 }
 
-export async function executeTrade(analysis, overrideMode) {
-  const mode = overrideMode || config.AUTO_TRADING.MODE;
+export async function executeTrade(analysis) {
   const safety = checkSafetyRules(analysis);
 
   if (!safety.safe) {
@@ -131,7 +136,6 @@ export async function executeTrade(analysis, overrideMode) {
       quantity,
       leverage,
       type: config.AUTO_TRADING.ORDER_TYPE,
-      mode,
     });
 
     let tpSlOrders = null;
@@ -148,14 +152,13 @@ export async function executeTrade(analysis, overrideMode) {
         tpPrice: analysis.tpsl.tp.price,
         slPrice: analysis.tpsl.sl.price,
         quantity,
-        mode,
         parentOrderId: order.orderId,
       });
     }
 
     return {
       executed: true,
-      mode,
+      network: config.AUTO_TRADING.USE_TESTNET ? "testnet" : "prod",
       order,
       tpSlOrders,
     };

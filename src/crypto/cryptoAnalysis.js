@@ -10,6 +10,7 @@ import { generateSignal } from "../shared/signalGenerator.js";
 import { calculateTPSL } from "../shared/tpslCalculator.js";
 import { calculateMoneyManagement } from "../shared/moneyManagement.js";
 import { getCapitalStatus } from "../shared/signalLogger.js";
+import { calculateFuturesPlan } from "./futuresCalculator.js";
 
 export async function analyzeCryptoSymbol(
   symbol,
@@ -68,8 +69,21 @@ export async function analyzeCryptoSymbol(
     tpsl,
     signalResult.signal,
     trendStrength,
-    "CRYPTO"
+    "CRYPTO",
+    leverage
   );
+
+  const futures =
+    signalResult.signal !== "WAIT"
+      ? calculateFuturesPlan({
+          capital: portfolio.totalCapital,
+          entryPrice: quote.price,
+          slPrice: tpsl.sl?.price,
+          side: signalResult.signal === "BUY" ? "LONG" : "SHORT",
+          leverage,
+          tpsl,
+        })
+      : null;
 
   return {
     symbol,
@@ -82,5 +96,6 @@ export async function analyzeCryptoSymbol(
     tpsl,
     moneyMgmt,
     leverage,
+    futures,
   };
 }
