@@ -126,12 +126,17 @@ export function stopTrading(reason)
 
 | Rule | Default | Penjelasan |
 |---|---|---|
-| `minConfidence` | 70 | Minimum confidence score |
-| `maxDailyTrades` | 5 | Max trade per hari |
-| `maxDrawdownPercent` | 10 | Stop kalau rugi > 10% dari initial |
-| `requireValidMM` | true | moneyMgmt.isValid harus true |
-| `blockOnCrash` | true | Tidak trade saat market crash |
-| `minRiskReward` | 1.5 | Minimum risk/reward ratio |
+| `minConfidence` | 70 | Minimum confidence score untuk eksekusi trade. |
+| `maxDailyTrades` | 5 | **Anti-Overtrading**: Menghentikan bot pada eksekusi trade ke-5 di hari itu, terlepas seluruh 5 trade tersebut berujung untung ataupun rugi beruntun. Jika sudah menyentuh limit harian, bot mati sampai besok (00:00). |
+| `maxDrawdownPercent` | 10 | **Circuit Breaker (-10%)**: Bot mengkalkulasi loss dari saldo puncak (real balance). Bot HANYA memanggil API `getAccountBalance()` Binance saat ada sinyal Trade baru / 1x sehari untuk efisiensi API. Jika drawdown dari API menembus 10%, bot mati instan. |
+| `requireValidMM` | true | Mencegah trade kalau lot/resiko di money management invalid. |
+| `blockOnCrash` | true | Tidak trade saat kondisi market (IHSG/BTC) sedang crash. |
+| `minRiskReward` | 1.5 | Menghindari setup scalping yang rasio kemenangannya buruk. |
+
+**Catatan Sinkronisasi Data (Local DB vs API):**
+- **Analisa Pasar (OHLCV/Candlestick)**: 100% wajib menebak *Live* API Binance (GET Request `binanceData.js`) secara berkala untuk menghitung 7 indikator dengan akurat.
+- **Log Histori/Status Trade**: 100% *Offline* dari JSON lokal (`binance_orders.json`). Bot tidak bergantung pada API bursa untuk tau apakah barusan dia buka Buy atau Sell. Evaluasi performa dibaca dari lokal demi hemat bandwidth API.
+- **Verifikasi Modal/Capital**: 100% *Live API* Binance (sebelum eksekusi Buy/Sell) guna menghindari state desynchronization (karena fees, transfer manual dsb) yang rentan jika cuma baca balance dari *history* JSON.
 
 ---
 
