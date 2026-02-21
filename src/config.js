@@ -52,6 +52,23 @@ export default {
   SR_SETTINGS: { LOOKBACK_PERIODS: 100, TOLERANCE: 0.005, MIN_TOUCHES: 2 },
   SERVER: { PORT: 1000 },
 
+  // ─── Auto Trading System ───
+  AUTO_TRADING: {
+    ENABLED: false, // Master switch
+    MODE: "paper", // "paper" | "live"
+    USE_TESTNET: true, // Binance Testnet
+    SAFETY: {
+      MIN_CONFIDENCE: 70, // Minimum confidence score untuk eksekusi trade
+      MAX_DAILY_TRADES: 5, // Menghentikan bot setelah eksekusi trade ke-5
+      MAX_DRAWDOWN_PERCENT: 10, // Stop sistem jika rugi di atas 10%
+      MIN_RISK_REWARD: 1.5, // Rasio RisktoReward minimum
+      BLOCK_ON_CRASH: true,
+    },
+    ORDER_TYPE: "MARKET", // "MARKET" | "LIMIT"
+    DEFAULT_LEVERAGE: 5,
+    AUTO_SET_TP_SL: true, // Auto place TP/SL orders
+  },
+
   // ─── Saham (Stock) Specific ───
   SAHAM: {
     DEFAULT_CAPITAL: 10_000_000, // 10 juta IDR
@@ -88,7 +105,6 @@ export default {
       MAX_RISK_PER_TRADE: 0.02,
       MAX_POSITION_SIZE: 0.1,
       RISK_REWARD_MIN: 1.5,
-      MAX_POSITIONS: 5,
       TRAILING_STOP_ACTIVATION: 1.5,
       TRAILING_STOP_DISTANCE: 0.5,
     },
@@ -133,7 +149,6 @@ export default {
       MAX_RISK_PER_TRADE: 0.02,
       MAX_POSITION_SIZE: 0.15,
       RISK_REWARD_MIN: 1.5,
-      MAX_POSITIONS: 3,
       TRAILING_STOP_ACTIVATION: 2.0,
       TRAILING_STOP_DISTANCE: 0.8,
     },

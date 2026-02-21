@@ -26,11 +26,24 @@ import {
   getSummary as getSignalSummary,
   getHistory as getSignalHistory,
   getCapitalStatus,
+  getSummary,
+  getHistory,
 } from "./shared/signalLogger.js";
+import { executeTrade, getTradingStatus } from "./shared/tradeExecutor.js";
+import { initClient as initBinanceTrader } from "./crypto/binanceTrader.js";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Initialize optional executor services
+if (config.AUTO_TRADING.ENABLED) {
+  initBinanceTrader(config.AUTO_TRADING.USE_TESTNET).catch((e) =>
+    console.log("Init node skipped:", e.message)
+  );
+}
+
+const dataDir = path.join(__dirname, "../data");
 
 const getCurrentWIB = () => {
   return new Date().toLocaleString("id-ID", {
@@ -48,6 +61,64 @@ const getCurrentWIB = () => {
 const formatSymbol = (s) =>
   s.includes(".") ? s.toUpperCase() : `${s.toUpperCase()}.JK`;
 
+export async function analyzeSahamSymbol(
+  symbol,
+  interval,
+  initialCapital = config.SAHAM.DEFAULT_CAPITAL
+) {
+  const timeframes = TIMEFRAME_MAP[interval] || TIMEFRAME_MAP["1d"];
+  const capitalStatus = getCapitalStatus("SAHAM", initialCapital);
+  const portfolio = {
+    totalCapital: capitalStatus.available,
+    maxLossPercent: config.SAHAM.MONEY_MANAGEMENT.MAX_RISK_PER_TRADE * 100,
+    currentPositions: capitalStatus.openPositions,
+  };
+
+  const [multiTfData, ihsgData, quote] = await Promise.all([
+    fetchMultiTimeframe(symbol, timeframes),
+    fetchIHSG(),
+    getCurrentPrice(symbol),
+  ]);
+  const primaryData = multiTfData[interval];
+  if (!primaryData || primaryData.length < 50)
+    throw new Error("Insufficient data for " + interval);
+
+  const ihsgAnalysis = analyzeIHSG(ihsgData);
+  const correlation = calculateCorrelation(primaryData, ihsgData);
+  const decision = makeDecision(
+    primaryData,
+    multiTfData,
+    ihsgAnalysis,
+    timeframes
+  );
+  const signalResult = generateSignal(decision, quote.price, symbol);
+  const tpsl = calculateTPSL(primaryData, signalResult.signal, quote.price);
+
+  const trendStrength = Math.abs(decision.score);
+
+  const moneyMgmt = calculateMoneyManagement(
+    portfolio,
+    quote.price,
+    tpsl.sl?.price,
+    tpsl,
+    signalResult.signal,
+    trendStrength,
+    "SAHAM"
+  );
+
+  return {
+    quote,
+    capitalStatus,
+    ihsgAnalysis,
+    correlation,
+    decision,
+    signalResult,
+    tpsl,
+    moneyMgmt,
+    timeframes,
+  };
+}
+
 app.get("/saham/analyze", async (req, res) => {
   try {
     if (!req.query.symbol) {
@@ -55,53 +126,22 @@ app.get("/saham/analyze", async (req, res) => {
     }
     const symbol = formatSymbol(req.query.symbol);
     const interval = req.query.interval || config.DEFAULT_INTERVAL;
-    const timeframes = TIMEFRAME_MAP[interval] || TIMEFRAME_MAP["1d"];
-
     const initialCapital =
       parseInt(req.query.capital) || config.SAHAM.DEFAULT_CAPITAL;
-    const capitalStatus = getCapitalStatus("SAHAM", initialCapital);
-    const portfolio = {
-      totalCapital: capitalStatus.available,
-      maxLossPercent:
-        parseFloat(req.query.maxLoss) ||
-        config.SAHAM.MONEY_MANAGEMENT.MAX_RISK_PER_TRADE * 100,
-      currentPositions: capitalStatus.openPositions,
-    };
+
     console.log(`\n📊 Analyzing ${symbol} [${interval}]...`);
 
-    const [multiTfData, ihsgData, quote] = await Promise.all([
-      fetchMultiTimeframe(symbol, timeframes),
-      fetchIHSG(),
-      getCurrentPrice(symbol),
-    ]);
-    const primaryData = multiTfData[interval];
-    if (!primaryData || primaryData.length < 50)
-      return res
-        .status(400)
-        .json({ error: "Insufficient data for " + interval });
-
-    const ihsgAnalysis = analyzeIHSG(ihsgData);
-    const correlation = calculateCorrelation(primaryData, ihsgData);
-    const decision = makeDecision(
-      primaryData,
-      multiTfData,
+    const analysis = await analyzeSahamSymbol(symbol, interval, initialCapital);
+    const {
+      quote,
+      capitalStatus,
       ihsgAnalysis,
-      timeframes
-    );
-    const signalResult = generateSignal(decision, quote.price, symbol);
-    const tpsl = calculateTPSL(primaryData, signalResult.signal, quote.price);
-
-    // Calculate trend strength from decision confidence
-    const trendStrength = Math.abs(decision.score);
-
-    const moneyMgmt = calculateMoneyManagement(
-      portfolio,
-      quote.price,
-      tpsl.sl?.price,
+      correlation,
+      decision,
+      signalResult,
       tpsl,
-      signalResult.signal,
-      trendStrength
-    );
+      moneyMgmt,
+    } = analysis;
 
     console.log(`✅ ${signalResult.signal} (${signalResult.confidence}%)`);
 
@@ -128,8 +168,6 @@ app.get("/saham/analyze", async (req, res) => {
         valid: signalResult.signal === "BUY",
         signal: signalResult.signal,
         strength: signalResult.strength,
-        // confidence: signalResult.confidence,
-        // score: signalResult.score,
         entry: signalResult.entryZone,
         tp: tpsl.tp,
         sl: tpsl.sl,
@@ -296,87 +334,99 @@ app.get("/saham/raw", async (req, res) => {
 
 // --- CRYPTO ENDPOINTS ---
 
+export async function analyzeCryptoSymbol(
+  symbol,
+  interval,
+  leverage,
+  initialCapital = config.CRYPTO.DEFAULT_CAPITAL
+) {
+  const timeframes = TIMEFRAME_MAP[interval] || TIMEFRAME_MAP["1d"];
+  const capitalStatus = getCapitalStatus("CRYPTO", initialCapital);
+  const portfolio = {
+    totalCapital: capitalStatus.available,
+    maxLossPercent: config.CRYPTO.MONEY_MANAGEMENT.MAX_RISK_PER_TRADE * 100,
+    currentPositions: capitalStatus.openPositions,
+  };
+
+  const [multiTfData, btcDomData, quote] = await Promise.all([
+    fetchBinanceMultiTf(symbol, timeframes),
+    fetchBTCDominance(),
+    getBinancePrice(symbol),
+  ]);
+
+  const primaryData = multiTfData[interval];
+  if (!primaryData || primaryData.length < 30)
+    throw new Error("Insufficient data for " + interval);
+
+  const btcMarket = analyzeBTCMarket(btcDomData, symbol);
+  const decision = makeCryptoDecision(
+    primaryData,
+    multiTfData,
+    btcMarket,
+    timeframes
+  );
+  const signalResult = generateSignal(
+    decision,
+    quote.price,
+    symbol,
+    "BTC Market"
+  );
+  const tpsl = calculateTPSL(
+    primaryData,
+    signalResult.signal,
+    quote.price,
+    "CRYPTO"
+  );
+  const trendStrength = Math.abs(decision.score);
+
+  const moneyMgmt = calculateMoneyManagement(
+    portfolio,
+    quote.price,
+    tpsl.sl?.price,
+    tpsl,
+    signalResult.signal,
+    trendStrength,
+    "CRYPTO"
+  );
+
+  return {
+    symbol,
+    interval,
+    quote,
+    capitalStatus,
+    btcMarket,
+    decision,
+    signalResult,
+    tpsl,
+    moneyMgmt,
+    leverage,
+  };
+}
+
 app.get("/crypto/analyze", async (req, res) => {
   try {
-    if (!req.query.symbol) {
+    if (!req.query.symbol)
       return res.status(400).json({ error: "Symbol parameter is required" });
-    }
+
     const symbol = req.query.symbol.toUpperCase();
     const interval = req.query.interval || config.DEFAULT_INTERVAL;
-    const timeframes = TIMEFRAME_MAP[interval] || TIMEFRAME_MAP["1d"];
-
     const initialCapital =
       parseInt(req.query.capital) || config.CRYPTO.DEFAULT_CAPITAL;
-    const capitalStatus = getCapitalStatus("CRYPTO", initialCapital);
-    const portfolio = {
-      totalCapital: capitalStatus.available,
-      maxLossPercent:
-        parseFloat(req.query.maxLoss) ||
-        config.CRYPTO.MONEY_MANAGEMENT.MAX_RISK_PER_TRADE * 100,
-      currentPositions: capitalStatus.openPositions,
-    };
     const leverage = req.query.leverage ? parseInt(req.query.leverage) : null;
 
     console.log(`\n💎 Analyzing Crypto ${symbol} [${interval}]...`);
-
-    // Fetch data in parallel
-    const [multiTfData, btcDomData, quote] = await Promise.all([
-      fetchBinanceMultiTf(symbol, timeframes),
-      fetchBTCDominance(),
-      getBinancePrice(symbol),
-    ]);
-
-    // Use interval data as primary
-    const primaryData = multiTfData[interval];
-    if (!primaryData || primaryData.length < 30)
-      return res
-        .status(400)
-        .json({ error: "Insufficient data for " + interval });
-
-    // BTC Market Sentiment (replaces IHSG for crypto)
-    const btcMarket = analyzeBTCMarket(btcDomData, symbol);
-
-    // Crypto Decision Engine
-    const decision = makeCryptoDecision(
-      primaryData,
-      multiTfData,
-      btcMarket,
-      timeframes
-    );
-
-    // Generate Signal
-    const signalResult = generateSignal(
-      decision,
-      quote.price,
+    const analysis = await analyzeCryptoSymbol(
       symbol,
-      "BTC Market"
+      interval,
+      leverage,
+      initialCapital
     );
 
-    // TP/SL with crypto precision
-    const tpsl = calculateTPSL(
-      primaryData,
-      signalResult.signal,
-      quote.price,
-      "CRYPTO"
+    console.log(
+      `✅ ${analysis.signalResult.signal} (${analysis.signalResult.confidence}%)`
     );
 
-    // Trend strength from decision confidence
-    const trendStrength = Math.abs(decision.score);
-
-    // Money Management
-    const moneyMgmt = calculateMoneyManagement(
-      portfolio,
-      quote.price,
-      tpsl.sl?.price,
-      tpsl,
-      signalResult.signal,
-      trendStrength,
-      "CRYPTO"
-    );
-
-    console.log(`✅ ${signalResult.signal} (${signalResult.confidence}%)`);
-
-    // Update outcomes of pending crypto signals
+    // Update outcomes of pending crypto signals passively (legacy logic)
     updateOutcomes(async (sym) => {
       try {
         const q = await getBinancePrice(sym);
@@ -387,73 +437,145 @@ app.get("/crypto/analyze", async (req, res) => {
     }, "CRYPTO").catch(() => {});
 
     res.json({
-      symbol,
-      interval,
+      symbol: analysis.symbol,
+      interval: analysis.interval,
       timestamp: getCurrentWIB(),
-      capitalStatus,
-      currentPrice: quote.price,
-      change: quote.change,
-      changePercent: quote.changePercent,
-      volume: quote.volume,
+      capitalStatus: analysis.capitalStatus,
+      currentPrice: analysis.quote.price,
+      change: analysis.quote.change,
+      changePercent: analysis.quote.changePercent,
+      volume: analysis.quote.volume,
       trade_plan: {
-        valid: signalResult.signal === "BUY" || signalResult.signal === "SELL",
-        signal: signalResult.signal,
-        strength: signalResult.strength,
-        // confidence: signalResult.confidence,
-        // score: signalResult.score,
-        entry: signalResult.entryZone,
-        tp: tpsl.tp,
-        sl: tpsl.sl,
-        riskReward: tpsl.riskReward,
+        valid:
+          analysis.signalResult.signal === "BUY" ||
+          analysis.signalResult.signal === "SELL",
+        signal: analysis.signalResult.signal,
+        strength: analysis.signalResult.strength,
+        entry: analysis.signalResult.entryZone,
+        tp: analysis.tpsl.tp,
+        sl: analysis.tpsl.sl,
+        riskReward: analysis.tpsl.riskReward,
       },
       scoring: {
-        totalScore: signalResult.score,
-        confidence: signalResult.confidence,
-        breakdown: decision.breakdown || [],
+        totalScore: analysis.signalResult.score,
+        confidence: analysis.signalResult.confidence,
+        breakdown: analysis.decision.breakdown || [],
       },
       market_sentiment: {
         index: "BTC Market",
-        trend: btcMarket.trend,
-        strength: btcMarket.strength,
-        change1d: btcMarket.change1d,
-        change7d: btcMarket.change7d,
-        isCrash: btcMarket.isCrash,
-        details: btcMarket.details,
+        trend: analysis.btcMarket.trend,
+        strength: analysis.btcMarket.strength,
+        change1d: analysis.btcMarket.change1d,
+        change7d: analysis.btcMarket.change7d,
+        isCrash: analysis.btcMarket.isCrash,
+        details: analysis.btcMarket.details,
       },
       timeframes: Object.fromEntries(
-        Object.entries(decision.multiTimeframe.timeframes).map(([tf, d]) => [
-          tf,
-          { trend: d.trend, signal: Math.round(d.signal) },
-        ])
+        Object.entries(analysis.decision.multiTimeframe.timeframes).map(
+          ([tf, d]) => [tf, { trend: d.trend, signal: Math.round(d.signal) }]
+        )
       ),
-      timeframeAlignment: decision.multiTimeframe.alignment,
-      reasoning: signalResult.reasoning,
-      warnings: signalResult.warnings,
-      moneyManagement: moneyMgmt,
-      patterns: decision.patterns,
+      timeframeAlignment: analysis.decision.multiTimeframe.alignment,
+      reasoning: analysis.signalResult.reasoning,
+      warnings: analysis.signalResult.warnings,
+      moneyManagement: analysis.moneyMgmt,
+      patterns: analysis.decision.patterns,
       indicators: {
-        ma: decision.indicators.ma,
-        rsi: decision.indicators.rsi,
-        macd: decision.indicators.macd,
-        bb: decision.indicators.bb,
-        stoch: decision.indicators.stoch,
-        volume: decision.indicators.volume,
+        ma: analysis.decision.indicators.ma,
+        rsi: analysis.decision.indicators.rsi,
+        macd: analysis.decision.indicators.macd,
+        bb: analysis.decision.indicators.bb,
+        stoch: analysis.decision.indicators.stoch,
+        volume: analysis.decision.indicators.volume,
       },
       futures:
-        signalResult.signal !== "WAIT"
+        analysis.signalResult.signal !== "WAIT"
           ? calculateFuturesPlan({
-              capital: capitalStatus.available,
-              entryPrice: quote.price,
-              slPrice: tpsl.sl?.price,
-              side: signalResult.signal === "BUY" ? "LONG" : "SHORT",
-              leverage,
-              tpsl,
+              capital: analysis.capitalStatus.available,
+              entryPrice: analysis.quote.price,
+              slPrice: analysis.tpsl.sl?.price,
+              side: analysis.signalResult.signal === "BUY" ? "LONG" : "SHORT",
+              leverage: analysis.leverage,
+              tpsl: analysis.tpsl,
             })
           : null,
     });
   } catch (error) {
     console.error("Crypto Analysis Error:", error);
     res.status(500).json({ error: "Analysis failed", message: error.message });
+  }
+});
+
+// --- CRYPTO AUTO TRADING EXECUTOR ---
+
+app.get("/crypto/trade/status", (req, res) => {
+  res.json(getTradingStatus());
+});
+
+app.post("/crypto/trade/stop", (req, res) => {
+  config.AUTO_TRADING.ENABLED = false;
+  res.json({
+    stopped: true,
+    message: req.body.reason || "Manual killswitch activated.",
+  });
+});
+
+app.post("/crypto/trade/auto", async (req, res) => {
+  try {
+    if (!config.AUTO_TRADING.ENABLED) {
+      return res
+        .status(403)
+        .json({ error: "Auto-Trading is disabled globally in config.js." });
+    }
+    if (!req.body.symbol) {
+      return res.status(400).json({
+        error: "Symbol is required in JSON body (e.g. { symbol: 'BTCUSDT' })",
+      });
+    }
+
+    const symbol = req.body.symbol.toUpperCase();
+    const interval = req.body.interval || config.DEFAULT_INTERVAL;
+    const initialCapital =
+      parseInt(req.body.capital) || config.CRYPTO.DEFAULT_CAPITAL;
+    const mode = req.body.mode || config.AUTO_TRADING.MODE;
+    const leverage = req.body.leverage || config.AUTO_TRADING.DEFAULT_LEVERAGE;
+
+    if (mode === "paper") {
+      return res.status(400).json({
+        error:
+          "Paper mode has been migrated. Please use /crypto/trade/simulate instead.",
+      });
+    }
+
+    console.log(`\n🤖 AutoTrader triggered for ${symbol} [${interval}] ...`);
+
+    // 1. Analyze Core Logic (no API response formatted)
+    const analysis = await analyzeCryptoSymbol(
+      symbol,
+      interval,
+      leverage,
+      initialCapital
+    );
+
+    // 2. Pass to Executor Layer
+    const result = await executeTrade(analysis, mode);
+
+    res.json({
+      symbol,
+      interval,
+      executed: result.executed,
+      mode: result.mode,
+      reasons: result.reasons, // If blocked
+      trade_plan: analysis.signalResult,
+      capitalStatus: analysis.capitalStatus,
+      execution_details: {
+        order: result.order,
+        tpSlTrailing: result.tpSlOrders,
+      },
+    });
+  } catch (error) {
+    console.error("Auto Trading API Error:", error);
+    res.status(500).json({ error: "Execution failed", message: error.message });
   }
 });
 
@@ -495,95 +617,128 @@ app.get("/crypto/raw", async (req, res) => {
   }
 });
 
-// --- SIGNAL LOG ENDPOINTS ---
-app.post("/saham/signals/log", (req, res) => {
+// --- SIMULATION ENDPOINTS (Replaces Old Passive Logs) ---
+app.post("/saham/trade/simulate", async (req, res) => {
   try {
-    const data = req.body;
-    // Intelligent Mapping: Allow users to post the raw JSON from /analyze
-    const signalPayload = {
-      symbol: data.symbol,
-      assetType: "SAHAM",
-      signal: data.trade_plan?.signal || data.signal,
-      entryPrice: data.currentPrice || data.entryPrice,
-      confidence: data.trade_plan?.confidence || data.confidence,
-      score: data.scoring?.totalScore || data.score,
-      strength: data.trade_plan?.strength || data.strength,
-      tp: data.trade_plan?.tp || data.tp,
-      sl: data.trade_plan?.sl || data.sl,
-      allocatedAmount:
-        data.moneyManagement?.alokasiDana || data.allocatedAmount,
-    };
-
-    if (
-      !signalPayload.symbol ||
-      !signalPayload.signal ||
-      !signalPayload.entryPrice
-    ) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "Missing minimum fields (symbol, signal/trade_plan.signal, currentPrice/entryPrice)",
-        });
+    if (!req.body.symbol) {
+      return res.status(400).json({ error: "Symbol is required in JSON body" });
     }
+    const symbol = formatSymbol(req.body.symbol);
+    const interval = req.body.interval || config.DEFAULT_INTERVAL;
+    const initialCapital =
+      parseInt(req.body.capital) || config.SAHAM.DEFAULT_CAPITAL;
+
+    console.log(`\n🧪 Simulate triggered for ${symbol} [${interval}] ...`);
+
+    const analysis = await analyzeSahamSymbol(symbol, interval, initialCapital);
+    const safety = checkSafetyRules(analysis, "SAHAM");
+
+    if (!safety.safe) {
+      return res.status(403).json({
+        error: "Simulation rejected by Executor Rules",
+        reasons: safety.reasons,
+      });
+    }
+
+    const signalPayload = {
+      symbol,
+      assetType: "SAHAM",
+      signal: analysis.signalResult.signal,
+      entryPrice: analysis.quote.price,
+      confidence: analysis.signalResult.confidence,
+      score: analysis.signalResult.score,
+      strength: analysis.signalResult.strength,
+      tp: analysis.tpsl.tp,
+      sl: analysis.tpsl.sl,
+      allocatedAmount:
+        analysis.moneyMgmt?.alokasiDana ||
+        analysis.moneyMgmt?.priceLot?.totalBelanja,
+    };
 
     if (signalPayload.signal === "SELL") {
-      closePendingSignal(signalPayload.symbol, signalPayload.entryPrice);
-    } else {
+      closePendingSignal(symbol, signalPayload.entryPrice);
+    } else if (signalPayload.signal === "BUY") {
       logSignal(signalPayload);
     }
-    res.json({ success: true, message: "Saham signal logged" });
+
+    res.json({
+      success: true,
+      message: "Saham simulation logged",
+      safety,
+      trade_plan: analysis.signalResult,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post("/crypto/signals/log", (req, res) => {
+app.post("/crypto/trade/simulate", async (req, res) => {
   try {
-    const data = req.body;
-    // Intelligent Mapping: Allow users to post the raw JSON from /analyze
-    const signalPayload = {
-      symbol: data.symbol,
-      assetType: "CRYPTO",
-      signal: data.trade_plan?.signal || data.signal,
-      entryPrice: data.currentPrice || data.entryPrice,
-      confidence: data.trade_plan?.confidence || data.confidence,
-      score: data.scoring?.totalScore || data.score,
-      strength: data.trade_plan?.strength || data.strength,
-      tp: data.trade_plan?.tp || data.tp,
-      sl: data.trade_plan?.sl || data.sl,
-      allocatedAmount:
-        data.moneyManagement?.alokasiDana || data.allocatedAmount,
-    };
+    if (!req.body.symbol) {
+      return res.status(400).json({ error: "Symbol is required in JSON body" });
+    }
+    const symbol = req.body.symbol.toUpperCase();
+    const interval = req.body.interval || config.DEFAULT_INTERVAL;
+    const initialCapital =
+      parseInt(req.body.capital) || config.CRYPTO.DEFAULT_CAPITAL;
+    const leverage =
+      parseInt(req.body.leverage) || config.AUTO_TRADING.DEFAULT_LEVERAGE;
 
-    if (
-      !signalPayload.symbol ||
-      !signalPayload.signal ||
-      !signalPayload.entryPrice
-    ) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "Missing minimum fields (symbol, signal/trade_plan.signal, currentPrice/entryPrice)",
-        });
+    console.log(`\n🧪 Simulate triggered for ${symbol} [${interval}] ...`);
+
+    const analysis = await analyzeCryptoSymbol(
+      symbol,
+      interval,
+      leverage,
+      initialCapital
+    );
+    const safety = checkSafetyRules(analysis, "CRYPTO");
+
+    if (!safety.safe) {
+      return res.status(403).json({
+        error: "Simulation rejected by Executor Rules",
+        reasons: safety.reasons,
+      });
     }
 
-    logSignal(signalPayload);
-    res.json({ success: true, message: "Crypto signal logged" });
+    const signalPayload = {
+      symbol,
+      assetType: "CRYPTO",
+      signal: analysis.signalResult.signal,
+      entryPrice: analysis.quote.price,
+      confidence: analysis.signalResult.confidence,
+      score: analysis.signalResult.score,
+      strength: analysis.signalResult.strength,
+      tp: analysis.tpsl.tp,
+      sl: analysis.tpsl.sl,
+      allocatedAmount:
+        analysis.moneyMgmt?.alokasiDana ||
+        analysis.moneyMgmt?.priceLot?.totalBelanja,
+    };
+
+    if (signalPayload.signal !== "WAIT") {
+      logSignal(signalPayload);
+    }
+
+    res.json({
+      success: true,
+      message: "Crypto simulation logged",
+      safety,
+      trade_plan: analysis.signalResult,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.get("/crypto/signals/summary", (req, res) => {
+app.get("/crypto/simulate/summary", (req, res) => {
   const initialCapital =
     parseInt(req.query.capital) || config.CRYPTO.DEFAULT_CAPITAL;
   const capitalStatus = getCapitalStatus("CRYPTO", initialCapital);
   res.json({ ...getSignalSummary("CRYPTO"), capitalStatus });
 });
 
-app.get("/crypto/signals/history", (req, res) => {
+app.get("/crypto/simulate/history", (req, res) => {
   const { symbol, limit } = req.query;
   res.json(
     getSignalHistory({
@@ -594,14 +749,14 @@ app.get("/crypto/signals/history", (req, res) => {
   );
 });
 
-app.get("/saham/signals/summary", (req, res) => {
+app.get("/saham/simulate/summary", (req, res) => {
   const initialCapital =
     parseInt(req.query.capital) || config.SAHAM.DEFAULT_CAPITAL;
   const capitalStatus = getCapitalStatus("SAHAM", initialCapital);
   res.json({ ...getSignalSummary("SAHAM"), capitalStatus });
 });
 
-app.get("/saham/signals/history", (req, res) => {
+app.get("/saham/simulate/history", (req, res) => {
   const { symbol, limit } = req.query;
   res.json(
     getSignalHistory({

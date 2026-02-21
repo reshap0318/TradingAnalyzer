@@ -136,22 +136,6 @@ describe("calculateMoneyManagement — Negative Scenarios", () => {
     assert.equal(result.isValid, false);
     assert.ok(result.warnings.some((w) => w.includes("TP")));
   });
-
-  it("should warn for too many open positions", () => {
-    const result = calculateMoneyManagement(
-      { totalCapital: 100_000_000, currentPositions: 6 },
-      8600,
-      8200,
-      {
-        tp: { price: 9000, percent: 4.65 },
-        sl: { price: 8200, percent: -4.65 },
-      },
-      "BUY",
-      50,
-      "STOCK"
-    );
-    assert.ok(result.warnings.some((w) => w.includes("maksimal posisi")));
-  });
 });
 
 // ============================================================

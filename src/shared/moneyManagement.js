@@ -26,10 +26,6 @@ export function calculateMoneyManagement(
   // Calculate validity of the trade setup
   const tpPercent = tpsl?.tp?.percent ? Math.abs(tpsl.tp.percent) : 0;
   const slPercent = slPrice ? Math.abs(((slPrice - price) / price) * 100) : 0;
-  const maxPositionsConfig =
-    assetType === "CRYPTO"
-      ? config.CRYPTO.MONEY_MANAGEMENT.MAX_POSITIONS
-      : config.SAHAM.MONEY_MANAGEMENT.MAX_POSITIONS;
 
   const validSignal =
     assetType === "CRYPTO"
@@ -37,11 +33,6 @@ export function calculateMoneyManagement(
       : signal === "BUY"; // Stock = long-only
 
   let isValid = validSignal && slPrice && tpPercent > slPercent;
-
-  // Enforce Max Positions constraint
-  if (currentPositions >= maxPositionsConfig) {
-    isValid = false;
-  }
 
   // If no stop loss, we cannot calculate risk
   if (!slPrice) {
@@ -118,11 +109,6 @@ export function calculateMoneyManagement(
     warnings.push("Mendekati batas maksimal kerugian");
   if (positionValue > totalCapital * 0.1)
     warnings.push("Posisi > 10% dari total capital");
-  if (currentPositions >= maxPositionsConfig) {
-    warnings.push(
-      `Sudah mencapai batas maksimal posisi (${maxPositionsConfig})`
-    );
-  }
   if (riskRewardRatio < 1.5) warnings.push("Risk/Reward ratio kurang dari 1.5");
   if (!validSignal && signal !== "WAIT")
     warnings.push("Signal is not valid for this asset type");
