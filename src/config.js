@@ -103,7 +103,7 @@ export default {
 
     MONEY_MANAGEMENT: {
       MAX_RISK_PER_TRADE: 0.02,
-      MAX_POSITION_SIZE: 0.1,
+      MAX_POSITION_SIZE: 0.1, // 10% dari modal per trade
       RISK_REWARD_MIN: 1.5,
       TRAILING_STOP_ACTIVATION: 1.5,
       TRAILING_STOP_DISTANCE: 0.5,
@@ -147,7 +147,7 @@ export default {
 
     MONEY_MANAGEMENT: {
       MAX_RISK_PER_TRADE: 0.02,
-      MAX_POSITION_SIZE: 0.15,
+      MAX_POSITION_SIZE: 0.15, // 15% dari modal per trade
       RISK_REWARD_MIN: 1.5,
       TRAILING_STOP_ACTIVATION: 2.0,
       TRAILING_STOP_DISTANCE: 0.8,

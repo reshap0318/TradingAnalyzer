@@ -91,6 +91,32 @@ export function calculateMoneyManagement(
         recommendedLots = 1; // Force 1 lot minimum if affordable
       }
     }
+
+    // POSITION SIZING LIMIT: Auto-adjust if position exceeds configurable % of capital
+    const maxPositionSize = assetType === "CRYPTO"
+      ? config.CRYPTO.MONEY_MANAGEMENT.MAX_POSITION_SIZE
+      : config.SAHAM.MONEY_MANAGEMENT.MAX_POSITION_SIZE;
+
+    const maxPositionAllowed = totalCapital * maxPositionSize;
+    const positionValue = recommendedLots * lotSize * price;
+
+    if (positionValue > maxPositionAllowed) {
+      const maxLotsByPosition = Math.floor(maxPositionAllowed / (lotSize * price));
+
+      if (maxLotsByPosition === 0) {
+        // Even 1 lot exceeds limit
+        const minimumCost = lotSize * price;
+        if (totalCapital >= minimumCost) {
+          recommendedLots = 1;
+          // Warning will be added below
+        } else {
+          recommendedLots = 0;
+        }
+      } else {
+        // Auto-adjust to limit without warning
+        recommendedLots = Math.min(recommendedLots, maxLotsByPosition);
+      }
+    }
   }
 
   const recommendedShares = recommendedLots * lotSize;
@@ -130,16 +156,23 @@ export function calculateMoneyManagement(
     );
   }
 
-  if (positionValue > totalCapital * 0.1) {
-    const maxPositionAllowed = totalCapital * 0.1;
-    warnings.push(
-      `Posisi terlalu besar: Nilai pembelian ${formatCurrency(
-        positionValue
-      )} melebihi 10% dari modal. (Batas anjuran: ${formatCurrency(
-        maxPositionAllowed
-      )})`
-    );
+  // Warning untuk posisi terlalu besar (hanya jika 1 lot > limit dan masih mampu beli)
+  if (assetType === "STOCK" && recommendedLots === 1) {
+    const maxPositionSize = config.SAHAM.MONEY_MANAGEMENT.MAX_POSITION_SIZE;
+    const maxPositionAllowed = totalCapital * maxPositionSize;
+    const singleLotValue = lotSize * price;
+    if (singleLotValue > maxPositionAllowed && totalCapital >= singleLotValue) {
+      const maxPositionSizePercent = maxPositionSize * 100;
+      warnings.push(
+        `Posisi terlalu besar: Nilai pembelian ${formatCurrency(
+          singleLotValue
+        )} melebihi ${maxPositionSizePercent}% dari modal. (Batas anjuran: ${formatCurrency(
+          maxPositionAllowed
+        )})`
+      );
+    }
   }
+
   if (riskRewardRatio < 1.5) warnings.push("Risk/Reward ratio kurang dari 1.5");
   if (!validSignal && signal !== "WAIT")
     warnings.push("Signal is not valid for this asset type");
