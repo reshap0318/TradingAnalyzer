@@ -3,6 +3,7 @@ import {
   analyzeCrypto,
   tradeStatus,
   tradeStop,
+  tradeStart,
   tradeAuto,
   simulateTrade,
   rawData,
@@ -15,6 +16,7 @@ const router = express.Router();
 router.get("/analyze", analyzeCrypto);
 router.get("/trade/status", tradeStatus);
 router.post("/trade/stop", tradeStop);
+router.post("/trade/start", tradeStart);
 router.post("/trade/auto", tradeAuto);
 router.get("/raw", rawData);
 router.post("/simulate/trade", simulateTrade);

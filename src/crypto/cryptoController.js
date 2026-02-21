@@ -130,6 +130,14 @@ export const tradeStop = (req, res) => {
   });
 };
 
+export const tradeStart = (req, res) => {
+  config.AUTO_TRADING.ENABLED = true;
+  res.json({
+    started: true,
+    message: "Auto-trading enabled.",
+  });
+};
+
 export const tradeAuto = async (req, res) => {
   try {
     if (!config.AUTO_TRADING.ENABLED) {

@@ -76,6 +76,7 @@ app.listen(PORT, "0.0.0.0", () => {
 ║  GET  /crypto/simulate/history       Simulation history      ║
 ║  GET  /crypto/trade/status           Auto-trade status       ║
 ║  POST /crypto/trade/auto             Start auto-trade        ║
+║  POST /crypto/trade/start            Start auto-trade        ║
 ║  POST /crypto/trade/stop             Stop auto-trade         ║
 ╚══════════════════════════════════════════════════════════════╝
 `);
