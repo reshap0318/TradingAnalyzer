@@ -21,8 +21,19 @@ services:
       - /app/node_modules
     networks:
       - trading-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          memory: 128M
     environment:
       - NODE_ENV=development
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 10m
 
 networks:
   trading-network:
