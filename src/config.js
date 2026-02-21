@@ -58,7 +58,7 @@ export default {
     USE_TESTNET:
       process.env.USE_TESTNET === "true" || process.env.USE_TESTNET === "1", // Driven by .env now
     SAFETY: {
-      MIN_CONFIDENCE: 60, // Minimum confidence score untuk eksekusi trade
+      MIN_CONFIDENCE: 50, // Minimum confidence score untuk eksekusi trade
       MAX_DAILY_TRADES: 5, // Menghentikan bot setelah eksekusi trade ke-5
       MAX_DRAWDOWN_PERCENT: 10, // Stop sistem jika rugi di atas 10%
       MIN_RISK_REWARD: 1.5, // Rasio RisktoReward minimum

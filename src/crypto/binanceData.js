@@ -58,9 +58,9 @@ export async function fetchBTCDominance() {
 
     return candles.map(formatCandle);
   } catch (error) {
-    console.warn(
-      "Could not fetch BTCDOMUSDT, falling back to BTCUSDT (Market Proxy)."
-    );
+    // console.warn(
+    //   "Could not fetch BTCDOMUSDT, falling back to BTCUSDT (Market Proxy)."
+    // );
     try {
       const btcCandles = await client.candles({
         symbol: "BTCUSDT",
