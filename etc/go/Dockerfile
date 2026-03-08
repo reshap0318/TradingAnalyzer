@@ -1,0 +1,34 @@
+# Dockerfile for TradingBot Go Application with Air (Hot Reload)
+FROM golang:1.25.0-alpine
+
+# Install air for hot reload and other dependencies
+RUN apk add --no-cache \
+    git \
+    curl \
+    gcc \
+    musl-dev \
+    && go install github.com/air-verse/air@latest
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files first for better caching
+COPY be/go.mod be/go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy the rest of the application code
+COPY be/ ./
+
+# Copy air configuration
+COPY be/.air-linux.toml .air.toml
+
+# Expose application port
+EXPOSE 8000
+
+# Set environment variable to use testnet by default
+ENV BINANCE_IS_TESTNET=true
+
+# Run air for hot reload
+CMD ["air", "-c", ".air-linux.toml"]

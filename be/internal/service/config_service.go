@@ -1,0 +1,139 @@
+package service
+
+import (
+	"github.com/gin-gonic/gin"
+	"github.com/reshap/trading-bot/internal/dtos"
+	"github.com/reshap/trading-bot/internal/helpers"
+	"github.com/reshap/trading-bot/internal/models"
+)
+
+func (s *Services) ConfigGetAll(ctx *gin.Context) (res []dtos.ConfigData, err error) {
+	configs, err := s.repo.Config.FindAll(nil)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, cfg := range configs {
+		res = append(res, dtos.ConfigData{
+			ID:        cfg.ID,
+			ConfigKey: cfg.ConfigKey,
+			Value:     cfg.Value,
+			Category:  cfg.Category,
+			CreatedAt: helpers.FormatDateTime(cfg.CreatedAt),
+		})
+	}
+
+	return
+}
+
+func (s *Services) ConfigGetByID(ctx *gin.Context, id uint) (res *dtos.ConfigData, err error) {
+	config, err := s.repo.Config.FindByID(nil, id)
+	if err != nil {
+		return nil, err
+	}
+
+	res = &dtos.ConfigData{
+		ID:        config.ID,
+		ConfigKey: config.ConfigKey,
+		Value:     config.Value,
+		Category:  config.Category,
+		CreatedAt: helpers.FormatDateTime(config.CreatedAt),
+	}
+
+	return
+}
+
+func (s *Services) ConfigCreate(ctx *gin.Context, req *dtos.ConfigRequest) (res *dtos.ConfigData, err error) {
+	config := &models.Config{
+		ConfigKey:  req.ConfigKey,
+		Value:      req.Value,
+		Category:   req.Category,
+	}
+
+	config, err = s.repo.Config.Create(nil, config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dtos.ConfigData{
+		ID:        config.ID,
+		ConfigKey: config.ConfigKey,
+		Value:     config.Value,
+		Category:  config.Category,
+		CreatedAt: helpers.FormatDateTime(config.CreatedAt),
+	}, nil
+}
+
+func (s *Services) ConfigUpdate(ctx *gin.Context, id uint, req *dtos.ConfigRequest) (res *dtos.ConfigData, err error) {
+	// Get existing config first
+	existing, err := s.repo.Config.FindByID(nil, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update with filter using existing key and category
+	filter := &models.Config{ConfigKey: existing.ConfigKey, Category: existing.Category}
+	config := &models.Config{
+		ConfigKey:  req.ConfigKey,
+		Value:      req.Value,
+		Category:   req.Category,
+	}
+
+	_, err = s.repo.Config.Update(nil, filter, config)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch updated record
+	updated, err := s.repo.Config.FindByID(nil, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dtos.ConfigData{
+		ID:        updated.ID,
+		ConfigKey: updated.ConfigKey,
+		Value:     updated.Value,
+		Category:  updated.Category,
+		CreatedAt: helpers.FormatDateTime(updated.CreatedAt),
+	}, nil
+}
+
+func (s *Services) ConfigDelete(ctx *gin.Context, id uint) (res *dtos.ConfigData, err error) {
+	config, err := s.repo.Config.FindByID(nil, id)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = s.repo.Config.Delete(nil, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dtos.ConfigData{
+		ID:        config.ID,
+		ConfigKey: config.ConfigKey,
+		Value:     config.Value,
+		Category:  config.Category,
+		CreatedAt: helpers.FormatDateTime(config.CreatedAt),
+	}, nil
+}
+
+func (s *Services) ConfigGetByCategory(ctx *gin.Context, category string) (res []dtos.ConfigData, err error) {
+	configs, err := s.repo.Config.FindByCategory(nil, category)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, cfg := range configs {
+		res = append(res, dtos.ConfigData{
+			ID:        cfg.ID,
+			ConfigKey: cfg.ConfigKey,
+			Value:     cfg.Value,
+			Category:  cfg.Category,
+			CreatedAt: helpers.FormatDateTime(cfg.CreatedAt),
+		})
+	}
+
+	return
+}

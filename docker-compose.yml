@@ -1,0 +1,70 @@
+name: trading-bot
+services:
+  # Go Application with Air (Hot Reload)
+  app:
+    build:
+      context: .
+      dockerfile: etc/go/Dockerfile
+    container_name: trading-bot
+    # ports:
+    #   - "8000:8000"
+    expose:
+      - "8000"
+    env_file:
+      - ./be/.env
+    volumes:
+      - ./be:/app
+    restart: unless-stopped
+    networks:
+      - trading-bot-network
+      - mysql-network
+      - redis-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8000/health",
+        ]
+      interval: 180s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  script-bot:
+    image: alpine:latest
+    container_name: trading-worker
+    volumes:
+      - ./etc/script:/app
+    working_dir: /app
+    networks:
+      - trading-bot-network
+    depends_on:
+      - app
+    entrypoint:
+      [
+        "/bin/sh",
+        "-c",
+        "apk add --no-cache curl bash && chmod +x bot.sh && ./bot.sh",
+      ]
+
+networks:
+  trading-bot-network:
+    driver: bridge
+    name: trading-bot-network
+  mysql-network:
+    driver: bridge
+    name: mysql-network
+    external: true
+  redis-network:
+    driver: bridge
+    name: redis-network
+    external: true
