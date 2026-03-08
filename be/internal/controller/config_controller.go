@@ -104,3 +104,13 @@ func (c *Controller) ConfigGetByCategory(ctx *gin.Context) {
 
 	helpers.ResponsedWithData(ctx, 200, "success", configs)
 }
+
+func (c *Controller) ConfigReload(ctx *gin.Context) {
+	result, err := c.srvc.ConfigReload(ctx)
+	if err != nil {
+		helpers.RespondError(ctx, err)
+		return
+	}
+
+	helpers.ResponsedWithData(ctx, 200, "Configuration reloaded successfully", result)
+}

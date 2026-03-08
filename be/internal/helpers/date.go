@@ -74,3 +74,8 @@ func FormatWIBDefault(t time.Time) string {
 func GetCurrentWIB() time.Time {
 	return time.Now().In(GetWIBLocation())
 }
+
+// GetCurrentDateTime returns current datetime as string in "2006-01-02 15:04:05" format
+func GetCurrentDateTime() string {
+	return time.Now().Format(DateTimeLayout)
+}

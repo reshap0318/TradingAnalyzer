@@ -16,5 +16,6 @@ func RegisterConfigRoutes(router *gin.RouterGroup, ctrl *controller.Controller) 
 		configGroup.POST("", ctrl.ConfigCreate)
 		configGroup.PUT("/:id", ctrl.ConfigUpdate)
 		configGroup.DELETE("/:id", ctrl.ConfigDelete)
+		configGroup.POST("/reload", ctrl.ConfigReload)
 	}
 }

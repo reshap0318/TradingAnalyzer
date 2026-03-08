@@ -73,6 +73,11 @@ func (c *Client) SetCacheConfig(cacheCfg *CacheConfig) {
 	c.cacheCfg = cacheCfg
 }
 
+// GetConfig returns the current Binance configuration
+func (c *Client) GetConfig() *Config {
+	return c.config
+}
+
 // GetContextWithTimeout creates a context with timeout
 func (c *Client) GetContextWithTimeout(timeout time.Duration) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), timeout)

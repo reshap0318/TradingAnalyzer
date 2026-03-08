@@ -2,6 +2,8 @@ package service
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/reshap/trading-bot/internal/clients/binance"
+	"github.com/reshap/trading-bot/internal/config"
 	"github.com/reshap/trading-bot/internal/dtos"
 	"github.com/reshap/trading-bot/internal/helpers"
 	"github.com/reshap/trading-bot/internal/models"
@@ -155,4 +157,45 @@ func (s *Services) ConfigGetByCategory(ctx *gin.Context, category string) (res [
 	}
 
 	return
+}
+
+// ConfigReload reloads configuration from database and updates running services
+// This function:
+// 1. Loads config from database using LoadConfigDB
+// 2. Updates the config pointer in services
+// 3. Recreates BinanceClient with new config (if BINANCE_TESTNET changed)
+func (s *Services) ConfigReload(ctx *gin.Context) (res *dtos.ConfigData, err error) {
+	// 1. Load config from database (this returns new config struct)
+	newCfg := config.LoadConfigDB(s)
+
+	// 2. Update config reference in services
+	// Note: This uses reflection-like approach by updating the cfg field
+	// The cfg field is private, so we need to update it via the service struct
+	s.cfg = newCfg
+
+	// 3. Reload BinanceClient if testnet setting changed
+	// Check if we need to recreate the client
+	if s.BinanceClient != nil {
+		oldConfig := s.BinanceClient.GetConfig()
+		needReload := oldConfig.IsTestnet != newCfg.BINANCE.IsTestnet ||
+			oldConfig.APIKey != newCfg.BINANCE.APIKey ||
+			oldConfig.SecretKey != newCfg.BINANCE.SecretKey
+
+		if needReload {
+			// Close old client (cleanup resources)
+			s.BinanceClient.Close()
+
+			// Create new client with updated config
+			s.BinanceClient = binance.NewClient(&newCfg.BINANCE, s.RedisClient)
+		}
+	}
+
+	// Return success response
+	return &dtos.ConfigData{
+		ID:        0, // Not applicable for reload operation
+		ConfigKey: "RELOAD",
+		Value:     "success",
+		Category:  "SYSTEM",
+		CreatedAt: helpers.GetCurrentDateTime(),
+	}, nil
 }
