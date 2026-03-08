@@ -5,6 +5,7 @@ import (
 	"github.com/reshap/trading-bot/internal/dtos"
 	"github.com/reshap/trading-bot/internal/helpers"
 	"github.com/reshap/trading-bot/internal/models"
+	"gorm.io/gorm"
 )
 
 func (s *Services) ConfigGetAll(ctx *gin.Context) (res []dtos.ConfigData, err error) {
@@ -44,17 +45,26 @@ func (s *Services) ConfigGetByID(ctx *gin.Context, id uint) (res *dtos.ConfigDat
 }
 
 func (s *Services) ConfigCreate(ctx *gin.Context, req *dtos.ConfigRequest) (res *dtos.ConfigData, err error) {
-	config := &models.Config{
-		ConfigKey:  req.ConfigKey,
-		Value:      req.Value,
-		Category:   req.Category,
-	}
+	result, err := s.repo.TxManager.WithinTransactionWithResult(func(tx *gorm.DB) (interface{}, error) {
+		config := &models.Config{
+			ConfigKey:  req.ConfigKey,
+			Value:      req.Value,
+			Category:   req.Category,
+		}
 
-	config, err = s.repo.Config.Create(nil, config)
+		config, err = s.repo.Config.Create(tx, config)
+		if err != nil {
+			return nil, err
+		}
+
+		return config, nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
 
+	config := result.(*models.Config)
 	return &dtos.ConfigData{
 		ID:        config.ID,
 		ConfigKey: config.ConfigKey,
@@ -65,31 +75,40 @@ func (s *Services) ConfigCreate(ctx *gin.Context, req *dtos.ConfigRequest) (res 
 }
 
 func (s *Services) ConfigUpdate(ctx *gin.Context, id uint, req *dtos.ConfigRequest) (res *dtos.ConfigData, err error) {
-	// Get existing config first
-	existing, err := s.repo.Config.FindByID(nil, id)
+	result, err := s.repo.TxManager.WithinTransactionWithResult(func(tx *gorm.DB) (interface{}, error) {
+		// Get existing config first
+		existing, err := s.repo.Config.FindByID(tx, id)
+		if err != nil {
+			return nil, err
+		}
+
+		// Update with filter using existing key and category
+		filter := &models.Config{ConfigKey: existing.ConfigKey, Category: existing.Category}
+		config := &models.Config{
+			ConfigKey:  req.ConfigKey,
+			Value:      req.Value,
+			Category:   req.Category,
+		}
+
+		_, err = s.repo.Config.Update(tx, filter, config)
+		if err != nil {
+			return nil, err
+		}
+
+		// Fetch updated record
+		updated, err := s.repo.Config.FindByID(tx, id)
+		if err != nil {
+			return nil, err
+		}
+
+		return updated, nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	// Update with filter using existing key and category
-	filter := &models.Config{ConfigKey: existing.ConfigKey, Category: existing.Category}
-	config := &models.Config{
-		ConfigKey:  req.ConfigKey,
-		Value:      req.Value,
-		Category:   req.Category,
-	}
-
-	_, err = s.repo.Config.Update(nil, filter, config)
-	if err != nil {
-		return nil, err
-	}
-
-	// Fetch updated record
-	updated, err := s.repo.Config.FindByID(nil, id)
-	if err != nil {
-		return nil, err
-	}
-
+	updated := result.(*models.Config)
 	return &dtos.ConfigData{
 		ID:        updated.ID,
 		ConfigKey: updated.ConfigKey,
