@@ -482,74 +482,264 @@ func seedIndicator(db *gorm.DB) {
 }
 
 func seedStrategy(db *gorm.DB) {
-	// Check if strategy already exists
-	var existing models.Strategy
-	result := db.Where(models.Strategy{Name: "Day Trading Pro"}).First(&existing)
+	// Indicator IDs (from seedIndicator):
+	// 1=MA, 2=MACD, 3=RSI, 4=Stochastic, 5=BB, 6=Volume, 7=Candle Patterns, 8=ATR, 9=Trend Bonus
 
-	if result.Error == gorm.ErrRecordNotFound {
-		// 1. Create main strategy
-		strategy := models.Strategy{
+	type tfSeed struct {
+		Name   string
+		Weight float64
+	}
+	type indSeed struct {
+		ID     uint
+		Weight float64
+	}
+	type mmSeed struct {
+		Param string
+		Value string
+	}
+	type strategySeed struct {
+		Name       string
+		PrimaryTF  string
+		Timeframes []tfSeed
+		Indicators []indSeed
+		MoneyMgmt  []mmSeed
+	}
+
+	strategies := []strategySeed{
+		// ──────────────────────────────────────────────
+		// 1. Scalper Pro - Ultra short-term, high frequency
+		// ──────────────────────────────────────────────
+		{
+			Name:      "Scalper Pro",
+			PrimaryTF: "1m",
+			Timeframes: []tfSeed{
+				{"1m", 0.50}, {"5m", 0.30}, {"15m", 0.20},
+			},
+			Indicators: []indSeed{
+				{1, 0.20}, {2, 0.15}, {3, 0.18}, {4, 0.12},
+				{5, 0.15}, {6, 0.10}, {7, 0.05}, {8, 0.02}, {9, 0.03},
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "20"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_POSITION_SIZE", "0.10"},
+				{"RISK_REWARD_RATIO", "1.5"}, {"LEVERAGE", "10"},
+				{"ORDER_EXPIRATION_HOURS", "1"}, {"IS_AGRESSIVE", "true"},
+				{"MAX_RISK_PER_TRADE", "0.02"},
+			},
+		},
+
+		// ──────────────────────────────────────────────
+		// 2. Day Trading Pro - Balanced intraday (IMPROVED)
+		// Fixed: 15m/1h/4h instead of 15m/30m/1h
+		// ──────────────────────────────────────────────
+		{
 			Name:      "Day Trading Pro",
 			PrimaryTF: "15m",
-			IsActive:  true,
-		}
+			Timeframes: []tfSeed{
+				{"5m", 0.10}, {"15m", 0.40}, {"1h", 0.30}, {"4h", 0.20},
+			},
+			Indicators: []indSeed{
+				{1, 0.30}, {2, 0.20}, {3, 0.11}, {4, 0.10},
+				{5, 0.10}, {6, 0.10}, {7, 0.04}, {8, 0.02}, {9, 0.03},
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "45"}, {"MAX_DAILY_TRADES", "20"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_POSITION_SIZE", "0.15"},
+				{"RISK_REWARD_RATIO", "1.5"}, {"LEVERAGE", "5"},
+				{"ORDER_EXPIRATION_HOURS", "4"}, {"IS_AGRESSIVE", "false"},
+				{"MAX_RISK_PER_TRADE", "0.04"},
+			},
+		},
 
-		if err := db.Create(&strategy).Error; err != nil {
-			log.Printf("Failed to create strategy: %v", err)
-			return
-		}
+		// ──────────────────────────────────────────────
+		// 3. Momentum Hunter - Catches strong moves
+		// High MACD+RSI+Volume weight
+		// ──────────────────────────────────────────────
+		{
+			Name:      "Momentum Hunter",
+			PrimaryTF: "15m",
+			Timeframes: []tfSeed{
+				{"15m", 0.40}, {"1h", 0.35}, {"4h", 0.25},
+			},
+			Indicators: []indSeed{
+				{1, 0.18}, {2, 0.25}, {3, 0.20}, {4, 0.08},
+				{5, 0.08}, {6, 0.12}, {7, 0.03}, {8, 0.02}, {9, 0.04},
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "55"}, {"MAX_DAILY_TRADES", "8"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_POSITION_SIZE", "0.12"},
+				{"RISK_REWARD_RATIO", "2.5"}, {"LEVERAGE", "7"},
+				{"ORDER_EXPIRATION_HOURS", "3"}, {"IS_AGRESSIVE", "true"},
+				{"MAX_RISK_PER_TRADE", "0.03"},
+			},
+		},
 
-		// 2. Create strategy timeframes
-		timeframes := []models.StrategyTimeframe{
-			{StrategyID: strategy.ID, TimeframeName: "15m", Weight: 0.50},
-			{StrategyID: strategy.ID, TimeframeName: "30m", Weight: 0.30},
-			{StrategyID: strategy.ID, TimeframeName: "1h", Weight: 0.20},
-		}
+		// ──────────────────────────────────────────────
+		// 4. Swing Trader - Multi-day holds
+		// High MA+Trend weight, low leverage, wide SL
+		// ──────────────────────────────────────────────
+		{
+			Name:      "Swing Trader",
+			PrimaryTF: "4h",
+			Timeframes: []tfSeed{
+				{"4h", 0.40}, {"1d", 0.35}, {"1w", 0.25},
+			},
+			Indicators: []indSeed{
+				{1, 0.30}, {2, 0.22}, {3, 0.12}, {4, 0.08},
+				{5, 0.08}, {6, 0.06}, {7, 0.04}, {8, 0.04}, {9, 0.06},
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "3"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.06"}, {"MAX_POSITION_SIZE", "0.20"},
+				{"RISK_REWARD_RATIO", "3.0"}, {"LEVERAGE", "3"},
+				{"ORDER_EXPIRATION_HOURS", "24"}, {"IS_AGRESSIVE", "false"},
+				{"MAX_RISK_PER_TRADE", "0.04"},
+			},
+		},
 
-		for _, tf := range timeframes {
-			if err := db.Create(&tf).Error; err != nil {
-				log.Printf("Failed to create strategy timeframe: %v", err)
+		// ──────────────────────────────────────────────
+		// 5. Trend Follower - Ride the trend
+		// MA dominant (35%), strong trend bonus
+		// ──────────────────────────────────────────────
+		{
+			Name:      "Trend Follower",
+			PrimaryTF: "1h",
+			Timeframes: []tfSeed{
+				{"1h", 0.40}, {"4h", 0.35}, {"1d", 0.25},
+			},
+			Indicators: []indSeed{
+				{1, 0.35}, {2, 0.20}, {3, 0.10}, {4, 0.05},
+				{5, 0.07}, {6, 0.08}, {7, 0.03}, {8, 0.04}, {9, 0.08},
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "5"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_POSITION_SIZE", "0.18"},
+				{"RISK_REWARD_RATIO", "2.5"}, {"LEVERAGE", "4"},
+				{"ORDER_EXPIRATION_HOURS", "8"}, {"IS_AGRESSIVE", "false"},
+				{"MAX_RISK_PER_TRADE", "0.04"},
+			},
+		},
+
+		// ──────────────────────────────────────────────
+		// 6. Breakout Scalper - Volatility breakout catches
+		// BB+Volume dominant, aggressive entries
+		// ──────────────────────────────────────────────
+		{
+			Name:      "Breakout Scalper",
+			PrimaryTF: "5m",
+			Timeframes: []tfSeed{
+				{"5m", 0.50}, {"15m", 0.30}, {"1h", 0.20},
+			},
+			Indicators: []indSeed{
+				{1, 0.15}, {2, 0.15}, {3, 0.12}, {4, 0.08},
+				{5, 0.20}, {6, 0.18}, {7, 0.05}, {8, 0.04}, {9, 0.03},
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "55"}, {"MAX_DAILY_TRADES", "15"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_POSITION_SIZE", "0.10"},
+				{"RISK_REWARD_RATIO", "2.0"}, {"LEVERAGE", "8"},
+				{"ORDER_EXPIRATION_HOURS", "2"}, {"IS_AGRESSIVE", "true"},
+				{"MAX_RISK_PER_TRADE", "0.02"},
+			},
+		},
+
+		// ──────────────────────────────────────────────
+		// 7. Conservative Intraday - Low risk, steady returns
+		// Wider TF gaps (30m/2h/8h), low leverage
+		// ──────────────────────────────────────────────
+		{
+			Name:      "Conservative Intraday",
+			PrimaryTF: "30m",
+			Timeframes: []tfSeed{
+				{"30m", 0.35}, {"2h", 0.35}, {"8h", 0.30},
+			},
+			Indicators: []indSeed{
+				{1, 0.28}, {2, 0.18}, {3, 0.15}, {4, 0.12},
+				{5, 0.10}, {6, 0.07}, {7, 0.04}, {8, 0.03}, {9, 0.03},
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "55"}, {"MAX_DAILY_TRADES", "5"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_POSITION_SIZE", "0.10"},
+				{"RISK_REWARD_RATIO", "2.0"}, {"LEVERAGE", "3"},
+				{"ORDER_EXPIRATION_HOURS", "6"}, {"IS_AGRESSIVE", "false"},
+				{"MAX_RISK_PER_TRADE", "0.02"},
+			},
+		},
+
+		// ──────────────────────────────────────────────
+		// 8. Meme Coin Sniper - Optimized for volatile meme coins
+		// Volume+RSI heavy (meme = volume driven), aggressive
+		// ──────────────────────────────────────────────
+		{
+			Name:      "Meme Coin Sniper",
+			PrimaryTF: "15m",
+			Timeframes: []tfSeed{
+				{"15m", 0.45}, {"1h", 0.35}, {"4h", 0.20},
+			},
+			Indicators: []indSeed{
+				{1, 0.15}, {2, 0.18}, {3, 0.18}, {4, 0.10},
+				{5, 0.12}, {6, 0.15}, {7, 0.06}, {8, 0.03}, {9, 0.03},
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "8"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.06"}, {"MAX_POSITION_SIZE", "0.12"},
+				{"RISK_REWARD_RATIO", "2.0"}, {"LEVERAGE", "5"},
+				{"ORDER_EXPIRATION_HOURS", "3"}, {"IS_AGRESSIVE", "true"},
+				{"MAX_RISK_PER_TRADE", "0.04"},
+			},
+		},
+	}
+
+	for _, s := range strategies {
+		var existing models.Strategy
+		result := db.Where(models.Strategy{Name: s.Name}).First(&existing)
+
+		if result.Error == gorm.ErrRecordNotFound {
+			strategy := models.Strategy{
+				Name:      s.Name,
+				PrimaryTF: s.PrimaryTF,
+				IsActive:  true,
 			}
-		}
-
-		// 3. Create strategy indicators
-		indicators := []models.StrategyIndicator{
-			{StrategyID: strategy.ID, IndicatorID: 1, Weight: 0.30}, // Moving Average
-			{StrategyID: strategy.ID, IndicatorID: 2, Weight: 0.22}, // MACD
-			{StrategyID: strategy.ID, IndicatorID: 3, Weight: 0.13}, // RSI
-			{StrategyID: strategy.ID, IndicatorID: 4, Weight: 0.10}, // Stochastic
-			{StrategyID: strategy.ID, IndicatorID: 5, Weight: 0.10}, // Bollinger Bands
-			{StrategyID: strategy.ID, IndicatorID: 6, Weight: 0.05}, // Volume
-			{StrategyID: strategy.ID, IndicatorID: 7, Weight: 0.04}, // Candle Patterns
-			{StrategyID: strategy.ID, IndicatorID: 8, Weight: 0.02}, // ATR
-			{StrategyID: strategy.ID, IndicatorID: 9, Weight: 0.04}, // Trend Bonus
-		}
-
-		for _, ind := range indicators {
-			if err := db.Create(&ind).Error; err != nil {
-				log.Printf("Failed to create strategy indicator: %v", err)
+			if err := db.Create(&strategy).Error; err != nil {
+				log.Printf("Failed to create strategy '%s': %v", s.Name, err)
+				continue
 			}
-		}
 
-		// 4. Create strategy money management
-		moneyMgmt := []models.StrategyMoneyMgmt{
-			{StrategyID: strategy.ID, Parameter: "MIN_CONFIDENCE", Value: "45"},
-			{StrategyID: strategy.ID, Parameter: "MAX_DAILY_TRADES", Value: "10"},
-			{StrategyID: strategy.ID, Parameter: "MAX_DAILY_LOSS_PERCENT", Value: "0.05"},
-			{StrategyID: strategy.ID, Parameter: "MAX_POSITION_SIZE", Value: "0.15"},
-			{StrategyID: strategy.ID, Parameter: "RISK_REWARD_RATIO", Value: "1.5"},
-			{StrategyID: strategy.ID, Parameter: "LEVERAGE", Value: "5"},
-			{StrategyID: strategy.ID, Parameter: "ORDER_EXPIRATION_HOURS", Value: "4"},
-		}
-
-		for _, mm := range moneyMgmt {
-			if err := db.Create(&mm).Error; err != nil {
-				log.Printf("Failed to create strategy money management: %v", err)
+			for _, tf := range s.Timeframes {
+				if err := db.Create(&models.StrategyTimeframe{
+					StrategyID:    strategy.ID,
+					TimeframeName: tf.Name,
+					Weight:        tf.Weight,
+				}).Error; err != nil {
+					log.Printf("  Failed to create TF %s: %v", tf.Name, err)
+				}
 			}
-		}
 
-		fmt.Println("✓ Created strategy: Day Trading Pro")
-	} else if result.Error != nil {
-		log.Printf("Failed to check strategy: %v", result.Error)
+			for _, ind := range s.Indicators {
+				if err := db.Create(&models.StrategyIndicator{
+					StrategyID:  strategy.ID,
+					IndicatorID: ind.ID,
+					Weight:      ind.Weight,
+				}).Error; err != nil {
+					log.Printf("  Failed to create indicator %d: %v", ind.ID, err)
+				}
+			}
+
+			for _, mm := range s.MoneyMgmt {
+				if err := db.Create(&models.StrategyMoneyMgmt{
+					StrategyID: strategy.ID,
+					Parameter:  mm.Param,
+					Value:      mm.Value,
+				}).Error; err != nil {
+					log.Printf("  Failed to create MM %s: %v", mm.Param, err)
+				}
+			}
+
+			fmt.Printf("✓ Created strategy: %s (Primary: %s)\n", s.Name, s.PrimaryTF)
+		} else if result.Error != nil {
+			log.Printf("Failed to check strategy '%s': %v", s.Name, result.Error)
+		} else {
+			fmt.Printf("⊘ Strategy already exists: %s\n", s.Name)
+		}
 	}
 }

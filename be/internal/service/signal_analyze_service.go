@@ -328,8 +328,8 @@ func (s *Services) buildTradingPlan(
 	primaryKlines []binance.KlineInfo,
 	config *config.MMConfig,
 ) *dtos.TradingPlan {
-	bufferPercent := 0.007        // 0.7% buffer for S/R levels
-	fallbackBufferPercent := 0.02 // 2% fallback buffer if no S/R data
+	bufferPercent := 0.015        // 1.5% buffer for S/R levels
+	fallbackBufferPercent := 0.03 // 3% fallback buffer if no S/R data
 	leverage := config.LEVERAGE
 	isAggressive := config.IS_AGRESSIVE
 
@@ -396,11 +396,13 @@ func (s *Services) buildTradingPlan(
 			})
 
 		} else {
-			// CONSERVATIVE MODE: Single entry at pullback
+			// CONSERVATIVE MODE: Single entry near current price
+			// Uses small buffer below current price for slight discount
 			entries = make([]dtos.TradingPlanEntry, 0, 1)
 
-			// Single entry: 100% at support + buffer
-			entryPrice := support * (1 + bufferPercent)
+			// [OLD] Entry at support + buffer (rollback jika dibutuhkan)
+			// entryPrice := support * (1 + bufferPercent)
+			entryPrice := currentPrice * (1 - bufferPercent/3) // ~0.5% below current price
 			entryValue := tradingCapital
 			leveragedValue := entryValue * float64(leverage)
 			entryQty := leveragedValue / entryPrice
@@ -462,11 +464,13 @@ func (s *Services) buildTradingPlan(
 			})
 
 		} else {
-			// CONSERVATIVE MODE: Single entry at pullback
+			// CONSERVATIVE MODE: Single entry near current price
+			// Uses small buffer above current price for slight discount
 			entries = make([]dtos.TradingPlanEntry, 0, 1)
 
-			// Single entry: 100% at resistance - buffer
-			entryPrice := resistance * (1 - bufferPercent)
+			// [OLD] Entry at resistance - buffer (rollback jika dibutuhkan)
+			// entryPrice := resistance * (1 - bufferPercent)
+			entryPrice := currentPrice * (1 + bufferPercent/3) // ~0.5% above current price
 			entryValue := tradingCapital
 			leveragedValue := entryValue * float64(leverage)
 			entryQty := leveragedValue / entryPrice

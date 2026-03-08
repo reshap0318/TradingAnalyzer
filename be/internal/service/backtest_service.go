@@ -40,15 +40,16 @@ const (
 type backtestOrder struct {
 	TradeNum   int
 	Side       string
-	EntryPrice float64    // Target price from TradingPlan
+	EntryPrice float64 // Target price from TradingPlan
 	Quantity   float64
 	TakeProfit float64
 	StopLoss   float64
 	EntryTime  time.Time  // When the order was created (OPEN)
 	FilledTime *time.Time // When the order was filled (nil = still pending)
 	Capital    float64
-	IsFilled   bool    // false = pending, true = filled
-	Signal     string  // Original signal (STRONG_BUY, BUY, etc.)
+	IsFilled   bool   // false = pending, true = filled
+	JustFilled bool   // true = filled on current candle, skip TP/SL check
+	Signal     string // Original signal (STRONG_BUY, BUY, etc.)
 	Confidence float64
 }
 
@@ -453,6 +454,11 @@ func (s *Services) backtestRunSimulation(
 		candle := primaryKlines[i]
 		candleTime := time.UnixMilli(candle.OpenTime)
 
+		// Reset JustFilled flag at the start of each candle
+		for _, order := range filledOrders {
+			order.JustFilled = false
+		}
+
 		// ──────────────────────────────────────────────────────────
 		// STEP 1: Check EXPIRED on pending orders
 		// ──────────────────────────────────────────────────────────
@@ -487,6 +493,7 @@ func (s *Services) backtestRunSimulation(
 				filledTime := candleTime
 				order.FilledTime = &filledTime
 				order.IsFilled = true
+				order.JustFilled = true // Skip TP/SL check on this candle
 				filledOrders = append(filledOrders, order)
 				backtestLogFilled(order.TradeNum, order, candleTime)
 			} else {
@@ -500,6 +507,13 @@ func (s *Services) backtestRunSimulation(
 		// ──────────────────────────────────────────────────────────
 		var activePositions []*backtestOrder
 		for _, order := range filledOrders {
+			// Skip TP/SL check on the same candle that filled the order
+			// This prevents false SL hits where the fill candle also touches SL
+			if order.JustFilled {
+				activePositions = append(activePositions, order)
+				continue
+			}
+
 			exitReason := backtestCheckTPSL(order, candle)
 			if exitReason != "" {
 				trade := backtestCloseTrade(order, candle, exitReason, candleTime)
