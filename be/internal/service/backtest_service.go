@@ -1,11 +1,9 @@
 package service
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -23,7 +21,7 @@ import (
 
 const (
 	backtestMaxBinanceLimit = 1500
-	backtestBufferPercent   = 20 // 20% extra candles for indicator warmup
+	backtestBufferPercent   = 20  // 20% extra candles for indicator warmup
 	backtestMinCandles      = 150 // Minimum candles needed for indicators
 
 	// Exit reasons
@@ -31,21 +29,27 @@ const (
 	exitReasonHitSL         = "HIT_SL"
 	exitReasonClosedEnd     = "CLOSED_END"
 	exitReasonSignalReverse = "SIGNAL_REVERSE"
+	exitReasonExpired       = "EXPIRED"
 )
 
 // ============================================================================
 // Internal types for simulation
 // ============================================================================
 
-// backtestPosition represents an open position during simulation
-type backtestPosition struct {
+// backtestOrder represents a pending or filled order during simulation
+type backtestOrder struct {
+	TradeNum   int
 	Side       string
-	EntryPrice float64
+	EntryPrice float64    // Target price from TradingPlan
 	Quantity   float64
 	TakeProfit float64
 	StopLoss   float64
-	EntryTime  time.Time
+	EntryTime  time.Time  // When the order was created (OPEN)
+	FilledTime *time.Time // When the order was filled (nil = still pending)
 	Capital    float64
+	IsFilled   bool    // false = pending, true = filled
+	Signal     string  // Original signal (STRONG_BUY, BUY, etc.)
+	Confidence float64
 }
 
 // ============================================================================
@@ -61,7 +65,6 @@ func (s *Services) BacktestGetAll(ctx *gin.Context) (res []dtos.BacktestListItem
 
 	res = make([]dtos.BacktestListItem, len(backtests))
 	for i, bt := range backtests {
-		// Load strategy name
 		strategyName := ""
 		strategy, stratErr := s.StrategyGetByID(ctx, bt.StrategyID)
 		if stratErr == nil && strategy != nil {
@@ -92,21 +95,19 @@ func (s *Services) BacktestGetByID(ctx *gin.Context, id uint) (res *dtos.Backtes
 		return nil, fmt.Errorf("backtest not found: %w", err)
 	}
 
-	// Load trades
 	trades, err := s.repo.BacktestTrade.FindByBacktestID(nil, bt.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load trades: %w", err)
 	}
 
-	// Load strategy detail
 	strategy, _ := s.StrategyGetByID(ctx, bt.StrategyID)
 
-	// Convert trades to DTO
 	tradeDTOs := make([]dtos.BacktestTradeDTO, len(trades))
 	for i, t := range trades {
 		tradeDTOs[i] = dtos.BacktestTradeDTO{
 			ID:              t.ID,
 			EntryTime:       t.EntryTime,
+			FilledTime:      t.FilledTime,
 			ExitTime:        t.ExitTime,
 			Side:            t.Side,
 			EntryPrice:      t.EntryPrice,
@@ -149,23 +150,18 @@ func (s *Services) BacktestGetByID(ctx *gin.Context, id uint) (res *dtos.Backtes
 
 // BacktestDelete deletes a backtest and its trades
 func (s *Services) BacktestDelete(ctx *gin.Context, id uint) (res *dtos.BacktestResponse, err error) {
-	// Get backtest first
 	res, err = s.BacktestGetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
 	_, err = s.repo.TxManager.WithinTransactionWithResult(func(tx *gorm.DB) (interface{}, error) {
-		// Delete trades first (child records)
 		if err := s.repo.BacktestTrade.DeleteByBacktestID(tx, id); err != nil {
 			return nil, fmt.Errorf("failed to delete trades: %w", err)
 		}
-
-		// Delete backtest
 		if _, err := s.repo.Backtest.Delete(tx, id); err != nil {
 			return nil, fmt.Errorf("failed to delete backtest: %w", err)
 		}
-
 		return nil, nil
 	})
 
@@ -198,7 +194,7 @@ func (s *Services) BacktestCreate(ctx *gin.Context, req *dtos.BacktestRequest) (
 	mmConfig := s.getConfigMM(strategy)
 
 	fmt.Printf("📊 [BACKTEST] Strategy: \"%s\" (ID: %d) | Capital: $%.2f\n", strategy.StrategyName, strategy.ID, req.Capital)
-	fmt.Printf("⚙️  [BACKTEST] Leverage: %dx | Mode: %s\n", mmConfig.LEVERAGE, backtestGetMode(mmConfig.IS_AGRESSIVE))
+	fmt.Printf("⚙️  [BACKTEST] Leverage: %dx | Mode: %s | Expiration: %dh\n", mmConfig.LEVERAGE, backtestGetMode(mmConfig.IS_AGRESSIVE), mmConfig.ORDER_EXPIRATION_HOURS)
 
 	// 3. Calculate time range
 	endTime := time.Now()
@@ -264,6 +260,7 @@ func (s *Services) BacktestCreate(ctx *gin.Context, req *dtos.BacktestRequest) (
 	fmt.Println("📊 [BACKTEST] ═══════════════════════════════════════════")
 	fmt.Printf("   ├── Total Trades:  %d\n", stats.totalTrades)
 	fmt.Printf("   ├── Win/Loss:      %dW / %dL (%.1f%%)\n", stats.winningTrades, stats.losingTrades, stats.winRate)
+	fmt.Printf("   ├── Expired:       %d\n", stats.expiredTrades)
 	fmt.Printf("   ├── Total PnL:     %+.2f (%.2f%%)\n", stats.totalPnL, stats.totalPnLPercent)
 	fmt.Printf("   ├── Profit Factor: %.2f\n", stats.profitFactor)
 	fmt.Printf("   └── Max Drawdown:  %.2f\n", stats.maxDrawdown)
@@ -295,7 +292,6 @@ func (s *Services) BacktestCreate(ctx *gin.Context, req *dtos.BacktestRequest) (
 			return nil, fmt.Errorf("failed to save backtest: %w", err)
 		}
 
-		// Save trades
 		for _, trade := range completedTrades {
 			trade.BacktestID = backtest.ID
 			_, err = s.repo.BacktestTrade.Create(tx, &trade)
@@ -333,8 +329,7 @@ func (s *Services) backtestFetchAllKlines(
 	startTime time.Time,
 	strategy *dtos.StrategyData,
 ) (map[string][]binance.KlineInfo, error) {
-	// Get timeframe in_minutes from strategy timeframes via database
-	timeframeMap := make(map[string]int) // tf_name -> in_minutes
+	timeframeMap := make(map[string]int)
 	for _, tf := range strategy.Timeframes {
 		tfModel, err := s.repo.Timeframe.FindByField(nil, &models.Timeframe{Name: tf.TimeframeName})
 		if err != nil || len(tfModel) == 0 {
@@ -343,7 +338,6 @@ func (s *Services) backtestFetchAllKlines(
 		timeframeMap[tf.TimeframeName] = tfModel[0].InMinutes
 	}
 
-	// Fetch klines for each timeframe
 	results := make(map[string][]binance.KlineInfo)
 
 	for _, tf := range strategy.Timeframes {
@@ -351,7 +345,6 @@ func (s *Services) backtestFetchAllKlines(
 		candlesPerDay := (24 * 60) / tfMinutes
 		totalNeeded := (days * candlesPerDay) + (days * candlesPerDay * backtestBufferPercent / 100)
 
-		// Ensure minimum candles for indicator calculation
 		if totalNeeded < backtestMinCandles {
 			totalNeeded = backtestMinCandles
 		}
@@ -386,11 +379,9 @@ func (s *Services) backtestFetchKlinesBatched(
 	startTime time.Time,
 ) ([]binance.KlineInfo, error) {
 	if totalNeeded <= backtestMaxBinanceLimit {
-		// Single request is enough
-		return s.backtestFetchKlinesWithStartTime(symbol, interval, totalNeeded, startTime.UnixMilli())
+		return s.BinanceClient.GetKlinesWithStartTime(symbol, interval, totalNeeded, startTime.UnixMilli())
 	}
 
-	// Need multiple batches
 	var allKlines []binance.KlineInfo
 	currentStartTime := startTime.UnixMilli()
 	remaining := totalNeeded
@@ -401,7 +392,7 @@ func (s *Services) backtestFetchKlinesBatched(
 			limit = backtestMaxBinanceLimit
 		}
 
-		klines, err := s.backtestFetchKlinesWithStartTime(symbol, interval, limit, currentStartTime)
+		klines, err := s.BinanceClient.GetKlinesWithStartTime(symbol, interval, limit, currentStartTime)
 		if err != nil {
 			return nil, err
 		}
@@ -413,12 +404,10 @@ func (s *Services) backtestFetchKlinesBatched(
 		allKlines = append(allKlines, klines...)
 		remaining -= len(klines)
 
-		// Move startTime to after the last received candle
 		lastCandle := klines[len(klines)-1]
 		currentStartTime = lastCandle.CloseTime + 1
 	}
 
-	// Sort by OpenTime to ensure correct order
 	sort.Slice(allKlines, func(i, j int) bool {
 		return allKlines[i].OpenTime < allKlines[j].OpenTime
 	})
@@ -426,48 +415,16 @@ func (s *Services) backtestFetchKlinesBatched(
 	return allKlines, nil
 }
 
-// backtestFetchKlinesWithStartTime fetches klines with startTime parameter
-// This is a helper function, NOT modifying binance/service.go
-func (s *Services) backtestFetchKlinesWithStartTime(
-	symbol string,
-	interval string,
-	limit int,
-	startTimeMs int64,
-) ([]binance.KlineInfo, error) {
-	ctx := context.Background()
-
-	resp, err := s.BinanceClient.GetAPIClient().NewKlinesService().
-		Symbol(symbol).
-		Interval(interval).
-		StartTime(startTimeMs).
-		Limit(limit).
-		Do(ctx)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to get klines for %s %s: %w", symbol, interval, err)
-	}
-
-	klines := make([]binance.KlineInfo, len(resp))
-	for i, k := range resp {
-		klines[i] = binance.KlineInfo{
-			OpenTime:  k.OpenTime,
-			Open:      backtestParseFloat(k.Open),
-			High:      backtestParseFloat(k.High),
-			Low:       backtestParseFloat(k.Low),
-			Close:     backtestParseFloat(k.Close),
-			Volume:    backtestParseFloat(k.Volume),
-			CloseTime: k.CloseTime,
-		}
-	}
-
-	return klines, nil
-}
-
 // ============================================================================
 // Helper: Simulation Engine
 // ============================================================================
 
-// backtestRunSimulation runs the candle-by-candle simulation
+// backtestRunSimulation runs the candle-by-candle simulation with pending order lifecycle
+// Flow: Signal → OPEN (pending) → FILLED (price hit entry) → HIT_TP/HIT_SL/CLOSED_END
+//
+//	or → EXPIRED (not filled within ORDER_EXPIRATION_HOURS)
+//
+// Aggressive mode: entry 1 at current price (instant fill), entry 2 at support (pending)
 func (s *Services) backtestRunSimulation(
 	capital float64,
 	strategy *dtos.StrategyData,
@@ -477,21 +434,93 @@ func (s *Services) backtestRunSimulation(
 	mmConfig *config.MMConfig,
 ) []models.BacktestTrade {
 	var completedTrades []models.BacktestTrade
-	var currentPosition *backtestPosition
+	var pendingOrders []*backtestOrder // Orders waiting to be filled
+	var filledOrders []*backtestOrder  // Active filled positions
 	tradeCounter := 0
 	tradCapital := capital
+	expirationHours := int(mmConfig.ORDER_EXPIRATION_HOURS)
+	if expirationHours <= 0 {
+		expirationHours = 4 // Default: 4 hours
+	}
 
-	// We need at least backtestMinCandles candles to calculate indicators
+	// Need minimum candles to calculate indicators
 	startIdx := backtestMinCandles
 	if startIdx >= len(primaryKlines) {
-		startIdx = len(primaryKlines) / 2 // Use at least half the data for simulation
+		startIdx = len(primaryKlines) / 2
 	}
 
 	for i := startIdx; i < len(primaryKlines); i++ {
 		candle := primaryKlines[i]
 		candleTime := time.UnixMilli(candle.OpenTime)
 
-		// Build subset klines up to this candle for each timeframe
+		// ──────────────────────────────────────────────────────────
+		// STEP 1: Check EXPIRED on pending orders
+		// ──────────────────────────────────────────────────────────
+		var remainingPending []*backtestOrder
+		for _, order := range pendingOrders {
+			elapsed := candleTime.Sub(order.EntryTime)
+			if elapsed.Hours() >= float64(expirationHours) {
+				trade := backtestCreateExpiredTrade(order, candleTime)
+				backtestLogExpired(order.TradeNum, order, candleTime, expirationHours)
+				completedTrades = append(completedTrades, trade)
+			} else {
+				remainingPending = append(remainingPending, order)
+			}
+		}
+		pendingOrders = remainingPending
+
+		// ──────────────────────────────────────────────────────────
+		// STEP 2: Check FILL on pending orders
+		// ──────────────────────────────────────────────────────────
+		var stillPending []*backtestOrder
+		for _, order := range pendingOrders {
+			filled := false
+			if order.Side == "BUY" {
+				// BUY: filled when candle low dips to entry price (reaches support)
+				filled = candle.Low <= order.EntryPrice
+			} else {
+				// SELL: filled when candle high rises to entry price (reaches resistance)
+				filled = candle.High >= order.EntryPrice
+			}
+
+			if filled {
+				filledTime := candleTime
+				order.FilledTime = &filledTime
+				order.IsFilled = true
+				filledOrders = append(filledOrders, order)
+				backtestLogFilled(order.TradeNum, order, candleTime)
+			} else {
+				stillPending = append(stillPending, order)
+			}
+		}
+		pendingOrders = stillPending
+
+		// ──────────────────────────────────────────────────────────
+		// STEP 3: Check TP/SL on FILLED positions
+		// ──────────────────────────────────────────────────────────
+		var activePositions []*backtestOrder
+		for _, order := range filledOrders {
+			exitReason := backtestCheckTPSL(order, candle)
+			if exitReason != "" {
+				trade := backtestCloseTrade(order, candle, exitReason, candleTime)
+				backtestLogTradeResult(order.TradeNum, &trade, exitReason)
+				completedTrades = append(completedTrades, trade)
+				tradCapital += trade.PnL
+			} else {
+				activePositions = append(activePositions, order)
+			}
+		}
+		filledOrders = activePositions
+
+		// ──────────────────────────────────────────────────────────
+		// STEP 4: Run signal analysis → create new pending orders
+		// ──────────────────────────────────────────────────────────
+		// Skip if we already have pending or filled orders
+		if len(pendingOrders) > 0 || len(filledOrders) > 0 {
+			continue
+		}
+
+		// Build subset klines up to this candle
 		subsetKlines := make(map[string][]binance.KlineInfo)
 		for tf, klines := range allKlines {
 			subset := make([]binance.KlineInfo, 0)
@@ -505,25 +534,8 @@ func (s *Services) backtestRunSimulation(
 			}
 		}
 
-		// Check TP/SL for current position FIRST
-		if currentPosition != nil {
-			exitReason := backtestCheckTPSL(currentPosition, candle)
-			if exitReason != "" {
-				tradeCounter++
-				trade := backtestCloseTrade(currentPosition, candle, exitReason, candleTime)
-
-				// Log trade result
-				backtestLogTradeResult(tradeCounter, &trade, exitReason)
-
-				completedTrades = append(completedTrades, trade)
-				tradCapital += trade.PnL
-				currentPosition = nil
-			}
-		}
-
-		// Run signal analysis on subset
 		analyzeResult, err := s.signalAnalyzeCalculate(
-			"", // symbol not needed for calculation
+			"",
 			tradCapital,
 			strategy,
 			subsetKlines,
@@ -534,80 +546,88 @@ func (s *Services) backtestRunSimulation(
 		}
 
 		signal := analyzeResult.Signal.Signal
-		isValid := analyzeResult.Signal.Valid
-
-		if !isValid {
+		if !analyzeResult.Signal.Valid {
 			continue
 		}
 
-		// Determine action
 		action := ""
 		if signal == "STRONG_BUY" || signal == "BUY" {
 			action = "BUY"
 		} else if signal == "STRONG_SELL" || signal == "SELL" {
 			action = "SELL"
 		}
-
 		if action == "" {
 			continue
 		}
 
-		// Check if we need to reverse position
-		if currentPosition != nil {
-			if (action == "BUY" && currentPosition.Side == "SELL") ||
-				(action == "SELL" && currentPosition.Side == "BUY") {
-				// Reverse: close current position
-				tradeCounter++
-				trade := backtestCloseTrade(currentPosition, candle, exitReasonSignalReverse, candleTime)
-
-				backtestLogTradeResult(tradeCounter, &trade, exitReasonSignalReverse)
-
-				completedTrades = append(completedTrades, trade)
-				tradCapital += trade.PnL
-				currentPosition = nil
-			} else {
-				// Same direction, skip
-				continue
-			}
-		}
-
-		// Open new position
-		if currentPosition == nil && analyzeResult.Signal.TradingPlan != nil {
+		// Create new orders from trading plan
+		if analyzeResult.Signal.TradingPlan != nil {
 			plan := analyzeResult.Signal.TradingPlan
 			if plan.Mode == "WAIT" || len(plan.Entries) == 0 {
 				continue
 			}
 
-			// Use first entry for backtest simulation
-			entry := plan.Entries[0]
-			entryPrice := candle.Close // Use candle close as entry price for simulation
+			for _, entry := range plan.Entries {
+				tradeCounter++
+				entryPrice := entry.EntryPrice
+				isFilled := false
+				var filledTimePtr *time.Time
 
-			tradeCounter++
-			currentPosition = &backtestPosition{
-				Side:       action,
-				EntryPrice: entryPrice,
-				Quantity:   entry.PositionQty,
-				TakeProfit: plan.TakeProfit,
-				StopLoss:   plan.StopLoss,
-				EntryTime:  candleTime,
-				Capital:    entry.PositionValue,
+				// Aggressive mode: entry 1 is at current price (instant fill at candle close)
+				if mmConfig.IS_AGRESSIVE && entry.EntryNumber == 1 {
+					entryPrice = candle.Close
+					isFilled = true
+					ft := candleTime
+					filledTimePtr = &ft
+				}
+
+				order := &backtestOrder{
+					TradeNum:   tradeCounter,
+					Side:       action,
+					EntryPrice: entryPrice,
+					Quantity:   entry.PositionQty,
+					TakeProfit: plan.TakeProfit,
+					StopLoss:   plan.StopLoss,
+					EntryTime:  candleTime,
+					FilledTime: filledTimePtr,
+					Capital:    entry.PositionValue,
+					IsFilled:   isFilled,
+					Signal:     signal,
+					Confidence: analyzeResult.Scoring.Confidence,
+				}
+
+				// Log entry creation
+				backtestLogEntry(order)
+
+				if isFilled {
+					// Aggressive entry 1: directly filled
+					backtestLogFilled(order.TradeNum, order, candleTime)
+					filledOrders = append(filledOrders, order)
+				} else {
+					// Pending order waiting for price to reach entry
+					pendingOrders = append(pendingOrders, order)
+				}
 			}
-
-			// Log entry
-			backtestLogEntry(tradeCounter, currentPosition, signal, analyzeResult.Scoring.Confidence)
 		}
 	}
 
-	// Close any remaining open position at the end
-	if currentPosition != nil {
-		lastCandle := primaryKlines[len(primaryKlines)-1]
-		lastTime := time.UnixMilli(lastCandle.CloseTime)
+	// ──────────────────────────────────────────────────────────
+	// END OF BACKTEST: Close/expire remaining orders
+	// ──────────────────────────────────────────────────────────
+	lastCandle := primaryKlines[len(primaryKlines)-1]
+	lastTime := time.UnixMilli(lastCandle.CloseTime)
 
-		tradeCounter++
-		trade := backtestCloseTrade(currentPosition, lastCandle, exitReasonClosedEnd, lastTime)
+	// Close filled positions at last price
+	for _, order := range filledOrders {
+		trade := backtestCloseTrade(order, lastCandle, exitReasonClosedEnd, lastTime)
+		backtestLogTradeResult(order.TradeNum, &trade, exitReasonClosedEnd)
+		completedTrades = append(completedTrades, trade)
+	}
 
-		backtestLogTradeResult(tradeCounter, &trade, exitReasonClosedEnd)
-
+	// Expire remaining pending orders
+	for _, order := range pendingOrders {
+		trade := backtestCreateExpiredTrade(order, lastTime)
+		backtestLogExpired(order.TradeNum, order, lastTime, expirationHours)
 		completedTrades = append(completedTrades, trade)
 	}
 
@@ -618,69 +638,95 @@ func (s *Services) backtestRunSimulation(
 // Helper: Trade Operations
 // ============================================================================
 
-// backtestCheckTPSL checks if TP or SL is hit on a candle
-func backtestCheckTPSL(pos *backtestPosition, candle binance.KlineInfo) string {
-	if pos.Side == "BUY" {
-		// Long position: TP hit if high >= TP, SL hit if low <= SL
-		if pos.StopLoss > 0 && candle.Low <= pos.StopLoss {
+// backtestCheckTPSL checks if TP or SL is hit on a candle (only for filled positions)
+func backtestCheckTPSL(order *backtestOrder, candle binance.KlineInfo) string {
+	if !order.IsFilled {
+		return ""
+	}
+
+	if order.Side == "BUY" {
+		if order.StopLoss > 0 && candle.Low <= order.StopLoss {
 			return exitReasonHitSL
 		}
-		if pos.TakeProfit > 0 && candle.High >= pos.TakeProfit {
+		if order.TakeProfit > 0 && candle.High >= order.TakeProfit {
 			return exitReasonHitTP
 		}
 	} else {
-		// Short position: TP hit if low <= TP, SL hit if high >= SL
-		if pos.StopLoss > 0 && candle.High >= pos.StopLoss {
+		if order.StopLoss > 0 && candle.High >= order.StopLoss {
 			return exitReasonHitSL
 		}
-		if pos.TakeProfit > 0 && candle.Low <= pos.TakeProfit {
+		if order.TakeProfit > 0 && candle.Low <= order.TakeProfit {
 			return exitReasonHitTP
 		}
 	}
 	return ""
 }
 
-// backtestCloseTrade creates a closed trade from position
-func backtestCloseTrade(pos *backtestPosition, candle binance.KlineInfo, reason string, exitTime time.Time) models.BacktestTrade {
+// backtestCloseTrade creates a closed trade from a filled order
+func backtestCloseTrade(order *backtestOrder, candle binance.KlineInfo, reason string, exitTime time.Time) models.BacktestTrade {
 	var exitPrice float64
 	switch reason {
 	case exitReasonHitTP:
-		exitPrice = pos.TakeProfit
+		exitPrice = order.TakeProfit
 	case exitReasonHitSL:
-		exitPrice = pos.StopLoss
+		exitPrice = order.StopLoss
 	default:
 		exitPrice = candle.Close
 	}
 
-	// Calculate PnL
 	var pnl float64
-	if pos.Side == "BUY" {
-		pnl = (exitPrice - pos.EntryPrice) * pos.Quantity
+	if order.Side == "BUY" {
+		pnl = (exitPrice - order.EntryPrice) * order.Quantity
 	} else {
-		pnl = (pos.EntryPrice - exitPrice) * pos.Quantity
+		pnl = (order.EntryPrice - exitPrice) * order.Quantity
 	}
 
 	pnlPercent := 0.0
-	if pos.Capital > 0 {
-		pnlPercent = (pnl / pos.Capital) * 100
+	if order.Capital > 0 {
+		pnlPercent = (pnl / order.Capital) * 100
 	}
 
-	duration := exitTime.Sub(pos.EntryTime)
-	durationMinutes := int64(duration.Minutes())
+	// Duration from FILLED time (not entry/order creation time)
+	var durationMinutes int64
+	if order.FilledTime != nil {
+		durationMinutes = int64(exitTime.Sub(*order.FilledTime).Minutes())
+	}
 
 	return models.BacktestTrade{
-		EntryTime:       pos.EntryTime,
+		EntryTime:       order.EntryTime,
+		FilledTime:      order.FilledTime,
 		ExitTime:        &exitTime,
-		Side:            pos.Side,
-		EntryPrice:      pos.EntryPrice,
+		Side:            order.Side,
+		EntryPrice:      order.EntryPrice,
 		ExitPrice:       exitPrice,
-		Quantity:        pos.Quantity,
+		Quantity:        order.Quantity,
 		PnL:             helpers.RoundFloat(pnl, 2),
 		PnLPercent:      helpers.RoundFloat(pnlPercent, 2),
-		TakeProfit:      pos.TakeProfit,
-		StopLoss:        pos.StopLoss,
+		TakeProfit:      order.TakeProfit,
+		StopLoss:        order.StopLoss,
 		ExitReason:      reason,
 		Status:          "CLOSED",
+		DurationMinutes: durationMinutes,
+	}
+}
+
+// backtestCreateExpiredTrade creates an expired trade record (PnL = 0)
+func backtestCreateExpiredTrade(order *backtestOrder, expiredTime time.Time) models.BacktestTrade {
+	durationMinutes := int64(expiredTime.Sub(order.EntryTime).Minutes())
+
+	return models.BacktestTrade{
+		EntryTime:       order.EntryTime,
+		ExitTime:        &expiredTime,
+		Side:            order.Side,
+		EntryPrice:      order.EntryPrice,
+		ExitPrice:       0,
+		Quantity:        order.Quantity,
+		PnL:             0,
+		PnLPercent:      0,
+		TakeProfit:      order.TakeProfit,
+		StopLoss:        order.StopLoss,
+		ExitReason:      exitReasonExpired,
+		Status:          "EXPIRED",
 		DurationMinutes: durationMinutes,
 	}
 }
@@ -693,6 +739,7 @@ type backtestStats struct {
 	totalTrades     int
 	winningTrades   int
 	losingTrades    int
+	expiredTrades   int
 	totalPnL        float64
 	totalPnLPercent float64
 	maxDrawdown     float64
@@ -712,8 +759,15 @@ func backtestCalculateStats(trades []models.BacktestTrade, initialCapital float6
 	var totalProfit, totalLoss float64
 	var runningPnL float64
 	var peakPnL float64
+	filledTrades := 0
 
 	for _, trade := range trades {
+		if trade.ExitReason == exitReasonExpired {
+			stats.expiredTrades++
+			continue
+		}
+
+		filledTrades++
 		stats.totalPnL += trade.PnL
 
 		if trade.PnL > 0 {
@@ -724,7 +778,6 @@ func backtestCalculateStats(trades []models.BacktestTrade, initialCapital float6
 			totalLoss += math.Abs(trade.PnL)
 		}
 
-		// Track drawdown
 		runningPnL += trade.PnL
 		if runningPnL > peakPnL {
 			peakPnL = runningPnL
@@ -735,20 +788,19 @@ func backtestCalculateStats(trades []models.BacktestTrade, initialCapital float6
 		}
 	}
 
-	// Calculate percentages
 	stats.totalPnL = helpers.RoundFloat(stats.totalPnL, 2)
 	if initialCapital > 0 {
 		stats.totalPnLPercent = helpers.RoundFloat((stats.totalPnL/initialCapital)*100, 2)
 	}
 
-	if stats.totalTrades > 0 {
-		stats.winRate = helpers.RoundFloat(float64(stats.winningTrades)/float64(stats.totalTrades)*100, 2)
+	if filledTrades > 0 {
+		stats.winRate = helpers.RoundFloat(float64(stats.winningTrades)/float64(filledTrades)*100, 2)
 	}
 
 	if totalLoss > 0 {
 		stats.profitFactor = helpers.RoundFloat(totalProfit/totalLoss, 2)
 	} else if totalProfit > 0 {
-		stats.profitFactor = 999.99 // All wins, no losses
+		stats.profitFactor = 999.99
 	}
 
 	stats.maxDrawdown = helpers.RoundFloat(stats.maxDrawdown, 2)
@@ -760,16 +812,36 @@ func backtestCalculateStats(trades []models.BacktestTrade, initialCapital float6
 // Helper: Console Logging
 // ============================================================================
 
-// backtestLogEntry logs a new trade entry
-func backtestLogEntry(tradeNum int, pos *backtestPosition, signal string, confidence float64) {
-	fmt.Printf("📌 [TRADE #%d] ENTRY %s @ %s\n", tradeNum, pos.Side, pos.EntryTime.Format("2006-01-02 15:04"))
-	fmt.Printf("   ├── Price: $%.4f | Qty: %.4f | Value: $%.2f\n", pos.EntryPrice, pos.Quantity, pos.Capital)
-	fmt.Printf("   ├── TP: $%.4f | SL: $%.4f\n", pos.TakeProfit, pos.StopLoss)
-	fmt.Printf("   └── Confidence: %.1f | Signal: %s\n", confidence, signal)
+// backtestLogEntry logs a new order creation (OPEN)
+func backtestLogEntry(order *backtestOrder) {
+	mode := "PENDING"
+	if order.IsFilled {
+		mode = "INSTANT"
+	}
+	fmt.Printf("📌 [TRADE #%d] ENTRY %s (%s) @ %s\n", order.TradeNum, order.Side, mode, order.EntryTime.Format("2006-01-02 15:04"))
+	fmt.Printf("   ├── Entry Price: $%.4f | Qty: %.4f | Value: $%.2f\n", order.EntryPrice, order.Quantity, order.Capital)
+	fmt.Printf("   ├── TP: $%.4f | SL: $%.4f\n", order.TakeProfit, order.StopLoss)
+	fmt.Printf("   └── Confidence: %.1f | Signal: %s\n", order.Confidence, order.Signal)
 	fmt.Println()
 }
 
-// backtestLogTradeResult logs a trade result
+// backtestLogFilled logs when a pending order is filled
+func backtestLogFilled(tradeNum int, order *backtestOrder, filledTime time.Time) {
+	waited := filledTime.Sub(order.EntryTime)
+	fmt.Printf("✅ [TRADE #%d] FILLED @ %s\n", tradeNum, filledTime.Format("2006-01-02 15:04"))
+	fmt.Printf("   ├── Fill Price: $%.4f\n", order.EntryPrice)
+	fmt.Printf("   └── Waited: %s\n", backtestFormatDuration(int64(waited.Minutes())))
+	fmt.Println()
+}
+
+// backtestLogExpired logs when a pending order expires
+func backtestLogExpired(tradeNum int, order *backtestOrder, expiredTime time.Time, expirationHours int) {
+	fmt.Printf("⏰ [TRADE #%d] EXPIRED @ %s\n", tradeNum, expiredTime.Format("2006-01-02 15:04"))
+	fmt.Printf("   └── Not filled after %dh (ORDER_EXPIRATION_HOURS=%d)\n", expirationHours, expirationHours)
+	fmt.Println()
+}
+
+// backtestLogTradeResult logs a trade result (HIT_TP, HIT_SL, etc.)
 func backtestLogTradeResult(tradeNum int, trade *models.BacktestTrade, reason string) {
 	icon := "✅"
 	if reason == exitReasonHitSL {
@@ -782,7 +854,7 @@ func backtestLogTradeResult(tradeNum int, trade *models.BacktestTrade, reason st
 
 	fmt.Printf("%s [TRADE #%d] %s @ %s\n", icon, tradeNum, reason, trade.ExitTime.Format("2006-01-02 15:04"))
 	fmt.Printf("   ├── Exit: $%.4f | PnL: %+.2f (%+.2f%%)\n", trade.ExitPrice, trade.PnL, trade.PnLPercent)
-	fmt.Printf("   └── Duration: %s\n", backtestFormatDuration(trade.DurationMinutes))
+	fmt.Printf("   └── Duration: %s (from fill)\n", backtestFormatDuration(trade.DurationMinutes))
 	fmt.Println()
 }
 
@@ -808,13 +880,3 @@ func backtestGetMode(isAggressive bool) string {
 	}
 	return "CONSERVATIVE"
 }
-
-// backtestParseFloat parses float string (helper to avoid importing binance internals)
-func backtestParseFloat(s string) float64 {
-	if s == "" {
-		return 0
-	}
-	val, _ := strconv.ParseFloat(s, 64)
-	return val
-}
-

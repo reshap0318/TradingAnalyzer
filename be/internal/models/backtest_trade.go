@@ -9,6 +9,7 @@ type BacktestTrade struct {
 	ID              uint       `gorm:"primaryKey" json:"id"`
 	BacktestID      uint       `gorm:"not null;index" json:"backtest_id"`
 	EntryTime       time.Time  `gorm:"not null" json:"entry_time"`
+	FilledTime      *time.Time `json:"filled_time"`
 	ExitTime        *time.Time `json:"exit_time"`
 	Side            string     `gorm:"size:10;not null" json:"side"`
 	EntryPrice      float64    `gorm:"type:decimal(15,8);not null" json:"entry_price"`

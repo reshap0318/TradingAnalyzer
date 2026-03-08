@@ -42,6 +42,7 @@ type BacktestResponse struct {
 type BacktestTradeDTO struct {
 	ID             uint       `json:"id"`
 	EntryTime      time.Time  `json:"entry_time"`
+	FilledTime     *time.Time `json:"filled_time"`
 	ExitTime       *time.Time `json:"exit_time"`
 	Side           string     `json:"side"`
 	EntryPrice     float64    `json:"entry_price"`

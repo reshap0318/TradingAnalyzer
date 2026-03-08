@@ -99,6 +99,39 @@ func (c *Client) GetKlines(symbol string, interval string, limit int) ([]KlineIn
 	return klines, nil
 }
 
+// GetKlinesWithStartTime gets kline/candlestick data starting from a specific time
+// Used for historical data fetching (e.g., backtesting)
+// No caching - historical data is fetched once and processed in memory
+func (c *Client) GetKlinesWithStartTime(symbol string, interval string, limit int, startTimeMs int64) ([]KlineInfo, error) {
+	ctx := context.Background()
+
+	resp, err := c.apiClient.NewKlinesService().
+		Symbol(symbol).
+		Interval(interval).
+		StartTime(startTimeMs).
+		Limit(limit).
+		Do(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to get klines for %s %s: %v", ErrOrderFailed, symbol, interval, err)
+	}
+
+	klines := make([]KlineInfo, len(resp))
+	for i, k := range resp {
+		klines[i] = KlineInfo{
+			OpenTime:  k.OpenTime,
+			Open:      parseFloat(k.Open),
+			High:      parseFloat(k.High),
+			Low:       parseFloat(k.Low),
+			Close:     parseFloat(k.Close),
+			Volume:    parseFloat(k.Volume),
+			CloseTime: k.CloseTime,
+		}
+	}
+
+	return klines, nil
+}
+
 // GetAllPrices gets current prices for all symbols
 func (c *Client) GetAllPrices() ([]PriceInfo, error) {
 	ctx := context.Background()
