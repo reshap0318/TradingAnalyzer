@@ -82,3 +82,9 @@ func (c *Client) GetContextWithTimeout(timeout time.Duration) (context.Context, 
 func (c *Client) IsCacheAvailable() bool {
 	return c.cache != nil && c.cacheCfg.Enabled
 }
+
+// GetAPIClient returns the underlying Binance futures API client
+// Used for advanced operations that require direct API access (e.g., backtest with startTime)
+func (c *Client) GetAPIClient() *futures.Client {
+	return c.apiClient
+}

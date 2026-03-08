@@ -9,12 +9,10 @@ type Backtest struct {
 	ID              uint       `gorm:"primaryKey" json:"id"`
 	Name            string     `gorm:"size:100;not null" json:"name"`
 	Symbol          string     `gorm:"size:20;not null" json:"symbol"`
-	Interval        string     `gorm:"size:10;not null" json:"interval"`
+	StrategyID      uint       `gorm:"not null" json:"strategy_id"`
 	StartTime       time.Time  `gorm:"not null" json:"start_time"`
 	EndTime         time.Time  `gorm:"not null" json:"end_time"`
 	Capital         float64    `gorm:"type:decimal(20,2);not null" json:"capital"`
-	Leverage        int        `gorm:"default:5" json:"leverage"`
-	IsAggressive    bool       `gorm:"default:false" json:"is_aggressive"`
 
 	// Results
 	TotalTrades     int      `gorm:"default:0" json:"total_trades"`

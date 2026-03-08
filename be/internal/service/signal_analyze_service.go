@@ -137,10 +137,10 @@ func (s *Services) SignalAnalyze(ctx *gin.Context, req *dtos.SignalAnalyzeReques
 	}
 
 	// Build final response
-	return s.signalStrategyCalculate(req.Symbol, tradCapital, strategy, binanceData, thresholds)
+	return s.signalAnalyzeCalculate(req.Symbol, tradCapital, strategy, binanceData, thresholds)
 }
 
-func (s *Services) signalStrategyCalculate(
+func (s *Services) signalAnalyzeCalculate(
 	symbol string,
 	tradCapital float64,
 	strategy *dtos.StrategyData,
