@@ -177,13 +177,11 @@ func (s *Services) BacktestDelete(ctx *gin.Context, id uint) (res *dtos.Backtest
 // Backtest Execution
 // ============================================================================
 
-// BacktestCreate creates and runs a new backtest
+// BacktestCreate creates a new backtest and runs it in the background
 func (s *Services) BacktestCreate(ctx *gin.Context, req *dtos.BacktestRequest) (res *dtos.BacktestResponse, err error) {
-	startExec := time.Now()
-
 	fmt.Println()
 	fmt.Println("🚀 [BACKTEST] ═══════════════════════════════════════════")
-	fmt.Printf("🚀 [BACKTEST] Starting backtest \"%s\" for %s\n", req.Name, req.Symbol)
+	fmt.Printf("🚀 [BACKTEST] Creating backtest \"%s\" for %s\n", req.Name, req.Symbol)
 
 	// 1. Load strategy
 	strategy, err := s.StrategyGetByID(ctx, req.StrategyID)
@@ -194,38 +192,101 @@ func (s *Services) BacktestCreate(ctx *gin.Context, req *dtos.BacktestRequest) (
 	// 2. Get money management config (validated with fallback to defaults)
 	mmConfig := s.getConfigMM(strategy)
 
-	fmt.Printf("📊 [BACKTEST] Strategy: \"%s\" (ID: %d) | Capital: $%.2f\n", strategy.StrategyName, strategy.ID, req.Capital)
-	fmt.Printf("⚙️  [BACKTEST] Leverage: %dx | Mode: %s | Expiration: %dh\n", mmConfig.LEVERAGE, backtestGetMode(mmConfig.IS_AGRESSIVE), mmConfig.ORDER_EXPIRATION_HOURS)
-
 	// 3. Calculate time range
 	endTime := time.Now()
 	startTime := endTime.AddDate(0, 0, -req.Days)
 
-	fmt.Printf("⏱️  [BACKTEST] Period: %d days | Start: %s → End: %s\n",
-		req.Days,
-		startTime.Format("2006-01-02"),
-		endTime.Format("2006-01-02"),
-	)
+	// 4. Create backtest with PENDING status
+	now := time.Now()
+	backtest := &models.Backtest{
+		Name:            req.Name,
+		Symbol:          req.Symbol,
+		StrategyID:      req.StrategyID,
+		StartTime:       startTime,
+		EndTime:         endTime,
+		Capital:         req.Capital,
+		Status:          "PENDING",
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
 
-	// 4. Fetch thresholds
+	_, err = s.repo.TxManager.WithinTransactionWithResult(func(tx *gorm.DB) (interface{}, error) {
+		backtest, err = s.repo.Backtest.Create(tx, backtest)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create backtest: %w", err)
+		}
+		return backtest, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("💾 [BACKTEST] Backtest created with ID: %d (Status: PENDING)\n", backtest.ID)
+	fmt.Println("🔄 [BACKTEST] Starting background worker...")
+	fmt.Println("═══════════════════════════════════════════════════════")
+	fmt.Println()
+
+	// 5. Run backtest in background
+	go s.backtestRunWorker(backtest.ID, req.Days, strategy, mmConfig, req.Symbol, req.Capital, startTime)
+
+	// 6. Return backtest info immediately
+	return s.BacktestGetByID(ctx, backtest.ID)
+}
+
+// backtestRunWorker runs the backtest simulation in the background
+func (s *Services) backtestRunWorker(
+	backtestID uint,
+	days int,
+	strategy *dtos.StrategyData,
+	mmConfig *config.MMConfig,
+	symbol string,
+	capital float64,
+	startTime time.Time,
+) {
+	fmt.Println()
+	fmt.Println("👷 [BACKTEST WORKER] ═══════════════════════════════════")
+	fmt.Printf("👷 [BACKTEST WORKER] Starting worker for backtest ID: %d\n", backtestID)
+
+	// 1. Update status to RUNNING
+	now := time.Now()
+	_, err := s.repo.TxManager.WithinTransactionWithResult(func(tx *gorm.DB) (interface{}, error) {
+		update := map[string]interface{}{
+			"status":     "RUNNING",
+			"updated_at": now,
+		}
+		return nil, s.repo.Backtest.Update(tx, update, backtestID)
+	})
+
+	if err != nil {
+		fmt.Printf("❌ [BACKTEST WORKER] Failed to update status to RUNNING: %v\n", err)
+		return
+	}
+
+	fmt.Printf("📊 [BACKTEST WORKER] Status updated to RUNNING\n")
+
+	// 2. Fetch thresholds
 	thresholds, err := s.repo.Threshold.FindAll(nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch thresholds: %w", err)
+		s.backtestWorkerFailed(backtestID, fmt.Errorf("failed to fetch thresholds: %w", err))
+		return
 	}
 
-	// 5. Calculate dynamic limits and fetch klines
+	// 3. Fetch klines
 	fmt.Println()
-	fmt.Println("📥 [BACKTEST] Fetching klines...")
+	fmt.Println("📥 [BACKTEST WORKER] Fetching klines...")
 
-	binanceData, err := s.backtestFetchAllKlines(req.Symbol, req.Days, startTime, strategy)
+	binanceData, err := s.backtestFetchAllKlines(symbol, days, startTime, strategy)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch klines: %w", err)
+		s.backtestWorkerFailed(backtestID, fmt.Errorf("failed to fetch klines: %w", err))
+		return
 	}
 
-	// 6. Validate primary timeframe data
+	// 4. Validate primary timeframe data
 	primaryKlines, exists := binanceData[strategy.PrimaryTF]
 	if !exists || len(primaryKlines) == 0 {
-		return nil, fmt.Errorf("no kline data for primary timeframe %s", strategy.PrimaryTF)
+		s.backtestWorkerFailed(backtestID, fmt.Errorf("no kline data for primary timeframe %s", strategy.PrimaryTF))
+		return
 	}
 
 	// Filter klines to only include data within the backtest period
@@ -241,11 +302,11 @@ func (s *Services) BacktestCreate(ctx *gin.Context, req *dtos.BacktestRequest) (
 	}
 	primaryKlines = binanceData[strategy.PrimaryTF]
 
-	fmt.Printf("\n🔄 [BACKTEST] Running simulation... (%d primary candles to process)\n\n", len(primaryKlines))
+	fmt.Printf("\n🔄 [BACKTEST WORKER] Running simulation... (%d primary candles to process)\n\n", len(primaryKlines))
 
-	// 7. Run simulation
+	// 5. Run simulation
 	completedTrades := s.backtestRunSimulation(
-		req.Capital,
+		capital,
 		strategy,
 		binanceData,
 		primaryKlines,
@@ -253,12 +314,12 @@ func (s *Services) BacktestCreate(ctx *gin.Context, req *dtos.BacktestRequest) (
 		mmConfig,
 	)
 
-	// 8. Calculate statistics
-	stats := backtestCalculateStats(completedTrades, req.Capital)
+	// 6. Calculate statistics
+	stats := backtestCalculateStats(completedTrades, capital)
 
-	// 9. Log summary
+	// 7. Log summary
 	fmt.Println()
-	fmt.Println("📊 [BACKTEST] ═══════════════════════════════════════════")
+	fmt.Println("📊 [BACKTEST WORKER] ═══════════════════════════════════")
 	fmt.Printf("   ├── Total Trades:  %d\n", stats.totalTrades)
 	fmt.Printf("   ├── Win/Loss:      %dW / %dL (%.1f%%)\n", stats.winningTrades, stats.losingTrades, stats.winRate)
 	fmt.Printf("   ├── Expired:       %d\n", stats.expiredTrades)
@@ -266,57 +327,71 @@ func (s *Services) BacktestCreate(ctx *gin.Context, req *dtos.BacktestRequest) (
 	fmt.Printf("   ├── Profit Factor: %.2f\n", stats.profitFactor)
 	fmt.Printf("   └── Max Drawdown:  %.2f\n", stats.maxDrawdown)
 
-	// 10. Save to database
-	now := time.Now()
-	result, err := s.repo.TxManager.WithinTransactionWithResult(func(tx *gorm.DB) (interface{}, error) {
-		backtest := &models.Backtest{
-			Name:            req.Name,
-			Symbol:          req.Symbol,
-			StrategyID:      req.StrategyID,
-			StartTime:       startTime,
-			EndTime:         endTime,
-			Capital:         req.Capital,
-			TotalTrades:     stats.totalTrades,
-			WinningTrades:   stats.winningTrades,
-			LosingTrades:    stats.losingTrades,
-			TotalPnL:        stats.totalPnL,
-			TotalPnLPercent: stats.totalPnLPercent,
-			MaxDrawdown:     stats.maxDrawdown,
-			WinRate:         stats.winRate,
-			ProfitFactor:    stats.profitFactor,
-			Status:          "COMPLETED",
-			CompletedAt:     &now,
+	// 8. Save results to database
+	completedAt := time.Now()
+	_, err = s.repo.TxManager.WithinTransactionWithResult(func(tx *gorm.DB) (interface{}, error) {
+		update := map[string]interface{}{
+			"status":           "COMPLETED",
+			"total_trades":     stats.totalTrades,
+			"winning_trades":   stats.winningTrades,
+			"losing_trades":    stats.losingTrades,
+			"total_pnl":        stats.totalPnL,
+			"total_pnl_percent": stats.totalPnLPercent,
+			"max_drawdown":     stats.maxDrawdown,
+			"win_rate":         stats.winRate,
+			"profit_factor":    stats.profitFactor,
+			"completed_at":     &completedAt,
+			"updated_at":       completedAt,
+		}
+		if err := s.repo.Backtest.Update(tx, update, backtestID); err != nil {
+			return nil, fmt.Errorf("failed to update backtest: %w", err)
 		}
 
-		backtest, err = s.repo.Backtest.Create(tx, backtest)
-		if err != nil {
-			return nil, fmt.Errorf("failed to save backtest: %w", err)
-		}
-
+		// Insert all trades
 		for _, trade := range completedTrades {
-			trade.BacktestID = backtest.ID
+			trade.BacktestID = backtestID
 			_, err = s.repo.BacktestTrade.Create(tx, &trade)
 			if err != nil {
 				return nil, fmt.Errorf("failed to save trade: %w", err)
 			}
 		}
 
-		return backtest, nil
+		return nil, nil
 	})
 
 	if err != nil {
-		return nil, err
+		fmt.Printf("❌ [BACKTEST WORKER] Failed to save results: %v\n", err)
+		s.backtestWorkerFailed(backtestID, fmt.Errorf("failed to save results: %w", err))
+		return
 	}
 
-	bt := result.(*models.Backtest)
-
-	elapsed := time.Since(startExec)
-	fmt.Printf("💾 [BACKTEST] Saved to database (ID: %d)\n", bt.ID)
-	fmt.Printf("✅ [BACKTEST] Completed in %.1fs\n", elapsed.Seconds())
+	fmt.Printf("💾 [BACKTEST WORKER] Results saved to database\n")
+	fmt.Printf("✅ [BACKTEST WORKER] Backtest ID: %d completed successfully\n", backtestID)
 	fmt.Println("═══════════════════════════════════════════════════════")
 	fmt.Println()
+}
 
-	return s.BacktestGetByID(ctx, bt.ID)
+// backtestWorkerFailed updates the backtest status to FAILED with error message
+func (s *Services) backtestWorkerFailed(backtestID uint, err error) {
+	now := time.Now()
+	errorMsg := err.Error()
+
+	_, updateErr := s.repo.TxManager.WithinTransactionWithResult(func(tx *gorm.DB) (interface{}, error) {
+		update := map[string]interface{}{
+			"status":       "FAILED",
+			"error_message": errorMsg,
+			"updated_at":   now,
+		}
+		return nil, s.repo.Backtest.Update(tx, update, backtestID)
+	})
+
+	if updateErr != nil {
+		fmt.Printf("❌ [BACKTEST WORKER] Failed to update status to FAILED: %v\n", updateErr)
+	}
+
+	fmt.Printf("❌ [BACKTEST WORKER] Backtest ID: %d failed: %v\n", backtestID, err)
+	fmt.Println("═══════════════════════════════════════════════════════")
+	fmt.Println()
 }
 
 // ============================================================================

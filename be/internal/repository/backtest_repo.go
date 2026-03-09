@@ -24,3 +24,9 @@ func (r *BacktestRepository) FindAllOrderByCreatedAtDESC(tx *gorm.DB) ([]models.
 	err := db.Order("created_at DESC").Find(&backtests).Error
 	return backtests, err
 }
+
+// Update updates a backtest by ID with the given fields
+func (r *BacktestRepository) Update(tx *gorm.DB, update map[string]interface{}, id uint) error {
+	db := r.getDB(tx)
+	return db.Model(&models.Backtest{}).Where("id = ?", id).Updates(update).Error
+}

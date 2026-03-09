@@ -2,4 +2,4 @@ users:
     - username: admin
       password: qLZ$%xTAQ&sxq4x1
       name: Administrator
-      session: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFkbWluIiwibmFtZSI6IkFkbWluaXN0cmF0b3IiLCJleHAiOjE3NzMwMTAwMjIsImlhdCI6MTc3MjkyMzYyMn0.lGGAYl4Jb66sNFBe_CzWTGXWFBN96XDiLfLgywccf5k
+      session: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFkbWluIiwibmFtZSI6IkFkbWluaXN0cmF0b3IiLCJleHAiOjE3NzMxMTEzMjIsImlhdCI6MTc3MzAyNDkyMn0.Ge_m2ByMnilmT58UiAgmaT5EAOtIIsvRumhXO-UtReM

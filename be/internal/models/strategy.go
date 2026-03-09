@@ -6,10 +6,10 @@ import (
 
 // Strategy represents a trading strategy configuration
 type Strategy struct {
-	ID        uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name      string    `gorm:"type:varchar(100);uniqueIndex;not null" json:"strategy_name"`
-	PrimaryTF string    `gorm:"type:char(5);not null" json:"primary_tf"` // Reference to m_timeframe(name)
-	IsActive  bool      `gorm:"default:true" json:"is_active"`
+	ID        uint      `gorm:"primaryKey;autoIncrement;column:id" json:"id"`
+	Name      string    `gorm:"column:strategy_name;type:varchar(100);uniqueIndex;not null" json:"strategy_name"`
+	PrimaryTF string    `gorm:"column:primary_tf;type:char(5);not null" json:"primary_tf"` // Reference to m_timeframe(name)
+	IsActive  bool      `gorm:"column:is_active;default:true" json:"is_active"`
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 
@@ -25,10 +25,10 @@ func (Strategy) TableName() string {
 
 // StrategyTimeframe represents the many-to-many relationship between Strategy and Timeframe
 type StrategyTimeframe struct {
-	ID            uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	StrategyID    uint      `gorm:"not null;index" json:"strategy_id"`
-	TimeframeName string    `gorm:"type:char(5);not null" json:"tf"` // Reference to m_timeframe(name)
-	Weight        float64   `gorm:"type:decimal(5,4);not null" json:"weight"`
+	ID            uint      `gorm:"primaryKey;autoIncrement;column:id" json:"id"`
+	StrategyID    uint      `gorm:"column:strategy_id;not null;index" json:"strategy_id"`
+	TimeframeName string    `gorm:"column:tf;type:char(5);not null" json:"tf"` // Reference to m_timeframe(name)
+	Weight        float64   `gorm:"column:weight;type:decimal(5,4);not null" json:"weight"`
 	CreatedAt     time.Time `gorm:"autoCreateTime" json:"created_at"`
 
 	// Reference
@@ -41,10 +41,10 @@ func (StrategyTimeframe) TableName() string {
 
 // StrategyIndicator represents the many-to-many relationship between Strategy and Indicator
 type StrategyIndicator struct {
-	ID          uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	StrategyID  uint      `gorm:"not null;index" json:"strategy_id"`
-	IndicatorID uint      `gorm:"not null;index" json:"indicator_id"` // Reference to m_indicator(id)
-	Weight      float64   `gorm:"type:decimal(5,4);not null" json:"weight"`
+	ID          uint      `gorm:"primaryKey;autoIncrement;column:id" json:"id"`
+	StrategyID  uint      `gorm:"column:strategy_id;not null;index" json:"strategy_id"`
+	IndicatorID uint      `gorm:"column:indicator_id;not null;index" json:"indicator_id"` // Reference to m_indicator(id)
+	Weight      float64   `gorm:"column:weight;type:decimal(5,4);not null" json:"weight"`
 	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
 
 	// Reference
@@ -57,10 +57,10 @@ func (StrategyIndicator) TableName() string {
 
 // StrategyMoneyMgmt represents the many-to-many relationship between Strategy and Config
 type StrategyMoneyMgmt struct {
-	ID         uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	StrategyID uint      `gorm:"not null;index" json:"strategy_id"`
-	Parameter  string    `gorm:"type:varchar(50);not null" json:"parameter"` // Reference to m_config(config_key)
-	Value      string    `gorm:"type:text;not null" json:"value"`
+	ID         uint      `gorm:"primaryKey;autoIncrement;column:id" json:"id"`
+	StrategyID uint      `gorm:"column:strategy_id;not null;index" json:"strategy_id"`
+	Parameter  string    `gorm:"column:parameter;type:varchar(50);not null" json:"parameter"` // Reference to m_config(config_key)
+	Value      string    `gorm:"column:value;type:text;not null" json:"value"`
 	CreatedAt  time.Time `gorm:"autoCreateTime" json:"created_at"`
 
 	// Reference
