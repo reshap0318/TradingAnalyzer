@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// Signal represents a trading signal
-type Signal struct {
+// Trade represents an executed trade
+type Trade struct {
 	ID       uint   `gorm:"primaryKey;column:id" json:"id"`
 	Symbol   string `gorm:"column:symbol;size:20;not null" json:"symbol"`
 	Interval string `gorm:"column:interval;size:10;not null" json:"interval"`
@@ -56,16 +56,16 @@ type Signal struct {
 	ClosedAt  *time.Time `gorm:"column:closed_at" json:"closed_at"`
 
 	// Relations
-	Entries []SignalEntry `gorm:"foreignKey:SignalID" json:"entries"`
+	Entries []TradeEntry `gorm:"foreignKey:TradeID" json:"entries"`
 }
 
-func (Signal) TableName() string {
-	return "signal"
+func (Trade) TableName() string {
+	return "trade"
 }
 
-type SignalEntry struct {
+type TradeEntry struct {
 	ID          uint `gorm:"primaryKey;column:id" json:"id"`
-	SignalID    uint `gorm:"column:signal_id;not null;index" json:"signal_id"`
+	TradeID     uint `gorm:"column:trade_id;not null;index" json:"trade_id"`
 	EntryNumber int  `gorm:"column:entry_number;not null" json:"entry_number"`
 
 	// Entry Price
@@ -93,8 +93,8 @@ type SignalEntry struct {
 	UpdatedAt    time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
-func (SignalEntry) TableName() string {
-	return "signal_entry"
+func (TradeEntry) TableName() string {
+	return "trade_entry"
 }
 
 // JSONMap for JSON fields

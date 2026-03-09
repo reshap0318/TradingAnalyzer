@@ -10,8 +10,8 @@ type Repositories struct {
 	Watchlist           *WatchlistRepository
 	Config              *ConfigRepository
 	Indicator           *IndicatorRepository
-	Signal              *SignalRepository
-	SignalEntry         *SignalEntryRepository
+	Trade               *TradeRepository
+	TradeEntry          *TradeEntryRepository
 	Backtest            *BacktestRepository
 	BacktestTrade       *BacktestTradeRepository
 	Strategy            *StrategyRepository
@@ -22,14 +22,14 @@ type Repositories struct {
 
 func NewRepositories(db *gorm.DB) (*Repositories, error) {
 	// init repositories that have dependencies first
-	signalEntryRepo := NewSignalEntryRepository(db)
+	tradeEntryRepo := NewTradeEntryRepository(db)
 	TxManagerRepo := NewTransactionManager(db)
 	ThresholdRepo := NewThresholdRepository(db)
 	TimeframeRepo := NewTimeframeRepository(db)
 	WatchlistRepo := NewWatchlistRepository(db)
 	ConfigRepo := NewConfigRepository(db)
 	IndicatorRepo := NewIndicatorRepository(db)
-	SignalRepo := NewSignalRepository(db)
+	TradeRepo := NewTradeRepository(db)
 	BacktestRepo := NewBacktestRepository(db)
 	BacktestTradeRepo := NewBacktestTradeRepository(db)
 	
@@ -47,8 +47,8 @@ func NewRepositories(db *gorm.DB) (*Repositories, error) {
 		Watchlist:           WatchlistRepo,
 		Config:              ConfigRepo,
 		Indicator:           IndicatorRepo,
-		Signal:              SignalRepo,
-		SignalEntry:         signalEntryRepo,
+		Trade:               TradeRepo,
+		TradeEntry:          tradeEntryRepo,
 		Backtest:            BacktestRepo,
 		BacktestTrade:       BacktestTradeRepo,
 		Strategy:            StrategyRepo,

@@ -54,6 +54,7 @@ func main() {
 		routes.RegisterStrategyRoutes(protected, engine.Ctrl)
 		routes.RegisterSignalRoutes(protected, engine.Ctrl)
 		routes.RegisterBacktestRoutes(protected, engine.Ctrl)
+		routes.RegisterTradeRoutes(protected, engine.Ctrl)
 	}
 
 	router.Run(fmt.Sprintf("%s:%s", host, port))

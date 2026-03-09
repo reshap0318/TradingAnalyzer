@@ -6,10 +6,10 @@ import (
 	"github.com/reshap/trading-bot/internal/helpers"
 )
 
-// SignalAnalyzeIndex handles POST /api/signal/analyze endpoint
-// Analyzes market data and generates trading signal
-func (c *Controller) SignalAnalyzeIndex(ctx *gin.Context) {
-	var req dtos.SignalAnalyzeRequest
+// TradeExecute handles POST /api/trade/auto endpoint
+// Executes automated trading based on SignalAnalyze and Money Management
+func (c *Controller) TradeExecute(ctx *gin.Context) {
+	var req dtos.TradeRequest
 
 	// 1. Validate input
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -17,8 +17,8 @@ func (c *Controller) SignalAnalyzeIndex(ctx *gin.Context) {
 		return
 	}
 
-	// 2. Call service (READ operation - no transaction)
-	response, err := c.srvc.SignalAnalyze(ctx, &req)
+	// 2. Call service (WRITE operation inside - uses transaction internally)
+	response, err := c.srvc.TradeExecute(ctx, &req)
 	if err != nil {
 		helpers.RespondError(ctx, err)
 		return

@@ -94,8 +94,8 @@ func runMigration(dsn string, command string) {
 			&models.StrategyMoneyMgmt{},
 			// transactional
 			&models.Watchlist{},
-			&models.Signal{},
-			&models.SignalEntry{},
+			&models.Trade{},
+			&models.TradeEntry{},
 			&models.Backtest{},
 			&models.BacktestTrade{},
 		)
@@ -122,8 +122,8 @@ func runMigration(dsn string, command string) {
 			&models.StrategyMoneyMgmt{},
 			// transactional
 			&models.Watchlist{},
-			&models.Signal{},
-			&models.SignalEntry{},
+			&models.Trade{},
+			&models.TradeEntry{},
 			&models.Backtest{},
 			&models.BacktestTrade{},
 		)

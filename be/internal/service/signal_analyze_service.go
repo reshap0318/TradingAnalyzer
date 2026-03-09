@@ -401,8 +401,8 @@ func (s *Services) buildTradingPlan(
 			entries = make([]dtos.TradingPlanEntry, 0, 1)
 
 			// [OLD] Entry at support + buffer (rollback jika dibutuhkan)
-			// entryPrice := support * (1 + bufferPercent)
-			entryPrice := currentPrice * (1 - bufferPercent/3) // ~0.5% below current price
+			entryPrice := support * (1 + bufferPercent)
+			// entryPrice := currentPrice * (1 - bufferPercent/3) // ~0.5% below current price
 			entryValue := tradingCapital
 			leveragedValue := entryValue * float64(leverage)
 			entryQty := leveragedValue / entryPrice
@@ -469,8 +469,8 @@ func (s *Services) buildTradingPlan(
 			entries = make([]dtos.TradingPlanEntry, 0, 1)
 
 			// [OLD] Entry at resistance - buffer (rollback jika dibutuhkan)
-			// entryPrice := resistance * (1 - bufferPercent)
-			entryPrice := currentPrice * (1 + bufferPercent/3) // ~0.5% above current price
+			entryPrice := resistance * (1 - bufferPercent)
+			// entryPrice := currentPrice * (1 + bufferPercent/3) // ~0.5% above current price
 			entryValue := tradingCapital
 			leveragedValue := entryValue * float64(leverage)
 			entryQty := leveragedValue / entryPrice
