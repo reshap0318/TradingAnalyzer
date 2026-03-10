@@ -28,26 +28,20 @@ func (s *Services) WatchlistScannerActivate(ctx *gin.Context, strategyID *uint) 
 		return nil, fmt.Errorf("scanner is already active. Deactivate first before activating again")
 	}
 
-	// Get strategy to determine scan interval from primary timeframe
-	var scanInterval time.Duration
-	var usedStrategyID *uint
-
+	// Get strategy - optimize query: use provided ID or fallback to active strategy
+	var strategy *dtos.StrategyData
 	if strategyID != nil && *strategyID > 0 {
-		// Use provided strategy_id
-		usedStrategyID = strategyID
+		// Use provided strategy_id (single query)
+		strategy, err = s.StrategyGetByID(ctx, *strategyID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get strategy: %w", err)
+		}
 	} else {
-		// Get active strategy as default
-		activeStrategy, err := s.StrategyGetActive(ctx)
+		// Get active strategy as default (single query)
+		strategy, err = s.StrategyGetActive(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get active strategy: %w", err)
 		}
-		usedStrategyID = &activeStrategy.ID
-	}
-
-	// Get strategy with timeframes
-	strategy, err := s.StrategyGetByID(ctx, *usedStrategyID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get strategy: %w", err)
 	}
 
 	// Get primary timeframe details
@@ -58,13 +52,13 @@ func (s *Services) WatchlistScannerActivate(ctx *gin.Context, strategyID *uint) 
 	}
 
 	// Use timeframe in_minutes as scan interval
-	scanInterval = time.Duration(timeframe.InMinutes) * time.Minute
+	scanInterval := time.Duration(timeframe.InMinutes) * time.Minute
 
 	// Create context with cancel
 	ctxScan, cancel := context.WithCancel(context.Background())
 	scannerCancel = cancel
 	scannerActive = true
-	scannerStrategy = usedStrategyID
+	scannerStrategy = &strategy.ID
 
 	// Start background goroutine with dynamic interval
 	go s.runBackgroundScanner(ctxScan, scanInterval)
@@ -73,7 +67,7 @@ func (s *Services) WatchlistScannerActivate(ctx *gin.Context, strategyID *uint) 
 		"is_active":     true,
 		"message":       "Scanner activated successfully",
 		"scan_interval": scanInterval.Minutes(),
-		"strategy_id":   *usedStrategyID,
+		"strategy_id":   strategy.ID,
 	}, nil
 }
 
