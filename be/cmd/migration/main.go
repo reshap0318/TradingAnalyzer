@@ -153,6 +153,8 @@ func runSeed(dsn string) {
 	seedIndicator(db)
 	// Seed strategy
 	seedStrategy(db)
+	// Seed watchlist
+	seedWatchlist(db)
 
 	fmt.Println("Seeding completed!")
 }
@@ -740,6 +742,45 @@ func seedStrategy(db *gorm.DB) {
 			log.Printf("Failed to check strategy '%s': %v", s.Name, result.Error)
 		} else {
 			fmt.Printf("⊘ Strategy already exists: %s\n", s.Name)
+		}
+	}
+}
+
+func seedWatchlist(db *gorm.DB) {
+	// Default watchlist symbols
+	defaultWatchlists := []models.Watchlist{
+		{Symbol: "BTCUSDT", IsActive: true},
+		{Symbol: "ETHUSDT", IsActive: true},
+		{Symbol: "BNBUSDT", IsActive: true},
+		{Symbol: "SOLUSDT", IsActive: true},
+		{Symbol: "XRPUSDT", IsActive: true},
+		{Symbol: "ADAUSDT", IsActive: true},
+		{Symbol: "DOGEUSDT", IsActive: true},
+		{Symbol: "TRXUSDT", IsActive: true},
+		{Symbol: "LINKUSDT", IsActive: true},
+		{Symbol: "AVAXUSDT", IsActive: true},
+		{Symbol: "SUIUSDT", IsActive: true},
+		{Symbol: "LTCUSDT", IsActive: true},
+		{Symbol: "NEARUSDT", IsActive: true},
+		{Symbol: "UNIUSDT", IsActive: true},
+		{Symbol: "FETUSDT", IsActive: true},
+	}
+
+	for _, wl := range defaultWatchlists {
+		// Use FirstOrCreate to avoid duplicates on re-seed
+		var existing models.Watchlist
+		result := db.Where(models.Watchlist{Symbol: wl.Symbol}).First(&existing)
+
+		if result.Error == gorm.ErrRecordNotFound {
+			if err := db.Create(&wl).Error; err != nil {
+				log.Printf("Failed to create watchlist %s: %v", wl.Symbol, err)
+			} else {
+				fmt.Printf("✓ Created watchlist: %s\n", wl.Symbol)
+			}
+		} else if result.Error != nil {
+			log.Printf("Failed to check watchlist %s: %v", wl.Symbol, result.Error)
+		} else {
+			fmt.Printf("⊘ Watchlist already exists: %s\n", wl.Symbol)
 		}
 	}
 }
