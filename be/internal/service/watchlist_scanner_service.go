@@ -31,13 +31,11 @@ func (s *Services) WatchlistScannerActivate(ctx *gin.Context, strategyID *uint) 
 	// Get strategy - optimize query: use provided ID or fallback to active strategy
 	var strategy *dtos.StrategyData
 	if strategyID != nil && *strategyID > 0 {
-		// Use provided strategy_id (single query)
 		strategy, err = s.StrategyGetByID(ctx, *strategyID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get strategy: %w", err)
 		}
 	} else {
-		// Get active strategy as default (single query)
 		strategy, err = s.StrategyGetActive(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get active strategy: %w", err)
