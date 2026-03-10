@@ -79,7 +79,9 @@ func (s *Services) WatchlistScannerDeactivate(ctx *gin.Context) (res map[string]
 	}
 
 	// Cancel the context
-	scannerCancel()
+	if scannerCancel != nil {
+		scannerCancel()
+	}
 	scannerActive = false
 
 	return map[string]interface{}{

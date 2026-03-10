@@ -12,6 +12,7 @@
    - [Thresholds](#thresholds)
    - [Configs](#configs)
    - [Watchlists](#watchlists)
+   - [Watchlist Scanner](#watchlist-scanner)
    - [Strategies](#strategies)
 
 ---
@@ -958,6 +959,133 @@ Authorization: Bearer <token>
     "data": { ... }
 }
 ```
+
+---
+
+## 🔍 Watchlist Scanner
+
+Background scanner untuk melakukan automated trading pada watchlist symbols.
+
+### **POST /api/watchlists/activate**
+
+Activate background scanner untuk melakukan scanning dan trading otomatis pada semua active watchlist symbols.
+
+**Request:**
+```bash
+POST http://localhost:8000/api/watchlists/activate
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+    "strategy_id": 1
+}
+```
+
+**Request Body:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `strategy_id` | integer | No | Strategy ID untuk digunakan. Jika tidak disediakan, akan menggunakan active strategy |
+
+**Response:**
+```json
+{
+    "code": 200,
+    "message": "Scanner activated successfully",
+    "data": {
+        "is_active": true,
+        "message": "Scanner activated successfully",
+        "scan_interval": 15,
+        "strategy_id": 1
+    }
+}
+```
+
+**Response Fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `is_active` | boolean | Scanner status |
+| `message` | string | Status message |
+| `scan_interval` | integer | Interval scanning dalam menit (mengikuti primary timeframe strategy) |
+| `strategy_id` | integer | Strategy ID yang digunakan |
+
+**Error Responses:**
+```json
+// Scanner sudah aktif
+{
+    "code": 400,
+    "message": "Failed to activate scanner",
+    "error": "scanner is already active. Deactivate first before activating again"
+}
+
+// Strategy tidak ditemukan
+{
+    "code": 400,
+    "message": "Failed to activate scanner",
+    "error": "failed to get strategy: data not found"
+}
+```
+
+---
+
+### **POST /api/watchlists/deactivate**
+
+Deactivate background scanner.
+
+**Request:**
+```bash
+POST http://localhost:8000/api/watchlists/deactivate
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+    "code": 200,
+    "message": "Scanner deactivated successfully",
+    "data": {
+        "is_active": false,
+        "message": "Scanner deactivated successfully"
+    }
+}
+```
+
+**Error Responses:**
+```json
+// Scanner tidak aktif
+{
+    "code": 400,
+    "message": "Failed to deactivate scanner",
+    "error": "scanner is not active"
+}
+```
+
+---
+
+### **GET /api/watchlists/status**
+
+Get current scanner status.
+
+**Request:**
+```bash
+GET http://localhost:8000/api/watchlists/status
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+    "code": 200,
+    "message": "Scanner status retrieved successfully",
+    "data": {
+        "is_active": true
+    }
+}
+```
+
+**Response Fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `is_active` | boolean | Scanner status (true = running, false = stopped) |
 
 ---
 
