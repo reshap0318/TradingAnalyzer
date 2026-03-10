@@ -236,6 +236,12 @@ func LoadConfig() *Config {
 		EMA_PERIODS: []int{12, 26},
 	}
 
+	config.INDICATORS.SUPPORT_RESIST = SRConfig{
+		LOOKBACK_PERIODS: 200,
+		TOLERANCE:        0.005,
+		MIN_TOUCHES:      2,
+	}
+
 	return &config
 }
 

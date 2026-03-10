@@ -364,8 +364,8 @@ func (s *Services) buildTradingPlan(
 			support = currentPrice * (1 - fallbackBufferPercent) // Fallback: 2% below
 		}
 
-		tp = resistance
-		sl = support * (1 - bufferPercent)
+		tp = resistance * (1 - bufferPercent)
+		sl = support * (1 - (bufferPercent * 2))
 
 		if isAggressive {
 			// AGGRESSIVE MODE: Multiple entries (50% now + 50% pullback)
@@ -431,8 +431,8 @@ func (s *Services) buildTradingPlan(
 			support = currentPrice * (1 - fallbackBufferPercent) // Fallback: 2% below
 		}
 
-		tp = support
-		sl = resistance * (1 + bufferPercent)
+		tp = support * (1 + bufferPercent)
+		sl = resistance * (1 + (bufferPercent * 2))
 
 		if isAggressive {
 			// AGGRESSIVE MODE: Multiple entries (50% now + 50% pullback)
