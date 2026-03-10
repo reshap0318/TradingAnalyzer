@@ -32,7 +32,7 @@ func NewRepositories(db *gorm.DB) (*Repositories, error) {
 	TradeRepo := NewTradeRepository(db)
 	BacktestRepo := NewBacktestRepository(db)
 	BacktestTradeRepo := NewBacktestTradeRepository(db)
-	
+
 	// Strategy repositories
 	StrategyRepo := NewStrategyRepository(db)
 	StrategyTimeframeRepo := NewStrategyTimeframeRepository(db)

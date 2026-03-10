@@ -340,7 +340,6 @@ func parseMMConfigFromStrategy(moneyMgmt []models.StrategyMoneyMgmt) *dtos.MMCon
 		RISK_REWARD_RATIO:      0,
 		RISK_REWARD_TARGET:     0,
 		MAX_POSITION_SIZE:      0,
-		MAX_RISK_PER_TRADE:     0,
 		LEVERAGE:               0,
 		IS_AGRESSIVE:           false,
 		ORDER_EXPIRATION_HOURS: 0,
@@ -376,10 +375,6 @@ func parseMMConfigFromStrategy(moneyMgmt []models.StrategyMoneyMgmt) *dtos.MMCon
 		case "MAX_POSITION_SIZE":
 			if val, err := helpers.ParseFloat(cfg.Value, 32); err == nil {
 				mm.MAX_POSITION_SIZE = float32(val)
-			}
-		case "MAX_RISK_PER_TRADE":
-			if val, err := helpers.ParseFloat(cfg.Value, 32); err == nil {
-				mm.MAX_RISK_PER_TRADE = float32(val)
 			}
 		case "LEVERAGE":
 			if val, err := helpers.ParseFloat(cfg.Value, 8); err == nil {

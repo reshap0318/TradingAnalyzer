@@ -374,6 +374,15 @@ func (c *Client) PlaceOrder(req *PlaceOrderRequest) (*OrderResponse, error) {
 		return nil, fmt.Errorf("%w: quantity too small after precision adjustment (step size: %f)", ErrInvalidQuantity, symbolInfo.StepSize)
 	}
 
+	// Validate min notional
+	if adjustedPrice > 0 {
+		notionalValue := adjustedQuantity * adjustedPrice
+		if notionalValue < symbolInfo.MinNotional {
+			return nil, fmt.Errorf("%w: order value %.2f USDT below min notional %.2f USDT for %s",
+				ErrInvalidQuantity, notionalValue, symbolInfo.MinNotional, req.Symbol)
+		}
+	}
+
 	// Create order service with adjusted values
 	orderService := c.apiClient.NewCreateOrderService().
 		Symbol(req.Symbol).
@@ -637,8 +646,26 @@ func (c *Client) SetLeverage(req *LeverageRequest) (*LeverageResponse, error) {
 }
 
 // SetMarginMode sets margin mode for a symbol
+// Cached in Redis for 30 days
 func (c *Client) SetMarginMode(req *MarginModeRequest) (*MarginModeResponse, error) {
 	ctx := context.Background()
+
+	cacheKey := fmt.Sprintf("binance:futures:margin_mode:%s", req.Symbol)
+
+	// Check cache first
+	if c.IsCacheAvailable() {
+		var cachedMode int
+		err := c.cache.GetJSON(ctx, cacheKey, &cachedMode)
+		if err == nil && cachedMode == req.MarginMode {
+			// Same margin mode, return from cache
+			return &MarginModeResponse{
+				Symbol:     req.Symbol,
+				MarginMode: cachedMode,
+			}, nil
+		}
+	}
+
+	// Set margin mode via API
 	marginMode := futures.MarginTypeIsolated
 	if req.MarginMode == 2 {
 		marginMode = futures.MarginTypeCrossed
@@ -651,6 +678,11 @@ func (c *Client) SetMarginMode(req *MarginModeRequest) (*MarginModeResponse, err
 
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to set margin mode: %v", ErrOrderFailed, err)
+	}
+
+	// Cache new margin mode for 30 days
+	if c.IsCacheAvailable() {
+		_ = c.cache.SetJSON(ctx, cacheKey, req.MarginMode, 30*24*time.Hour)
 	}
 
 	return &MarginModeResponse{

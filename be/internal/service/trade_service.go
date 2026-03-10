@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"time"
@@ -32,49 +31,12 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 		return nil, fmt.Errorf("failed to get active strategy: %w", err)
 	}
 	mmConfig := s.getConfigMM(strategy)
-
-	// Step 1: Single DB Query for Today's Trades (Ordered from newest to oldest for Consecutive checks)
-	todaysTrades, err := s.repo.Trade.TradeFindToday(nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch today's trading history: %w", err)
-	}
-
-	// Step 2: Extract Metrics from DB Historical Data
-	activeCount := 0
-	validTradeCountToday := 0
-	consecutiveLosses := 0
-	countConsecutive := true
 	minBalance := 3.0
-	var todayPnL float64
 
-	for _, tradeLog := range todaysTrades {
-		// Active Check specific to Symbol
-		if tradeLog.Symbol == req.Symbol && (tradeLog.Status == "ACTIVE" || tradeLog.Status == "PENDING" || tradeLog.Status == "PARTIAL") {
-			activeCount++
-		}
-
-		if tradeLog.Status != "CANCELLED" && tradeLog.Status != "REJECTED" {
-			validTradeCountToday++
-		}
-
-		// Calculate PnL and Consecutive Losses (Only for CLOSED/FINISHED signals)
-		// Assume "CLOSED" status implies completed trades with PnL calculation
-		if tradeLog.Status == "CLOSED" || tradeLog.Status == "FINISHED" {
-			todayPnL += tradeLog.PnL // Adding PnL (Negative for losses, Positive for wins)
-
-			// Consecutive loss logic: look at most recent trades. As soon as we see a win or break-even, stop counting.
-			if countConsecutive {
-				if tradeLog.PnL < 0 {
-					consecutiveLosses++
-				} else if tradeLog.PnL > 0 {
-					countConsecutive = false
-				}
-			}
-		}
-	}
+	symStat := s.tradeTodayStat(req.Symbol)
 
 	// VALIDATION 1: LOCAL HARD LIMIT - Active Trade
-	if activeCount > 0 {
+	if symStat.Active > 0 {
 		return &dtos.TradeResponse{
 			Symbol:    req.Symbol,
 			Timestamp: time.Now(),
@@ -86,13 +48,13 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 	}
 
 	// VALIDATION 2A: LOCAL HARD LIMIT - Consecutive Loss
-	if mmConfig.MAX_DAILY_LOSS_COUNT > 0 && consecutiveLosses >= int(mmConfig.MAX_DAILY_LOSS_COUNT) {
+	if mmConfig.MAX_DAILY_LOSS_COUNT > 0 && int(symStat.SLHits) >= int(mmConfig.MAX_DAILY_LOSS_COUNT) {
 		return &dtos.TradeResponse{
 			Symbol:    req.Symbol,
 			Timestamp: time.Now(),
 			ExecutionInfo: dtos.ExecutionInfo{
 				Executed: false,
-				Message:  fmt.Sprintf("HARD LIMIT: Reached max consecutive loss (%d). Cooling down.", consecutiveLosses),
+				Message:  fmt.Sprintf("HARD LIMIT: Reached max consecutive loss (%d). Cooling down.", symStat.SLHits),
 			},
 		}, nil
 	}
@@ -106,17 +68,21 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 	availableUsdt := balanceInfo.AvailableBalance
 	totalWalletUsdt := balanceInfo.WalletBalance // or MarginBalance depending on exact accounting preference for PnL
 
+	// Reserve 2% for trading fees (taker/maker fees, funding rates)
+	feesReservePercent := 0.02
+	availableUsdtWithFeesReserve := availableUsdt * (1 - feesReservePercent)
+
 	// VALIDATION 2B: LOCAL HARD LIMIT - Daily Loss Pct (Rugi > x%)
 	// If todayPnL is heavily negative, compare against total wallet.
-	if mmConfig.MAX_DAILY_LOSS_PERCENT > 0 && todayPnL < 0 {
+	if mmConfig.MAX_DAILY_LOSS_PERCENT > 0 && symStat.PnL < 0 {
 		lossPctDec := float64(mmConfig.MAX_DAILY_LOSS_PERCENT) // ex: 0.05
-		if math.Abs(todayPnL) >= (totalWalletUsdt * lossPctDec) {
+		if math.Abs(symStat.PnL) >= (totalWalletUsdt * lossPctDec) {
 			return &dtos.TradeResponse{
 				Symbol:    req.Symbol,
 				Timestamp: time.Now(),
 				ExecutionInfo: dtos.ExecutionInfo{
 					Executed: false,
-					Message:  fmt.Sprintf("HARD LIMIT: Reached max daily loss percentage (Total PnL: %.2f on %.2f Bal). Cooling down.", todayPnL, totalWalletUsdt),
+					Message:  fmt.Sprintf("HARD LIMIT: Reached max daily loss percentage (Total PnL: %.2f on %.2f Bal). Cooling down.", symStat.PnL, totalWalletUsdt),
 				},
 			}, nil
 		}
@@ -135,11 +101,11 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 	}
 
 	// VALIDATION 4: Signal Analyze & Confidence
-	// We build an analyze request using our accurate `tradCapital`
+	// We build an analyze request using available balance AFTER fees reserve (98% of available)
 	analyzeReq := &dtos.SignalAnalyzeRequest{
 		Symbol:     req.Symbol,
 		StrategyID: strategy.ID,
-		Capital:    availableUsdt,
+		Capital:    availableUsdtWithFeesReserve,
 	}
 	analyzeRes, err := s.SignalAnalyze(ctx, analyzeReq)
 	if err != nil {
@@ -155,7 +121,7 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 			Scoring:          analyzeRes.Scoring,
 			ExecutionInfo: dtos.ExecutionInfo{
 				Executed: false,
-				Message:  fmt.Sprintf("Signal invalid. Confidence %.2f is lower than MIN_CONFIDENCE (%d)", analyzeRes.Scoring.Confidence, mmConfig.MIN_CONFIDENCE),
+				Message:  fmt.Sprintf("Signal invalid: Confidence(%.2f) under threshold(%d)", analyzeRes.Scoring.Confidence, mmConfig.MIN_CONFIDENCE),
 			},
 		}, nil
 	}
@@ -174,14 +140,8 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 		}, nil
 	}
 
-	// Hitung total capital yang digunakan langsung dari TradingPlan (tanpa modifikasi)
-	actualCapitalUsed := 0.0
-	for _, entry := range analyzeRes.Signal.TradingPlan.Entries {
-		actualCapitalUsed += entry.PositionValue
-	}
-
 	// VALIDATION 5: SOFT LIMIT - Daily Trade Count & RR Ratio TARGET Override
-	if validTradeCountToday >= int(mmConfig.MAX_DAILY_TRADES) {
+	if symStat.Count >= mmConfig.MAX_DAILY_TRADES {
 		isExcellentSetup := analyzeRes.Signal.TradingPlan.RiskRewardRatio >= float64(mmConfig.RISK_REWARD_TARGET)
 		if !isExcellentSetup {
 			return &dtos.TradeResponse{
@@ -199,21 +159,75 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 		}
 	}
 
+	// Get actual capital used from pre-calculated summary (no need to recalculate)
+	actualCapitalUsed := analyzeRes.Signal.TradingPlan.Summary.TotalPositionValue
+
+	// FINAL VALIDATION: Safeguard before execution
+	if analyzeRes.Signal.TradingPlan.Summary == nil {
+		return nil, fmt.Errorf("trading plan summary is nil, cannot execute trade")
+	}
+	if actualCapitalUsed <= 0 {
+		return nil, fmt.Errorf("invalid capital used: %.2f USDT", actualCapitalUsed)
+	}
+
 	// If valid, Proceed to Execution Preparation
-	return s.executeBinanceTrade(ctx, req.Symbol, strategy, mmConfig, analyzeRes, actualCapitalUsed)
+	return s.executeBinanceTrade(req.Symbol, mmConfig, analyzeRes, actualCapitalUsed)
+}
+
+func (s *Services) tradeTodayStat(symbol string) dtos.TradeDayStat {
+	stat := dtos.TradeDayStat{}
+	countConsecutive := true
+
+	// Step 1: Single DB Query for Today's Trades (Ordered from newest to oldest for Consecutive checks)
+	todaysTrades, err := s.repo.Trade.TradeFindToday(nil)
+	if err != nil {
+		return stat
+	}
+
+	for _, tradeLog := range todaysTrades {
+		// Active Check specific to Symbol
+		if tradeLog.Symbol == symbol && (tradeLog.Status == "ACTIVE" || tradeLog.Status == "PENDING" || tradeLog.Status == "PARTIAL") {
+			stat.Active++
+		}
+
+		if tradeLog.Status != "CANCELLED" && tradeLog.Status != "REJECTED" {
+			stat.Count++
+		}
+
+		// Calculate PnL and Consecutive Losses (Only for CLOSED/FINISHED signals)
+		if tradeLog.Status == "CLOSED" || tradeLog.Status == "FINISHED" {
+			stat.PnL += tradeLog.PnL // Adding PnL (Negative for losses, Positive for wins)
+
+			if tradeLog.PnL < 0 {
+				stat.SLHits++
+				stat.TotalProfit += tradeLog.PnL
+			} else if tradeLog.PnL > 0 {
+				stat.TPHits++
+				stat.TotalLoss += tradeLog.PnL
+			}
+
+			// Consecutive loss logic: look at most recent trades. As soon as we see a win or break-even, stop counting.
+			if countConsecutive {
+				if tradeLog.PnL < 0 {
+					stat.ConsecutiveLossess++
+				} else if tradeLog.PnL > 0 {
+					countConsecutive = false
+				}
+			}
+		}
+	}
+
+	return stat
 }
 
 // executeBinanceTrade handles the actual external API calling for order execution
 func (s *Services) executeBinanceTrade(
-	ctx *gin.Context,
 	symbol string,
-	strategy *dtos.StrategyData,
 	config *config.MMConfig,
 	analyzeRes *dtos.SignalAnalyzeResponse,
 	capitalUsed float64,
 ) (*dtos.TradeResponse, error) {
 	tpPlan := analyzeRes.Signal.TradingPlan
-	currentPrice := analyzeRes.Signal.CurentPrice
 	side := binance.OrderSideBuy // default BUY
 
 	if analyzeRes.Signal.Signal == "SELL" || analyzeRes.Signal.Signal == "STRONG_SELL" {
@@ -226,21 +240,22 @@ func (s *Services) executeBinanceTrade(
 		return nil, fmt.Errorf("failed to fetch symbol info %s: %w", symbol, err)
 	}
 
-	// 2. Setup Position Side (Optional, handling Dual-Mode if configured)
-	// Some accounts use one-way mode, some use hedge-mode. Assuming default for now.
-
-	// 3. Setup Margin Type (via Redis Cache wrapper)
-	// We call SetMarginMode. E.g 1 for ISOLATED. (Assuming 1 is ISOLATED, 0/2 is CROSS based on your binance code)
+	// 2. Setup Margin Type (via Redis Cache wrapper)
+	// Set to ISOLATED margin mode for safer risk management
 	_, err = s.BinanceClient.SetMarginMode(&binance.MarginModeRequest{
 		Symbol:     symbol,
-		MarginMode: 1, // ISOLATED (Hardcoded for safest approach, or parameterize later)
+		MarginMode: 1, // 1 = ISOLATED, 2 = CROSSED
 	})
 	if err != nil {
-		// Ignore error if it says "No need to change margin type" (usually returns -4046 error code)
-		// But fail if really an error. For now we continue.
+		// Check if error is "No need to change margin type" (Binance error code -4046)
+		// If so, we can safely ignore it and continue
+		errMsg := err.Error()
+		if errMsg != "No need to change margin type" {
+			return nil, fmt.Errorf("failed to set margin mode to ISOLATED: %w", err)
+		}
 	}
 
-	// 4. Setup Leverage
+	// 3. Setup Leverage
 	_, err = s.BinanceClient.SetLeverage(&binance.LeverageRequest{
 		Symbol:   symbol,
 		Leverage: int(config.LEVERAGE),
@@ -252,7 +267,8 @@ func (s *Services) executeBinanceTrade(
 	// 5. Execute Order Entry Loop
 	var executedOrders []dtos.OrderInfo
 	var totalFilledQty float64
-	var avgEntryPriceSum float64 // Will need accurate sum based on order quantities
+	var avgEntryPriceSum float64       // Will need accurate sum based on order quantities
+	var filledEntries []dtos.OrderInfo // Track only filled entries for TP/SL placement
 
 	for _, entry := range tpPlan.Entries {
 		adjustedPrice := binance.AdjustPricePrecision(entry.EntryPrice, symbolInfo.TickSize)
@@ -299,22 +315,36 @@ func (s *Services) executeBinanceTrade(
 			Status:         orderResponse.Status,
 		}
 		executedOrders = append(executedOrders, executedMsg)
-		totalFilledQty += orderResponse.OrigQuantity
 
-		// Approx entry price matching (in reality you wait for Fill/Update hook, but here we assume LIMIT price config)
-		ePrice := orderResponse.Price
-		if orderType == binance.OrderTypeMarket {
-			ePrice = currentPrice // rough estimation if API response doesn't give AvgPrice directly during Market open
+		// Check if order is FILLED (immediately for market orders, or check status)
+		// For LIMIT orders, status might be NEW (pending) or FILLED (if instant match)
+		isFilled := orderResponse.Status == "FILLED" || orderResponse.Status == "PARTIALLY_FILLED"
+
+		if isFilled && orderResponse.ExecutedQuantity > 0 {
+			filledQty := orderResponse.ExecutedQuantity
+			filledPrice := orderResponse.AveragePrice
+			if filledPrice == 0 {
+				filledPrice = orderResponse.Price
+			}
+
+			totalFilledQty += filledQty
+			avgEntryPriceSum += (filledPrice * filledQty)
+
+			// Add to filled entries for TP/SL placement
+			filledEntries = append(filledEntries, dtos.OrderInfo{
+				EntryNumber:    entry.EntryNumber,
+				BinanceOrderID: orderResponse.OrderID,
+				Price:          filledPrice,
+				Quantity:       filledQty,
+				Type:           orderResponse.Type,
+				Status:         orderResponse.Status,
+			})
 		}
-		if orderResponse.AveragePrice > 0 {
-			ePrice = orderResponse.AveragePrice
-		}
-		avgEntryPriceSum += (ePrice * orderResponse.OrigQuantity)
 	}
 
-	// 6. Execute TP/SL Orders (Only if there is Filled/Pending Qty)
+	// 6. Execute TP/SL Orders ONLY if there are FILLED entries
 	var tpOrderID, slOrderID int64
-	if totalFilledQty > 0 {
+	if totalFilledQty > 0 && len(filledEntries) > 0 {
 		var closeSide binance.OrderSide
 		if side == binance.OrderSideBuy {
 			closeSide = binance.OrderSideSell
@@ -352,6 +382,10 @@ func (s *Services) executeBinanceTrade(
 		if err == nil {
 			slOrderID = slResp.OrderID
 		}
+	} else {
+		// No entries filled yet - TP/SL will be placed later by background job or manual check
+		// This is expected for LIMIT orders that are still PENDING
+		fmt.Printf("Info: No entries filled yet for %s. TP/SL will be placed after fill.\n", symbol)
 	}
 
 	// 7. Save To Database using Transaction
@@ -360,7 +394,7 @@ func (s *Services) executeBinanceTrade(
 		avgEntryPrice = avgEntryPriceSum / totalFilledQty
 	}
 
-	err = s.saveTradeRecord(ctx, symbol, side, tpPlan, analyzeRes, capitalUsed, float64(config.LEVERAGE), executedOrders, tpOrderID, slOrderID, avgEntryPrice, totalFilledQty)
+	err = s.saveTradeRecord(symbol, side, tpPlan, analyzeRes, capitalUsed, float64(config.LEVERAGE), executedOrders, tpOrderID, slOrderID, avgEntryPrice, totalFilledQty)
 	if err != nil {
 		fmt.Printf("Warning: Trade executed but DB tracking failed: %v", err)
 	}
@@ -386,7 +420,6 @@ func (s *Services) executeBinanceTrade(
 
 // saveTradeRecord saves the completed transaction to your DB
 func (s *Services) saveTradeRecord(
-	ctx context.Context,
 	symbol string,
 	side binance.OrderSide,
 	tpPlan *dtos.TradingPlan,
@@ -412,7 +445,7 @@ func (s *Services) saveTradeRecord(
 		// Save Parent Trade
 		parentTrade := &models.Trade{
 			Symbol:          symbol,
-			Interval:        tpPlan.Mode,
+			Interval:        analyzeRes.PrimaryTimeframe,
 			Side:            string(side),
 			Confidence:      analyzeRes.Scoring.Confidence,
 			TotalScore:      analyzeRes.Scoring.TotalScore,
@@ -449,9 +482,7 @@ func (s *Services) saveTradeRecord(
 			}
 
 			entryStat := "PENDING"
-			if eo.Status == "NEW" {
-				entryStat = "PENDING" // In limit orders
-			} else if eo.Status == "FILLED" {
+			if eo.Status == "FILLED" {
 				entryStat = "FILLED"
 			}
 

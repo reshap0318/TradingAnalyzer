@@ -126,7 +126,7 @@ func (s *Services) SignalAnalyze(ctx *gin.Context, req *dtos.SignalAnalyzeReques
 	for _, tf := range strategy.Timeframes {
 		timeframeKlines = append(timeframeKlines, binance.MultiKlineRequest{
 			Interval: tf.TimeframeName,
-			Limit:    150,
+			Limit:    300,
 		})
 	}
 
@@ -230,7 +230,7 @@ func (s *Services) signalAnalyzeCalculate(
 		})
 	}
 
-	signal, action := getCategoryFromThreshold(finalSignal, thresholds)
+	signal, _ := getCategoryFromThreshold(finalSignal, thresholds)
 	confidence := math.Abs(finalSignal)
 
 	// Check signal validity based on MIN_CONFIDENCE
@@ -247,11 +247,7 @@ func (s *Services) signalAnalyzeCalculate(
 		return nil, fmt.Errorf("failed to fetch price data for symbol %s on timeframe %s", symbol, strategy.PrimaryTF)
 	}
 
-	if signal == "BUY" || signal == "SELL" {
-		tradCapital = tradCapital * 0.8
-	}
-
-	tradingPlan = s.buildTradingPlan(currentPrice, tradCapital, action, strategy, primaryKlines, config)
+	tradingPlan = s.buildTradingPlan(currentPrice, tradCapital, signal, primaryKlines, config)
 
 	return &dtos.SignalAnalyzeResponse{
 		Symbol:           symbol,
@@ -279,8 +275,8 @@ func (s *Services) getConfigMM(strategy *dtos.StrategyData) (mmConfig *config.MM
 		MAX_DAILY_LOSS_COUNT:   strategy.MoneyManagement.MAX_DAILY_LOSS_COUNT,
 		RISK_REWARD_RATIO:      strategy.MoneyManagement.RISK_REWARD_RATIO,
 		RISK_REWARD_TARGET:     strategy.MoneyManagement.RISK_REWARD_TARGET,
+		RISK_ENTRY_BUFFER:      strategy.MoneyManagement.MAX_RISK_ENTRY_BUFFER,
 		MAX_POSITION_SIZE:      strategy.MoneyManagement.MAX_POSITION_SIZE,
-		MAX_RISK_PER_TRADE:     strategy.MoneyManagement.MAX_RISK_PER_TRADE,
 		LEVERAGE:               strategy.MoneyManagement.LEVERAGE,
 		IS_AGRESSIVE:           strategy.MoneyManagement.IS_AGRESSIVE,
 		ORDER_EXPIRATION_HOURS: strategy.MoneyManagement.ORDER_EXPIRATION_HOURS,
@@ -305,11 +301,11 @@ func (s *Services) getConfigMM(strategy *dtos.StrategyData) (mmConfig *config.MM
 	if mmConfig.RISK_REWARD_TARGET == 0 {
 		mmConfig.RISK_REWARD_TARGET = s.cfg.MM.RISK_REWARD_TARGET
 	}
+	if mmConfig.RISK_ENTRY_BUFFER == 0 {
+		mmConfig.RISK_ENTRY_BUFFER = s.cfg.MM.RISK_ENTRY_BUFFER
+	}
 	if mmConfig.MAX_POSITION_SIZE == 0 {
 		mmConfig.MAX_POSITION_SIZE = s.cfg.MM.MAX_POSITION_SIZE
-	}
-	if mmConfig.MAX_RISK_PER_TRADE == 0 {
-		mmConfig.MAX_RISK_PER_TRADE = s.cfg.MM.MAX_RISK_PER_TRADE
 	}
 	if mmConfig.LEVERAGE == 0 {
 		mmConfig.LEVERAGE = s.cfg.MM.LEVERAGE
@@ -323,17 +319,24 @@ func (s *Services) getConfigMM(strategy *dtos.StrategyData) (mmConfig *config.MM
 func (s *Services) buildTradingPlan(
 	currentPrice float64,
 	tradingCapital float64,
-	action string,
-	strategy *dtos.StrategyData,
+	signal string,
 	primaryKlines []binance.KlineInfo,
 	config *config.MMConfig,
 ) *dtos.TradingPlan {
-	bufferPercent := 0.015        // 1.5% buffer for S/R levels
-	fallbackBufferPercent := 0.03 // 3% fallback buffer if no S/R data
+	// Use RISK_ENTRY_BUFFER from config (convert to decimal, e.g., 0.5% = 0.005)
+	bufferPercent := float64(config.RISK_ENTRY_BUFFER)
+	fallbackBufferPercent := bufferPercent * 2 // Fallback buffer is 2x entry buffer
 	leverage := config.LEVERAGE
 	isAggressive := config.IS_AGRESSIVE
 
-	if currentPrice <= 0 || action == "WAIT" || len(primaryKlines) == 0 {
+	signalStrength := 1.0 // Default 100%
+	if signal == "BUY" || signal == "SELL" || signal == "WAIT" {
+		signalStrength = 0.8 // Reduce to 80% for regular signals
+	}
+
+	tradingCapital = tradingCapital * float64(config.MAX_POSITION_SIZE) * signalStrength
+
+	if currentPrice <= 0 || len(primaryKlines) == 0 {
 		return &dtos.TradingPlan{
 			Mode:          "WAIT",
 			Entries:       make([]dtos.TradingPlanEntry, 0),
@@ -348,7 +351,8 @@ func (s *Services) buildTradingPlan(
 	var tp, sl float64
 	var entries []dtos.TradingPlanEntry
 
-	if action == "BUY" || action == "STRONG_BUY" {
+	switch signal {
+	case "BUY", "STRONG_BUY", "WAIT":
 		// For BUY: TP = Resistance, SL = Support (with buffer)
 		resistance := srResult.NearestRes
 		support := srResult.NearestSup
@@ -415,8 +419,7 @@ func (s *Services) buildTradingPlan(
 				PositionQty:   entryQty,
 			})
 		}
-
-	} else if action == "SELL" || action == "STRONG_SELL" {
+	case "SELL", "STRONG_SELL":
 		// For SELL: TP = Support, SL = Resistance (with buffer)
 		resistance := srResult.NearestRes
 		support := srResult.NearestSup
@@ -483,44 +486,71 @@ func (s *Services) buildTradingPlan(
 				PositionQty:   entryQty,
 			})
 		}
-	} else {
+	default:
 		// Unknown action - return WAIT plan
 		return &dtos.TradingPlan{
 			Mode:          "WAIT",
 			Entries:       make([]dtos.TradingPlanEntry, 0),
 			BufferPercent: helpers.RoundFloat(bufferPercent*100, 3),
+			Summary: &dtos.TradingPlanSummary{
+				TotalEntries:        0,
+				TotalPositionValue:  0,
+				TotalPositionQty:    0,
+				AvgEntryPrice:       0,
+				MaxRiskUSDT:         0,
+				MaxRiskPercent:      0,
+				TargetProfitUSDT:    0,
+				TargetProfitPercent: 0,
+			},
 		}
+	}
+
+	// Calculate summary data (pre-calculated for easy access)
+	var totalValue float64
+	var totalQty float64
+	var weightedSum float64
+
+	for _, entry := range entries {
+		totalValue += entry.PositionValue
+		totalQty += entry.PositionQty
+		weightedSum += entry.PositionValue * entry.EntryPrice
+	}
+
+	var avgEntryPrice float64
+	if totalValue > 0 {
+		avgEntryPrice = weightedSum / totalValue
+	}
+
+	// Calculate risk and profit
+	var maxRiskUSDT, targetProfitUSDT float64
+	switch signal {
+	case "BUY", "STRONG_BUY":
+		maxRiskUSDT = (avgEntryPrice - sl) * totalQty
+		targetProfitUSDT = (tp - avgEntryPrice) * totalQty
+	case "SELL", "STRONG_SELL":
+		maxRiskUSDT = (sl - avgEntryPrice) * totalQty
+		targetProfitUSDT = (avgEntryPrice - tp) * totalQty
+	}
+
+	// Calculate percentages from position value
+	var maxRiskPercent, targetProfitPercent float64
+	if totalValue > 0 {
+		maxRiskPercent = (maxRiskUSDT / totalValue) * 100
+		targetProfitPercent = (targetProfitUSDT / totalValue) * 100
+	}
+
+	// Calculate percentages from trading capital (more meaningful for risk management)
+	var riskFromCapital, profitFromCapital, effectiveLeverage float64
+	if tradingCapital > 0 {
+		riskFromCapital = (maxRiskUSDT / tradingCapital) * 100
+		profitFromCapital = (targetProfitUSDT / tradingCapital) * 100
+		effectiveLeverage = totalValue / tradingCapital
 	}
 
 	// Calculate Risk/Reward ratio
 	var riskRewardRatio float64
-	if len(entries) > 0 {
-		// Calculate average entry price (weighted by position value)
-		var totalValue float64
-		var weightedSum float64
-		for _, entry := range entries {
-			totalValue += entry.PositionValue
-			weightedSum += entry.PositionValue * entry.EntryPrice
-		}
-
-		var avgEntryPrice float64
-		if totalValue > 0 {
-			avgEntryPrice = weightedSum / totalValue
-		}
-
-		if action == "BUY" || action == "STRONG_BUY" {
-			reward := tp - avgEntryPrice
-			risk := avgEntryPrice - sl
-			if risk > 0 {
-				riskRewardRatio = helpers.RoundFloat(reward/risk, 2)
-			}
-		} else {
-			reward := avgEntryPrice - tp
-			risk := sl - avgEntryPrice
-			if risk > 0 {
-				riskRewardRatio = helpers.RoundFloat(reward/risk, 2)
-			}
-		}
+	if len(entries) > 0 && maxRiskUSDT > 0 {
+		riskRewardRatio = helpers.RoundFloat(targetProfitUSDT/maxRiskUSDT, 2)
 	}
 
 	return &dtos.TradingPlan{
@@ -530,6 +560,19 @@ func (s *Services) buildTradingPlan(
 		StopLoss:        sl,
 		RiskRewardRatio: riskRewardRatio,
 		BufferPercent:   bufferPercent * 100,
+		Summary: &dtos.TradingPlanSummary{
+			TotalEntries:        len(entries),
+			TotalPositionValue:  helpers.RoundFloat(totalValue, 2),
+			TotalPositionQty:    helpers.RoundFloat(totalQty, 8),
+			AvgEntryPrice:       helpers.RoundFloat(avgEntryPrice, 8),
+			MaxRiskUSDT:         helpers.RoundFloat(maxRiskUSDT, 2),
+			MaxRiskPercent:      helpers.RoundFloat(maxRiskPercent, 2),
+			RiskFromCapital:     helpers.RoundFloat(riskFromCapital, 2),
+			TargetProfitUSDT:    helpers.RoundFloat(targetProfitUSDT, 2),
+			TargetProfitPercent: helpers.RoundFloat(targetProfitPercent, 2),
+			ProfitFromCapital:   helpers.RoundFloat(profitFromCapital, 2),
+			EffectiveLeverage:   helpers.RoundFloat(effectiveLeverage, 2),
+		},
 	}
 }
 

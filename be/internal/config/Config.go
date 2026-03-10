@@ -45,12 +45,11 @@ type MMConfig struct {
 	MAX_DAILY_LOSS_COUNT   int8    //Max consecutive losses (HARD LIMIT)
 	RISK_REWARD_RATIO      float32 // Minimum R:R required
 	RISK_REWARD_TARGET     float32 // Target R:R untuk excellent setups
-	MAX_POSITION_SIZE      float32 // ..% from balance per trade (HARD LIMIT)
-	MAX_RISK_PER_TRADE     float32 // ..% from balance per trade (HARD LIMIT)
-	LEVERAGE               int8    // Leverage to use for futures trading
-	IS_AGRESSIVE           bool    // true = hybrid entry, false = conservative
+	RISK_ENTRY_BUFFER      float32 // ..% Buffer RISK and Entry
+	MAX_POSITION_SIZE      float32 // ..% from balance per trade
 
-	// Order Expiration (always enabled)
+	LEVERAGE               int8 // Leverage to use for futures trading
+	IS_AGRESSIVE           bool // true = hybrid entry, false = conservative
 	ORDER_EXPIRATION_HOURS int8 // Hours before pending orders expire (optimal for 15m timeframe: 2-4 hours)
 }
 
@@ -181,8 +180,8 @@ func LoadConfig() *Config {
 	config.MM.MAX_DAILY_LOSS_COUNT = 5
 	config.MM.RISK_REWARD_RATIO = 2.0
 	config.MM.RISK_REWARD_TARGET = 3.0
-	config.MM.MAX_POSITION_SIZE = 0.15  // 15% of balance
-	config.MM.MAX_RISK_PER_TRADE = 0.04 // 4% of balance
+	config.MM.RISK_ENTRY_BUFFER = 0.0075 // 0.75%
+	config.MM.MAX_POSITION_SIZE = 0.15   // 15% of balance
 
 	config.MM.LEVERAGE = 5
 	config.MM.IS_AGRESSIVE = false
@@ -277,9 +276,9 @@ func LoadConfigDB(srvc ConfigService) *Config {
 			if val, err := helpers.ParseFloat(data.Value, 32); err == nil {
 				cfg.MM.MAX_POSITION_SIZE = float32(val)
 			}
-		case "MAX_RISK_PER_TRADE":
+		case "RISK_ENTRY_BUFFER":
 			if val, err := helpers.ParseFloat(data.Value, 32); err == nil {
-				cfg.MM.MAX_RISK_PER_TRADE = float32(val)
+				cfg.MM.RISK_ENTRY_BUFFER = float32(val)
 			}
 		case "LEVERAGE":
 			if val, err := helpers.ParseFloat(data.Value, 8); err == nil {

@@ -37,6 +37,29 @@ type TradingPlan struct {
 	StopLoss        float64 `json:"stop_loss"`
 	RiskRewardRatio float64 `json:"risk_reward_ratio"`
 	BufferPercent   float64 `json:"buffer_percent"`
+
+	// Summary (pre-calculated data for easy access)
+	Summary *TradingPlanSummary `json:"summary,omitempty"`
+}
+
+// TradingPlanSummary contains pre-calculated summary data for the trading plan
+type TradingPlanSummary struct {
+	// Position Info
+	TotalEntries       int     `json:"total_entries"`        // Number of entries
+	TotalPositionValue float64 `json:"total_position_value"` // Total USDT to be used (from capital)
+	TotalPositionQty   float64 `json:"total_position_qty"`   // Total coin quantity
+	AvgEntryPrice      float64 `json:"avg_entry_price"`      // Weighted average entry price
+
+	// Risk Info (calculated from position value, not capital)
+	MaxRiskUSDT       float64 `json:"max_risk_usdt"`    // Max loss in USDT if SL hit
+	MaxRiskPercent    float64 `json:"max_risk_percent"` // Max risk as % of position value
+	RiskFromCapital   float64 `json:"risk_from_capital"` // Max risk as % of trading capital
+
+	// Profit Info (calculated from position value, not capital)
+	TargetProfitUSDT      float64 `json:"target_profit_usdt"`      // Target profit in USDT if TP hit
+	TargetProfitPercent   float64 `json:"target_profit_percent"`   // Target profit as % of position value
+	ProfitFromCapital     float64 `json:"profit_from_capital"`     // Target profit as % of trading capital
+	EffectiveLeverage     float64 `json:"effective_leverage"`      // Actual leverage used (position_value / capital)
 }
 
 type TradingPlanEntry struct {

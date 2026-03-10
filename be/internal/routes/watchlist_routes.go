@@ -16,4 +16,12 @@ func RegisterWatchlistRoutes(router *gin.RouterGroup, ctrl *controller.Controlle
 		watchlistGroup.PUT("/:id", ctrl.WatchlistUpdate)
 		watchlistGroup.DELETE("/:id", ctrl.WatchlistDelete)
 	}
+
+	// Scanner routes
+	scannerGroup := router.Group("/watchlist")
+	{
+		scannerGroup.POST("/activate", ctrl.WatchlistScannerActivate)
+		scannerGroup.POST("/deactivate", ctrl.WatchlistScannerDeactivate)
+		scannerGroup.GET("/status", ctrl.WatchlistScannerGetStatus)
+	}
 }
