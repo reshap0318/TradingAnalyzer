@@ -42,6 +42,8 @@ services:
   script-bot:
     image: alpine:latest
     container_name: trading-worker
+    profiles:
+      - worker
     volumes:
       - ./etc/script:/app
     working_dir: /app

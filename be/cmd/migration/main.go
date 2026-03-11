@@ -248,6 +248,11 @@ func seedConfig(db *gorm.DB) {
 			Category:  "MONEY_MANAGEMENT",
 		},
 		{
+			ConfigKey: "RISK_ENTRY_BUFFER",
+			Value:     "0.0075",
+			Category:  "MONEY_MANAGEMENT",
+		},
+		{
 			ConfigKey: "MAX_RISK_PER_TRADE",
 			Value:     "0.04",
 			Category:  "MONEY_MANAGEMENT",
@@ -531,25 +536,35 @@ func seedStrategy(db *gorm.DB) {
 		},
 
 		// ──────────────────────────────────────────────
-		// 2. Day Trading Pro - Balanced intraday (IMPROVED)
+		// 2. Day Trading Pro - Balanced intraday
 		// Fixed: 15m/1h/4h instead of 15m/30m/1h
 		// ──────────────────────────────────────────────
 		{
 			Name:      "Day Trading Pro",
 			PrimaryTF: "15m",
 			Timeframes: []tfSeed{
-				{"5m", 0.10}, {"15m", 0.40}, {"1h", 0.30}, {"4h", 0.20},
+				{"5m", 0.10},
+				{"15m", 0.40},
+				{"1h", 0.30},
+				{"4h", 0.20},
 			},
 			Indicators: []indSeed{
-				{1, 0.30}, {2, 0.20}, {3, 0.11}, {4, 0.10},
-				{5, 0.10}, {6, 0.10}, {7, 0.04}, {8, 0.02}, {9, 0.03},
+				{1, 0.25},
+				{2, 0.20},
+				{3, 0.10},
+				{4, 0.10},
+				{5, 0.10},
+				{6, 0.15},
+				{7, 0.05},
+				{8, 0.05},
 			},
 			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "45"}, {"MAX_DAILY_TRADES", "20"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_POSITION_SIZE", "0.15"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"LEVERAGE", "5"},
-				{"ORDER_EXPIRATION_HOURS", "4"}, {"IS_AGRESSIVE", "false"},
-				{"MAX_RISK_PER_TRADE", "0.04"},
+				{"MIN_CONFIDENCE", "65"}, {"MAX_DAILY_TRADES", "3"}, // Hemat peluru!
+				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "2"},
+				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "2.5"},
+				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.20"}, // 20% dari $37 = $7.4
+				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "false"}, // Wajib antri di S/R
+				{"ORDER_EXPIRATION_HOURS", "4"},
 			},
 		},
 
