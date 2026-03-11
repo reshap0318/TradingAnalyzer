@@ -380,9 +380,9 @@ func (s *Services) buildTradingPlan(
 			buf = minBuf
 		}
 
-		// TP just below resistance, SL just below support
+		// TP just below resistance, SL just below support with extra breathing room
 		tp = resistance - buf
-		sl = support - buf
+		sl = support - (buf * 2.0)
 		entryBase := support + buf
 		if entryBase >= currentPrice {
 			entryBase = currentPrice - buf
@@ -460,9 +460,9 @@ func (s *Services) buildTradingPlan(
 			buf = minBuf
 		}
 
-		// TP just above support, SL just above resistance
+		// TP just above support, SL just above resistance with extra breathing room
 		tp = support + buf
-		sl = resistance + buf
+		sl = resistance + (buf * 2.0)
 		entryBase := resistance - buf
 		if entryBase <= currentPrice {
 			entryBase = currentPrice + buf
