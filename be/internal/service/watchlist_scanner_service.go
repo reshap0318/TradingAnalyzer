@@ -153,39 +153,23 @@ func (s *Services) runBackgroundScanner(ctx context.Context, scanInterval time.D
 	logger.Info("Running initial scan immediately...")
 	s.runScanCycle(logger)
 
-	// ✅ Calculate time until next interval mark (e.g., 00:15, 00:30, 00:45)
-	initialDelay := s.calculateNextIntervalDelay(scanInterval)
-	if initialDelay > 0 {
-		nextExecution := time.Now().Add(initialDelay)
-		logger.Info("Initial wait: %.0f minutes (next scan at %s)",
-			initialDelay.Minutes(), nextExecution.Format("2006-01-02 15:04:05"))
-
-		// Use a ticker for the initial delay to allow cancellation
-		delayTicker := time.NewTicker(initialDelay)
-		select {
-		case <-ctx.Done():
-			delayTicker.Stop()
-			logger.Info("Scanner stopped during initial delay")
-			return
-		case <-delayTicker.C:
-			delayTicker.Stop()
-			logger.Info("Initial wait complete, running scan at %s", time.Now().Format("2006-01-02 15:04:05"))
-			// ✅ RUN SCAN immediately after initial wait
-			s.runScanCycle(logger)
-		}
-	}
-
-	// ✅ Start periodic ticker for subsequent scans
-	ticker := time.NewTicker(scanInterval)
-	defer ticker.Stop()
-
+	// ✅ Loop: always align to next clock mark (e.g., :00, :15, :30, :45)
 	for {
+		// Calculate delay until next interval mark
+		delay := s.calculateNextIntervalDelay(scanInterval)
+		nextExecution := time.Now().Add(delay)
+		logger.Info("Next scan at %s (waiting %.0fm)",
+			nextExecution.Format("2006-01-02 15:04:05"), delay.Minutes())
+
+		// Wait until next mark, with cancellation support
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			logger.Info("Scanner stopped by user request")
 			return
-		case <-ticker.C:
-			logger.Info("Ticker triggered at %s", time.Now().Format("2006-01-02 15:04:05"))
+		case <-timer.C:
+			logger.Info("Scan triggered at %s", time.Now().Format("2006-01-02 15:04:05"))
 
 			// Skip if scan is already running
 			scannerMutex.Lock()

@@ -35,6 +35,8 @@ type TradingPlan struct {
 	// TP/SL (single for all entries)
 	TakeProfit      float64 `json:"take_profit"`
 	StopLoss        float64 `json:"stop_loss"`
+	Resistance      float64 `json:"resistance"`
+	Support         float64 `json:"support"`
 	RiskRewardRatio float64 `json:"risk_reward_ratio"`
 	BufferPercent   float64 `json:"buffer_percent"`
 
@@ -51,15 +53,15 @@ type TradingPlanSummary struct {
 	AvgEntryPrice      float64 `json:"avg_entry_price"`      // Weighted average entry price
 
 	// Risk Info (calculated from position value, not capital)
-	MaxRiskUSDT       float64 `json:"max_risk_usdt"`    // Max loss in USDT if SL hit
-	MaxRiskPercent    float64 `json:"max_risk_percent"` // Max risk as % of position value
-	RiskFromCapital   float64 `json:"risk_from_capital"` // Max risk as % of trading capital
+	MaxRiskUSDT     float64 `json:"max_risk_usdt"`     // Max loss in USDT if SL hit
+	MaxRiskPercent  float64 `json:"max_risk_percent"`  // Max risk as % of position value
+	RiskFromCapital float64 `json:"risk_from_capital"` // Max risk as % of trading capital
 
 	// Profit Info (calculated from position value, not capital)
-	TargetProfitUSDT      float64 `json:"target_profit_usdt"`      // Target profit in USDT if TP hit
-	TargetProfitPercent   float64 `json:"target_profit_percent"`   // Target profit as % of position value
-	ProfitFromCapital     float64 `json:"profit_from_capital"`     // Target profit as % of trading capital
-	EffectiveLeverage     float64 `json:"effective_leverage"`      // Actual leverage used (position_value / capital)
+	TargetProfitUSDT    float64 `json:"target_profit_usdt"`    // Target profit in USDT if TP hit
+	TargetProfitPercent float64 `json:"target_profit_percent"` // Target profit as % of position value
+	ProfitFromCapital   float64 `json:"profit_from_capital"`   // Target profit as % of trading capital
+	EffectiveLeverage   float64 `json:"effective_leverage"`    // Actual leverage used (position_value / capital)
 }
 
 type TradingPlanEntry struct {

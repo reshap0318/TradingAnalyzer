@@ -2,6 +2,7 @@ package binance
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/adshao/go-binance/v2/futures"
@@ -51,6 +52,8 @@ func NewClient(cfg *config.BinanceConfig, cacheClient *database.CacheClient) *Cl
 	if cfg.IsTestnet {
 		client.BaseURL = "https://testnet.binancefuture.com"
 	}
+
+	log.Printf("Creating BinanceClient - Testnet: %v | baseURL: %s", cfg.IsTestnet, client.BaseURL)
 
 	return &Client{
 		apiClient: client,

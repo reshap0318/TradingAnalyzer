@@ -348,34 +348,53 @@ func (s *Services) buildTradingPlan(
 
 	srResult := indicators.AnalyzeSRWithParams(ohlcData, closes, s.cfg.INDICATORS.SUPPORT_RESIST)
 
-	var tp, sl float64
+	var tp, sl, support, resistance float64
 	var entries []dtos.TradingPlanEntry
 
 	switch signal {
 	case "BUY", "STRONG_BUY", "WAIT":
-		// For BUY: TP = Resistance, SL = Support (with buffer)
-		resistance := srResult.NearestRes
-		support := srResult.NearestSup
+		// For BUY: Entry near support, TP near resistance, SL below support
+		resistance = srResult.NearestRes
+		support = srResult.NearestSup
 
 		if resistance == 0 {
-			resistance = currentPrice * (1 + fallbackBufferPercent) // Fallback: 2% above
+			resistance = currentPrice * (1 + fallbackBufferPercent)
 		}
 		if support == 0 {
-			support = currentPrice * (1 - fallbackBufferPercent) // Fallback: 2% below
+			support = currentPrice * (1 - fallbackBufferPercent)
 		}
 
-		tp = resistance * (1 - bufferPercent)
-		sl = support * (1 - (bufferPercent * 2))
+		// Ensure support < currentPrice < resistance
+		if support >= currentPrice {
+			support = currentPrice * (1 - fallbackBufferPercent)
+		}
+		if resistance <= currentPrice {
+			resistance = currentPrice * (1 + fallbackBufferPercent)
+		}
+
+		// Range-based buffer: proportional to S/R range, min 5% of range
+		srRange := resistance - support
+		buf := srRange * bufferPercent
+		minBuf := srRange * 0.05
+		if buf < minBuf {
+			buf = minBuf
+		}
+
+		// TP just below resistance, SL just below support
+		tp = resistance - buf
+		sl = support - buf
+		entryBase := support + buf
+		if entryBase >= currentPrice {
+			entryBase = currentPrice - buf
+		}
 
 		if isAggressive {
-			// AGGRESSIVE MODE: Multiple entries (50% now + 50% pullback)
+			// AGGRESSIVE MODE: 50% at current price + 50% at pullback near support
 			entries = make([]dtos.TradingPlanEntry, 0, 2)
 
-			// Entry 1: 50% at current price
 			entry1Price := currentPrice
 			entry1Value := tradingCapital * 0.5
-			leveragedValue1 := entry1Value * float64(leverage)
-			entry1Qty := leveragedValue1 / entry1Price
+			entry1Qty := (entry1Value * float64(leverage)) / entry1Price
 
 			entries = append(entries, dtos.TradingPlanEntry{
 				EntryNumber:   1,
@@ -385,11 +404,9 @@ func (s *Services) buildTradingPlan(
 				PositionQty:   entry1Qty,
 			})
 
-			// Entry 2: 50% at pullback to support
-			entry2Price := support * (1 + bufferPercent)
+			entry2Price := entryBase
 			entry2Value := tradingCapital * 0.5
-			leveragedValue2 := entry2Value * float64(leverage)
-			entry2Qty := leveragedValue2 / entry2Price
+			entry2Qty := (entry2Value * float64(leverage)) / entry2Price
 
 			entries = append(entries, dtos.TradingPlanEntry{
 				EntryNumber:   2,
@@ -400,16 +417,12 @@ func (s *Services) buildTradingPlan(
 			})
 
 		} else {
-			// CONSERVATIVE MODE: Single entry near current price
-			// Uses small buffer below current price for slight discount
+			// CONSERVATIVE MODE: Single entry near support
 			entries = make([]dtos.TradingPlanEntry, 0, 1)
 
-			// [OLD] Entry at support + buffer (rollback jika dibutuhkan)
-			entryPrice := support * (1 + bufferPercent)
-			// entryPrice := currentPrice * (1 - bufferPercent/3) // ~0.5% below current price
+			entryPrice := entryBase
 			entryValue := tradingCapital
-			leveragedValue := entryValue * float64(leverage)
-			entryQty := leveragedValue / entryPrice
+			entryQty := (entryValue * float64(leverage)) / entryPrice
 
 			entries = append(entries, dtos.TradingPlanEntry{
 				EntryNumber:   1,
@@ -420,29 +433,48 @@ func (s *Services) buildTradingPlan(
 			})
 		}
 	case "SELL", "STRONG_SELL":
-		// For SELL: TP = Support, SL = Resistance (with buffer)
-		resistance := srResult.NearestRes
-		support := srResult.NearestSup
+		// For SELL: Entry near resistance, TP near support, SL above resistance
+		resistance = srResult.NearestRes
+		support = srResult.NearestSup
 
 		if resistance == 0 {
-			resistance = currentPrice * (1 + fallbackBufferPercent) // Fallback: 2% above
+			resistance = currentPrice * (1 + fallbackBufferPercent)
 		}
 		if support == 0 {
-			support = currentPrice * (1 - fallbackBufferPercent) // Fallback: 2% below
+			support = currentPrice * (1 - fallbackBufferPercent)
 		}
 
-		tp = support * (1 + bufferPercent)
-		sl = resistance * (1 + (bufferPercent * 2))
+		// Ensure support < currentPrice < resistance
+		if support >= currentPrice {
+			support = currentPrice * (1 - fallbackBufferPercent)
+		}
+		if resistance <= currentPrice {
+			resistance = currentPrice * (1 + fallbackBufferPercent)
+		}
+
+		// Range-based buffer: proportional to S/R range, min 5% of range
+		srRange := resistance - support
+		buf := srRange * bufferPercent
+		minBuf := srRange * 0.05
+		if buf < minBuf {
+			buf = minBuf
+		}
+
+		// TP just above support, SL just above resistance
+		tp = support + buf
+		sl = resistance + buf
+		entryBase := resistance - buf
+		if entryBase <= currentPrice {
+			entryBase = currentPrice + buf
+		}
 
 		if isAggressive {
-			// AGGRESSIVE MODE: Multiple entries (50% now + 50% pullback)
+			// AGGRESSIVE MODE: 50% at current price + 50% at pullback near resistance
 			entries = make([]dtos.TradingPlanEntry, 0, 2)
 
-			// Entry 1: 50% at current price
 			entry1Price := currentPrice
 			entry1Value := tradingCapital * 0.5
-			leveragedValue1 := entry1Value * float64(leverage)
-			entry1Qty := leveragedValue1 / entry1Price
+			entry1Qty := (entry1Value * float64(leverage)) / entry1Price
 
 			entries = append(entries, dtos.TradingPlanEntry{
 				EntryNumber:   1,
@@ -452,11 +484,9 @@ func (s *Services) buildTradingPlan(
 				PositionQty:   entry1Qty,
 			})
 
-			// Entry 2: 50% at pullback to resistance
-			entry2Price := resistance * (1 - bufferPercent)
+			entry2Price := entryBase
 			entry2Value := tradingCapital * 0.5
-			leveragedValue2 := entry2Value * float64(leverage)
-			entry2Qty := leveragedValue2 / entry2Price
+			entry2Qty := (entry2Value * float64(leverage)) / entry2Price
 
 			entries = append(entries, dtos.TradingPlanEntry{
 				EntryNumber:   2,
@@ -467,16 +497,12 @@ func (s *Services) buildTradingPlan(
 			})
 
 		} else {
-			// CONSERVATIVE MODE: Single entry near current price
-			// Uses small buffer above current price for slight discount
+			// CONSERVATIVE MODE: Single entry near resistance
 			entries = make([]dtos.TradingPlanEntry, 0, 1)
 
-			// [OLD] Entry at resistance - buffer (rollback jika dibutuhkan)
-			entryPrice := resistance * (1 - bufferPercent)
-			// entryPrice := currentPrice * (1 + bufferPercent/3) // ~0.5% above current price
+			entryPrice := entryBase
 			entryValue := tradingCapital
-			leveragedValue := entryValue * float64(leverage)
-			entryQty := leveragedValue / entryPrice
+			entryQty := (entryValue * float64(leverage)) / entryPrice
 
 			entries = append(entries, dtos.TradingPlanEntry{
 				EntryNumber:   1,
@@ -508,23 +534,21 @@ func (s *Services) buildTradingPlan(
 	// Calculate summary data (pre-calculated for easy access)
 	var totalValue float64
 	var totalQty float64
-	var weightedSum float64
 
 	for _, entry := range entries {
 		totalValue += entry.PositionValue
 		totalQty += entry.PositionQty
-		weightedSum += entry.PositionValue * entry.EntryPrice
 	}
 
 	var avgEntryPrice float64
-	if totalValue > 0 {
-		avgEntryPrice = weightedSum / totalValue
+	if totalQty > 0 {
+		avgEntryPrice = (totalValue * float64(leverage)) / totalQty
 	}
 
 	// Calculate risk and profit
 	var maxRiskUSDT, targetProfitUSDT float64
 	switch signal {
-	case "BUY", "STRONG_BUY":
+	case "BUY", "STRONG_BUY", "WAIT":
 		maxRiskUSDT = (avgEntryPrice - sl) * totalQty
 		targetProfitUSDT = (tp - avgEntryPrice) * totalQty
 	case "SELL", "STRONG_SELL":
@@ -548,9 +572,9 @@ func (s *Services) buildTradingPlan(
 	}
 
 	// Calculate Risk/Reward ratio
-	var riskRewardRatio float64
+	var calcRiskRewardRatio float64
 	if len(entries) > 0 && maxRiskUSDT > 0 {
-		riskRewardRatio = helpers.RoundFloat(targetProfitUSDT/maxRiskUSDT, 2)
+		calcRiskRewardRatio = helpers.RoundFloat(targetProfitUSDT/maxRiskUSDT, 2)
 	}
 
 	return &dtos.TradingPlan{
@@ -558,7 +582,9 @@ func (s *Services) buildTradingPlan(
 		Entries:         entries,
 		TakeProfit:      tp,
 		StopLoss:        sl,
-		RiskRewardRatio: riskRewardRatio,
+		Resistance:      resistance,
+		Support:         support,
+		RiskRewardRatio: calcRiskRewardRatio,
 		BufferPercent:   bufferPercent * 100,
 		Summary: &dtos.TradingPlanSummary{
 			TotalEntries:        len(entries),
