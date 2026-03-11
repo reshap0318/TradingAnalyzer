@@ -54,3 +54,22 @@ type TradeDayStat struct {
 	ConsecutiveLossess int8
 	PnL                float64
 }
+
+// ============== TRADE RUN DTOs ==============
+
+// ProcessTradeResult holds the result of processing a trade
+type ProcessTradeResult struct {
+	TradeID      uint   `json:"trade_id"`
+	Symbol       string `json:"symbol"`
+	Status       string `json:"status"`
+	Message      string `json:"message"`
+	EntriesSync  int    `json:"entries_sync"`
+	TPUpdated    bool   `json:"tp_updated"`
+	SLUpdated    bool   `json:"sl_updated"`
+	UpdatedCount int    `json:"updated_count"`
+}
+
+// TradeRunRequest represents the request to process a single trade
+type TradeRunRequest struct {
+	TradeID uint `json:"trade_id" binding:"required"`
+}

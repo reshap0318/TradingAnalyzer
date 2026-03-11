@@ -13,14 +13,16 @@ import (
 )
 
 var (
-	scannerActive   bool
-	scannerCancel   context.CancelFunc
-	scannerMutex    sync.Mutex
-	scannerStrategy *uint
-	scannerRunning  bool // Track if scan is currently running
-	scannerLogger   *helpers.WorkerLogger
+	scannerActive      bool
+	scannerCancel      context.CancelFunc
+	scannerMutex       sync.Mutex
+	scannerStrategy    *uint
+	scannerRunning     bool // Track if scan cycle is currently running
+	tradeRunnerRunning bool // Track if trade run cycle is currently running
+	scannerLogger      *helpers.WorkerLogger
+	tradeRunnerLogger  *helpers.WorkerLogger
 
-	// Shared log counter across all workers (scanner, tpsl, etc.)
+	// Shared log counter across all workers (scanner, runner, etc.)
 	// Reset when service restarts
 	workerLogCounter      int
 	workerLogCounterMutex sync.Mutex
@@ -70,10 +72,17 @@ func (s *Services) WatchlistScannerActivate(ctx *gin.Context, strategyID *uint) 
 	// Use timeframe in_minutes as scan interval
 	scanInterval := time.Duration(timeframe.InMinutes) * time.Minute
 
-	// Create logger for this scanner session
+	// Create logger for this scanner session (Watcher)
 	scannerLogger, err = helpers.NewWorkerLogger("SCANNER", "watcher", currentLogNumber)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create scanner logger: %w", err)
+	}
+
+	// Create logger for trade runner session (Runner)
+	tradeRunnerLogger, err = helpers.NewWorkerLogger("RUNNER", "runner", currentLogNumber)
+	if err != nil {
+		scannerLogger.Close() // Cleanup previous logger
+		return nil, fmt.Errorf("failed to create trade runner logger: %w", err)
 	}
 
 	// Create context with cancel
@@ -82,8 +91,12 @@ func (s *Services) WatchlistScannerActivate(ctx *gin.Context, strategyID *uint) 
 	scannerActive = true
 	scannerStrategy = &strategy.ID
 
-	// Start background goroutine with dynamic interval
+	// Start background goroutine 1: Watchlist Scanner (dynamic interval)
 	go s.runBackgroundScanner(ctxScan, scanInterval, scannerLogger)
+
+	// Start background goroutine 2: Trade Runner (fixed 1 minute interval)
+	tradeRunInterval := 1 * time.Minute
+	go s.runBackgroundTradeRunner(ctxScan, tradeRunInterval, tradeRunnerLogger)
 
 	return map[string]interface{}{
 		"is_active":     true,
@@ -108,14 +121,23 @@ func (s *Services) WatchlistScannerDeactivate(ctx *gin.Context) (res map[string]
 		scannerCancel()
 	}
 	scannerActive = false
-	scannerRunning = false // Reset running flag
+	scannerRunning = false     // Reset running flag
+	tradeRunnerRunning = false // Reset running flag
 
-	// Close logger file handle
+	// Close logger file handle for scanner
 	if scannerLogger != nil {
 		scannerLogger.Banner("🔴 WATCHLIST SCANNER STOPPED",
 			fmt.Sprintf("⏱  Stopped at: %s", time.Now().Format("2006-01-02 15:04:05")))
 		scannerLogger.Close()
 		scannerLogger = nil
+	}
+
+	// Close logger file handle for trade runner
+	if tradeRunnerLogger != nil {
+		tradeRunnerLogger.Banner("🔴 TRADE RUNNER STOPPED",
+			fmt.Sprintf("⏱  Stopped at: %s", time.Now().Format("2006-01-02 15:04:05")))
+		tradeRunnerLogger.Close()
+		tradeRunnerLogger = nil
 	}
 
 	return map[string]interface{}{
@@ -139,7 +161,12 @@ func (s *Services) runBackgroundScanner(ctx context.Context, scanInterval time.D
 	// Add panic recovery for goroutine
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Error("PANIC in scanner goroutine: %v", r)
+			logger.Error("CRITICAL PANIC in scanner goroutine: %v", r)
+			// Reset flag scanner as safety net if goroutine crashes
+			scannerMutex.Lock()
+			scannerActive = false
+			scannerRunning = false
+			scannerMutex.Unlock()
 		}
 	}()
 
@@ -183,6 +210,49 @@ func (s *Services) runBackgroundScanner(ctx context.Context, scanInterval time.D
 
 			// Run scan (scannerRunning will be reset by runScanCycle's defer)
 			s.runScanCycle(logger)
+		}
+	}
+}
+
+// runBackgroundTradeRunner runs the background TradeRunProcessAllActive process
+func (s *Services) runBackgroundTradeRunner(ctx context.Context, runInterval time.Duration, logger *helpers.WorkerLogger) {
+	// Add panic recovery for goroutine
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("CRITICAL PANIC in trade runner goroutine: %v", r)
+		}
+	}()
+
+	// Print start banner (console + file)
+	logger.Banner(
+		fmt.Sprintf("🟢 TRADE RUNNER STARTED — Session #%03d", logger.LogNumber),
+		fmt.Sprintf("⏱  Interval: %.0fm", runInterval.Minutes()),
+	)
+
+	// Ticker for fixed interval (1 minute)
+	ticker := time.NewTicker(runInterval)
+	defer ticker.Stop()
+
+	// Initial run immediately
+	s.runTradeRunCycle(logger)
+
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info("Trade Runner stopped by user request")
+			return
+		case <-ticker.C:
+			// Default interval triggered
+			scannerMutex.Lock()
+			if tradeRunnerRunning {
+				scannerMutex.Unlock()
+				logger.Skip("Previous trade run still active - skipping this interval")
+				continue
+			}
+			tradeRunnerRunning = true
+			scannerMutex.Unlock()
+
+			s.runTradeRunCycle(logger)
 		}
 	}
 }
@@ -246,6 +316,9 @@ func (s *Services) runScanCycle(logger *helpers.WorkerLogger) {
 
 	// Ensure scannerRunning is reset when scan completes (panic recovery)
 	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("PANIC recovered in runScanCycle during watchlist processing: %v", r)
+		}
 		duration := time.Since(cycleStart)
 		logger.CycleSummary(len(watchlists), tradesExecuted, tradesSkipped, duration)
 		scannerMutex.Lock()
@@ -289,11 +362,56 @@ func (s *Services) runScanCycle(logger *helpers.WorkerLogger) {
 			tradesSkipped++
 		}
 
-		// Small delay between symbols to avoid rate limiting
 		if len(watchlists) > 1 {
 			time.Sleep(30 * time.Second)
 		}
 	}
+}
+
+// runTradeRunCycle runs a single cycle of TradeRunProcessAllActive
+func (s *Services) runTradeRunCycle(logger *helpers.WorkerLogger) {
+	cycleStart := time.Now()
+
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("PANIC recovered in runTradeRunCycle: %v", r)
+		}
+		duration := time.Since(cycleStart)
+
+		scannerMutex.Lock()
+		tradeRunnerRunning = false
+		scannerMutex.Unlock()
+
+		// Kita butuh summary log khusus runner, atau sementara pakai Info
+		logger.Info("Trade run cycle completed in %v", duration)
+	}()
+
+	logger.Info("Running TradeRunProcessAllActive...")
+
+	// Jalankan TradeRun (menggunakan request Mock/Background)
+	mockCtx := &gin.Context{}
+	results, err := s.TradeRunProcessAllActive(mockCtx)
+
+	if err != nil {
+		logger.Error("Failed to process active trades: %v", err)
+		return
+	}
+
+	// Hitung statistik simpel (karena dtos result tidak spesifik ada status execute dsb,
+	// kita parsing array results untuk logging info)
+	processed := 0
+	errors := 0
+	for _, res := range results {
+		if res.Status == "ERROR" {
+			errors++
+			logger.Error("Trade ID %d (%s) failed: %s", res.TradeID, res.Symbol, res.Message)
+		} else if res.Status != "SKIPPED" {
+			processed++
+			logger.Success("Trade ID %d (%s) processed. Status: %s. Msg: %s", res.TradeID, res.Symbol, res.Status, res.Message)
+		}
+	}
+
+	logger.Info("Cycle Done. Processed: %d, Errors: %d", processed, errors)
 }
 
 // extractSymbolsFromWatchlist extracts symbol names from watchlist slice for logging

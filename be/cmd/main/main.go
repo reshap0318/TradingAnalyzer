@@ -57,5 +57,18 @@ func main() {
 		routes.RegisterTradeRoutes(protected, engine.Ctrl)
 	}
 
+	// Auto-run Watchlist Scanner on startup
+	go func() {
+		fmt.Println("⏳ Starting auto-run Watchlist Scanner...")
+		ctx := &gin.Context{}
+		_, err := engine.Srvc.WatchlistScannerActivate(ctx, nil)
+		if err != nil {
+			fmt.Printf("⚠️ Failed to auto-start Scanner: %v\n", err)
+		} else {
+			fmt.Println("✅ Watchlist Scanner auto-started successfully!")
+		}
+	}()
+
+	// Menjalankan HTTP server (BLOCKING)
 	router.Run(fmt.Sprintf("%s:%s", host, port))
 }
