@@ -347,6 +347,17 @@ func (s *Services) buildTradingPlan(
 	ohlcData, closes := convertKlinesToOHLCV(primaryKlines)
 
 	srResult := indicators.AnalyzeSRWithParams(ohlcData, closes, s.cfg.INDICATORS.SUPPORT_RESIST)
+	atrResult := indicators.AnalyzeATRWithConfig(ohlcData, s.cfg)
+	atrValue := atrResult.ATR
+	if atrValue == 0 {
+		atrValue = currentPrice * 0.01 // Fallback to 1% if ATR calculation fails
+	}
+
+	// Convert config bufferPercent to an ATR multiplier (e.g., 0.0075 -> 0.75x ATR)
+	atrMultiplier := bufferPercent * 100.0
+	if atrMultiplier < 0.2 {
+		atrMultiplier = 0.2 // Minimum 0.2x ATR
+	}
 
 	var tp, sl, support, resistance float64
 	var entries []dtos.TradingPlanEntry
@@ -372,17 +383,13 @@ func (s *Services) buildTradingPlan(
 			resistance = currentPrice * (1 + fallbackBufferPercent)
 		}
 
-		// Range-based buffer: proportional to S/R range, min 5% of range
-		srRange := resistance - support
-		buf := srRange * bufferPercent
-		minBuf := srRange * 0.05
-		if buf < minBuf {
-			buf = minBuf
-		}
+		// Calculate dynamic buffer using ATR
+		buf := atrValue * atrMultiplier
+		slBuf := atrValue * (atrMultiplier * 2.0)
 
-		// TP just below resistance, SL just below support with extra breathing room
+		// TP just below resistance, SL just below support with ATR volatility buffer
 		tp = resistance - buf
-		sl = support - (buf * 2.0)
+		sl = support - slBuf
 		entryBase := support + buf
 		if entryBase >= currentPrice {
 			entryBase = currentPrice - buf
@@ -452,17 +459,13 @@ func (s *Services) buildTradingPlan(
 			resistance = currentPrice * (1 + fallbackBufferPercent)
 		}
 
-		// Range-based buffer: proportional to S/R range, min 5% of range
-		srRange := resistance - support
-		buf := srRange * bufferPercent
-		minBuf := srRange * 0.05
-		if buf < minBuf {
-			buf = minBuf
-		}
+		// Calculate dynamic buffer using ATR
+		buf := atrValue * atrMultiplier
+		slBuf := atrValue * (atrMultiplier * 2.0)
 
-		// TP just above support, SL just above resistance with extra breathing room
+		// TP just above support, SL just above resistance with ATR volatility buffer
 		tp = support + buf
-		sl = resistance + (buf * 2.0)
+		sl = resistance + slBuf
 		entryBase := resistance - buf
 		if entryBase <= currentPrice {
 			entryBase = currentPrice + buf
