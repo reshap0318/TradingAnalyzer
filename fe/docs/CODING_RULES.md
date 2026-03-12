@@ -333,21 +333,21 @@ export const useAuthStore = defineStore('auth', () => {
   const loading = ref(false)
   const user = ref<IUser | null>(null)
   const token = ref<string | null>(getToken())
-  
+
   // Form State (reactive form data)
   const loginReq = ref<ILoginRequest>({
     username: '',
     password: ''
   })
-  
+
   // Validation Rules
   const loginRules = ref({
     username: { required },
     password: { required }
   })
-  
+
   // Vuelidate instance
-  const v$ = useVuelidate(loginRules, loginReq)
+  const loginReqValid = useVuelidate(loginRules, loginReq)
 
   // Getters
   const isAuthenticated = computed(() => !!token.value)
@@ -357,13 +357,13 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
 
     // Validate form before submit
-    const valid = await v$.value.$validate()
+    const valid = await loginReqValid.value.$validate()
     if (!valid) return false
 
     try {
       const response = await post<IApiResponse<IUser>>(`${BASE_URL}/login`, loginReq.value)
       const data = response.data.data
-      
+
       setToken(data.token)
       showSuccess('Welcome back!', `Hello, ${data.name || 'User'}`)
       return true
@@ -395,7 +395,7 @@ export const useAuthStore = defineStore('auth', () => {
     token,
     loading,
     loginReq,      // Form state
-    v$,            // Validation instance
+    loginReqValid, // Validation instance
 
     // Getters
     isAuthenticated,
@@ -420,6 +420,7 @@ export const useAuthStore = defineStore('auth', () => {
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
+import { getValidationErrors } from '@/helpers/validation'
 import { UiInput, UiButton, UiPassword } from '@/components/common'
 
 const router = useRouter()
@@ -438,22 +439,29 @@ const handleSubmit = async () => {
 
   // Call action dari store
   const success = await authStore.loginAction()
-  
+
   if (success) {
     router.push('/')
+  }
+}
+
+// Handle Enter key
+const handleKeyPress = (e: KeyboardEvent) => {
+  if (e.key === 'Enter') {
+    handleSubmit()
   }
 }
 </script>
 
 <template>
-  <form @submit.prevent="handleSubmit">
+  <form @submit.prevent="handleSubmit" @keypress="handleKeyPress">
     <!-- Username Input -->
     <UiInput
       v-model="loginReq.username"
       label="Username"
       placeholder="Enter your username"
       :error="v$.username.$error"
-      :error-message="v$.username.$errors[0]?.$message"
+      :error-message="getValidationErrors(v$.username).join(', ')"
     />
 
     <!-- Password Input -->
@@ -462,7 +470,7 @@ const handleSubmit = async () => {
       label="Password"
       placeholder="Enter your password"
       :error="v$.password.$error"
-      :error-message="v$.password.$errors[0]?.$message"
+      :error-message="getValidationErrors(v$.password).join(', ')"
     />
 
     <!-- Submit Button -->
@@ -472,13 +480,13 @@ const handleSubmit = async () => {
       :loading="isLoading"
       full-width
     >
-      Sign In
+      {{ isLoading ? 'Signing in...' : 'Sign In' }}
     </UiButton>
   </form>
 </template>
 ```
 
-> **💡 Pattern:** Component hanya menangani UI dan user interaction. Semua logic (form state, validation, API call) ada di **store**.
+> **💡 Pattern:** Component hanya menangani UI dan user interaction. Semua logic (form state, validation, API call) ada di **store**. Gunakan `getValidationErrors()` untuk error messages yang konsisten.
 
 ---
 
@@ -579,14 +587,14 @@ import { UiInput, UiButton, UiPassword } from '@/components/common'
 yarn add @vuelidate/core @vuelidate/validators
 ```
 
-### **2. Form Pattern**
+### **2. Form Validation Pattern**
 
-**✅ DO:** Simpan form state dan validation di **store**
+**✅ DO: Simpan form state dan validation di store**
 
 ```typescript
 // src/stores/auth.store.ts
 import useVuelidate from '@vuelidate/core'
-import { required, email, minLength } from '@vuelidate/validators'
+import { required, minLength } from '@vuelidate/validators'
 
 export const useAuthStore = defineStore('auth', () => {
   // Form state
@@ -594,52 +602,105 @@ export const useAuthStore = defineStore('auth', () => {
     username: '',
     password: ''
   })
-  
+
   // Validation rules
   const loginRules = ref({
     username: { required },
     password: { required, minLength: minLength(6) }
   })
-  
-  // Vuelidate instance
-  const v$ = useVuelidate(loginRules, loginReq)
-  
+
+  // Vuelidate instance (gunakan nama yang deskriptif)
+  const loginReqValid = useVuelidate(loginRules, loginReq)
+
   // Action dengan validation
   async function loginAction(): Promise<boolean> {
-    const valid = await v$.value.$validate()
+    // Validasi form sebelum submit
+    const valid = await loginReqValid.value.$validate()
     if (!valid) return false
-    
+
     // Proceed with API call
     ...
   }
-  
-  return { loginReq, v$, loginAction }
+
+  return { loginReq, loginReqValid, loginAction }
 })
 ```
 
-**✅ DO:** Gunakan validation dari store di component
+**✅ DO: Gunakan validation dari store di component**
 
 ```vue
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useAuthStore } from '@/stores/auth.store'
+import { getValidationErrors } from '@/helpers/validation'
+
 const authStore = useAuthStore()
+
+// Access form state dan validation dari store
 const loginReq = authStore.loginReq
 const v$ = authStore.loginReqValid
+const isLoading = computed(() => authStore.loading)
 
+// Submit handler
 const handleSubmit = async () => {
+  // Trigger validation dari store
   const valid = await v$.value.$validate()
   if (!valid) return
-  await authStore.loginAction()
+
+  // Call action dari store
+  const success = await authStore.loginAction()
+
+  if (success) {
+    router.push('/')
+  }
+}
+
+// Handle Enter key
+const handleKeyPress = (e: KeyboardEvent) => {
+  if (e.key === 'Enter') {
+    handleSubmit()
+  }
 }
 </script>
 
 <template>
-  <UiInput
-    v-model="loginReq.username"
-    :error="v$.username.$error"
-    :error-message="v$.username.$errors[0]?.$message"
-  />
+  <form @submit.prevent="handleSubmit" @keypress="handleKeyPress">
+    <!-- Username Input -->
+    <UiInput
+      v-model="loginReq.username"
+      label="Username"
+      placeholder="Enter your username"
+      :error="v$.username.$error"
+      :error-message="getValidationErrors(v$.username).join(', ')"
+    />
+
+    <!-- Password Input -->
+    <UiPassword
+      v-model="loginReq.password"
+      label="Password"
+      placeholder="Enter your password"
+      :error="v$.password.$error"
+      :error-message="getValidationErrors(v$.password).join(', ')"
+    />
+
+    <!-- Submit Button -->
+    <UiButton
+      type="submit"
+      variant="primary"
+      :loading="isLoading"
+      full-width
+    >
+      {{ isLoading ? 'Signing in...' : 'Sign In' }}
+    </UiButton>
+  </form>
 </template>
 ```
+
+> **💡 Pattern:** 
+> - Component hanya menangani UI dan user interaction
+> - Semua logic (form state, validation, API call) ada di **store**
+> - Gunakan `getValidationErrors()` untuk menampilkan error messages yang konsisten
+> - Handle Enter key untuk submit form
 
 ### **3. Available Validators**
 
@@ -672,6 +733,51 @@ const customRules = {
   }
 }
 ```
+
+### **5. Validation Helper**
+
+Project menggunakan **validation helper** untuk menampilkan error messages secara konsisten.
+
+**Location:** `src/helpers/validation.ts`
+
+**Functions:**
+- `getValidationErrors(fieldValidation)` - Returns array of error messages
+- `getFirstError(fieldValidation)` - Returns first error message
+- `hasValidationErrors(fieldValidation)` - Returns boolean
+
+**Usage:**
+
+```typescript
+// Import helper
+import { getValidationErrors } from '@/helpers/validation'
+
+// In component setup
+const v$ = authStore.loginReqValid
+
+// Get all error messages
+const errors = getValidationErrors(v$.username)
+
+// Get first error message
+const firstError = getFirstError(v$.password)
+
+// Check if has errors
+const hasError = hasValidationErrors(v$.username)
+```
+
+**In Template:**
+
+```vue
+<template>
+  <UiInput
+    v-model="loginReq.username"
+    label="Username"
+    :error="v$.username.$error"
+    :error-message="getValidationErrors(v$.username).join(', ')"
+  />
+</template>
+```
+
+> **💡 Rationale:** Helper ini menyediakan error messages yang konsisten dan user-friendly dalam Bahasa Indonesia, serta memudahkan maintenance jika ingin mengubah pesan error.
 
 ---
 

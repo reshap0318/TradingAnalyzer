@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
 import { UiInput, UiButton, UiPassword } from '@/components/common'
-import { getFirstError } from '@/helpers/validation'
+import { getValidationErrors } from '@/helpers/validation'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -15,11 +15,7 @@ const v$ = authStore.loginReqValid
 
 // Methods
 const handleSubmit = async () => {
-  const valid = await v$.value.$validate()
-  if (!valid) return
-
   const success = await authStore.loginAction()
-
   if (success) {
     router.push('/')
   }
@@ -54,7 +50,7 @@ const handleKeyPress = (e: KeyboardEvent) => {
               placeholder="Enter your username"
               autocomplete="username"
               :error="v$.username.$error"
-              :error-message="getFirstError(v$.username)"
+              :error-message="getValidationErrors(v$.username).join(',')"
             />
           </div>
 
@@ -65,7 +61,7 @@ const handleKeyPress = (e: KeyboardEvent) => {
               label="Password"
               placeholder="Enter your password"
               :error="v$.password.$error"
-              :error-message="getFirstError(v$.password)"
+              :error-message="getValidationErrors(v$.password).join(',')"
             />
           </div>
 

@@ -51,6 +51,7 @@ export const useAuthStore = defineStore('auth', () => {
       const response = await post<IApiResponse<IUser>>(`${BASE_URL}/login`, loginReq.value)
       const data = response.data.data
       // Save token to store and localStorage
+      token.value = data.token
       setToken(data.token)
 
       showSuccess('Welcome back!', `Hello, ${data.name || 'User'}`)
