@@ -11,6 +11,8 @@
 7. [API & Services](#api--services)
 8. [Code Style](#code-style)
 9. [Best Practices](#best-practices)
+10. [UI Components](#ui-components)
+11. [Form & Validation](#form--validation)
 
 ---
 
@@ -26,7 +28,11 @@ fe/
 │   │   │   └── main.css     # TailwindCSS + custom styles
 │   │   └── *.svg            # Images, icons
 │   ├── components/          # Reusable Vue components
-│   │   ├── common/          # Shared components (Button, Input, Modal)
+│   │   ├── common/          # Shared UI components (UiInput, UiButton, UiPassword)
+│   │   │   ├── index.ts     # Barrel export
+│   │   │   ├── UiInput.vue
+│   │   │   ├── UiButton.vue
+│   │   │   └── UiPassword.vue
 │   │   └── features/        # Feature-specific components
 │   ├── helpers/             # Helper functions (optional)
 │   ├── layouts/             # Layout components
@@ -38,6 +44,7 @@ fe/
 │   ├── pages/               # Page-level components (route-level)
 │   ├── router/              # Vue Router configuration
 │   ├── stores/              # Pinia stores + module-specific interfaces
+│   │                        # + form state & validation (Vuelidate)
 │   ├── App.vue              # Root component
 │   └── main.ts              # Application entry point
 ├── .env                     # Environment variables
@@ -304,25 +311,21 @@ import { ref, computed } from 'vue'
 import { type IApiResponse, post } from '@/lib/axios'
 import { showSuccess, showError } from '@/lib/sweetalert'
 import { destroySession, getToken, setToken } from '@/lib/storage'
+import useVuelidate from '@vuelidate/core'
+import { required } from '@vuelidate/validators'
 
 const BASE_URL = '/auth'
 
-// Module-specific interfaces (defined in store file)
-interface ILoginRequest {
-  email: string
+// Request interface
+export interface ILoginRequest {
+  username: string
   password: string
 }
 
-export interface ILoginResponse {
-  token: string
-  user?: IUser
-}
-
+// Response interface
 export interface IUser {
-  id: number
-  email: string
-  name?: string
-  created_at?: string
+  name: string
+  token: string
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -330,23 +333,39 @@ export const useAuthStore = defineStore('auth', () => {
   const loading = ref(false)
   const user = ref<IUser | null>(null)
   const token = ref<string | null>(getToken())
+  
+  // Form State (reactive form data)
+  const loginReq = ref<ILoginRequest>({
+    username: '',
+    password: ''
+  })
+  
+  // Validation Rules
+  const loginRules = ref({
+    username: { required },
+    password: { required }
+  })
+  
+  // Vuelidate instance
+  const v$ = useVuelidate(loginRules, loginReq)
 
   // Getters
   const isAuthenticated = computed(() => !!token.value)
 
   // Actions
-  async function loginAction(param: ILoginRequest): Promise<boolean> {
+  async function loginAction(): Promise<boolean> {
     loading.value = true
 
+    // Validate form before submit
+    const valid = await v$.value.$validate()
+    if (!valid) return false
+
     try {
-      const response = await post<IApiResponse<ILoginResponse>>(`${BASE_URL}/login`, param)
-      setToken(response.data.data.token)
+      const response = await post<IApiResponse<IUser>>(`${BASE_URL}/login`, loginReq.value)
+      const data = response.data.data
       
-      if (response.data.data.user) {
-        user.value = response.data.data.user
-      }
-      
-      showSuccess('Welcome back!', `Hello, ${response.data.data.user?.name || 'User'}`)
+      setToken(data.token)
+      showSuccess('Welcome back!', `Hello, ${data.name || 'User'}`)
       return true
     } catch (err: any) {
       const error = err.response?.data?.message || 'Login failed'
@@ -375,6 +394,8 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     token,
     loading,
+    loginReq,      // Form state
+    v$,            // Validation instance
 
     // Getters
     isAuthenticated,
@@ -386,38 +407,270 @@ export const useAuthStore = defineStore('auth', () => {
 })
 ```
 
+> **💡 Pattern:** Form state dan validation disimpan di **store**, bukan di component. Ini memudahkan:
+> - Reusability (form bisa dipakai di berbagai component)
+> - Testing (validasi terpusat di satu tempat)
+> - Maintenance (perubahan validasi = edit 1 file)
+
 ### **2. Store Usage in Components**
 
 ```typescript
-// Option 1: Direct access (recommended for simple cases)
+// Page component menggunakan form state & validation dari store
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
+import { UiInput, UiButton, UiPassword } from '@/components/common'
 
+const router = useRouter()
 const authStore = useAuthStore()
 
-// Access state directly
-const { user, token, loading } = authStore
+// Access form state dan validation dari store
+const loginReq = authStore.loginReq
+const v$ = authStore.loginReqValid
+const isLoading = computed(() => authStore.loading)
 
-// Access getters
-const isAuthenticated = authStore.isAuthenticated
+// Submit handler
+const handleSubmit = async () => {
+  // Trigger validation dari store
+  const valid = await v$.value.$validate()
+  if (!valid) return
 
-// Call actions
-await authStore.loginAction({ email: 'test@example.com', password: 'password' })
+  // Call action dari store
+  const success = await authStore.loginAction()
+  
+  if (success) {
+    router.push('/')
+  }
+}
 </script>
 
-// Option 2: Using storeToRefs (for reactivity in complex components)
+<template>
+  <form @submit.prevent="handleSubmit">
+    <!-- Username Input -->
+    <UiInput
+      v-model="loginReq.username"
+      label="Username"
+      placeholder="Enter your username"
+      :error="v$.username.$error"
+      :error-message="v$.username.$errors[0]?.$message"
+    />
+
+    <!-- Password Input -->
+    <UiPassword
+      v-model="loginReq.password"
+      label="Password"
+      placeholder="Enter your password"
+      :error="v$.password.$error"
+      :error-message="v$.password.$errors[0]?.$message"
+    />
+
+    <!-- Submit Button -->
+    <UiButton
+      type="submit"
+      variant="primary"
+      :loading="isLoading"
+      full-width
+    >
+      Sign In
+    </UiButton>
+  </form>
+</template>
+```
+
+> **💡 Pattern:** Component hanya menangani UI dan user interaction. Semua logic (form state, validation, API call) ada di **store**.
+
+---
+
+## 🧩 UI Components
+
+### **1. Reusable UI Components**
+
+Project menggunakan **minimal props pattern** untuk UI components agar fleksibel dan mudah digunakan.
+
+**Location:** `src/components/common/`
+
+#### **UiInput**
+
+```vue
+<UiInput
+  v-model="username"
+  label="Username"
+  placeholder="Enter your username"
+  autocomplete="username"
+  :error="v$.username.$error"
+  :error-message="v$.username.$errors[0]?.$message"
+/>
+```
+
+**Props:**
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `modelValue` | string | - | v-model value |
+| `type` | string | `'text'` | Input type |
+| `label` | string | `''` | Input label |
+| `placeholder` | string | `''` | Placeholder text |
+| `error` | boolean | `false` | Error state |
+| `errorMessage` | string | `''` | Error message |
+| `disabled` | boolean | `false` | Disabled state |
+| `autocomplete` | string | `'off'` | Autocomplete attribute |
+
+#### **UiPassword**
+
+```vue
+<UiPassword
+  v-model="password"
+  label="Password"
+  placeholder="Enter your password"
+  :error="v$.password.$error"
+  :error-message="v$.password.$errors[0]?.$message"
+/>
+```
+
+**Features:**
+- Show/hide password toggle dengan eye icons
+- Default `autocomplete="current-password"`
+- Same props sebagai UiInput (kecuali `type`)
+
+#### **UiButton**
+
+```vue
+<UiButton
+  type="submit"
+  variant="primary"
+  :loading="isLoading"
+  full-width
+>
+  Sign In
+</UiButton>
+```
+
+**Props:**
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `type` | `'button' \| 'submit' \| 'reset'` | `'button'` | Button type |
+| `variant` | `'primary' \| 'danger' \| 'outline'` | `'primary'` | Button style |
+| `loading` | boolean | `false` | Loading state |
+| `disabled` | boolean | `false` | Disabled state |
+| `fullWidth` | boolean | `false` | Full width button |
+
+**Variants:**
+- `primary` - Blue button (default)
+- `danger` - Red button
+- `outline` - Transparent dengan border
+
+### **2. Component Usage Pattern**
+
+```typescript
+// Import dari barrel export
+import { UiInput, UiButton, UiPassword } from '@/components/common'
+```
+
+---
+
+## 📝 Form & Validation
+
+### **1. Vuelidate Setup**
+
+**Library:** `@vuelidate/core` + `@vuelidate/validators`
+
+**Installation:**
+```bash
+yarn add @vuelidate/core @vuelidate/validators
+```
+
+### **2. Form Pattern**
+
+**✅ DO:** Simpan form state dan validation di **store**
+
+```typescript
+// src/stores/auth.store.ts
+import useVuelidate from '@vuelidate/core'
+import { required, email, minLength } from '@vuelidate/validators'
+
+export const useAuthStore = defineStore('auth', () => {
+  // Form state
+  const loginReq = ref({
+    username: '',
+    password: ''
+  })
+  
+  // Validation rules
+  const loginRules = ref({
+    username: { required },
+    password: { required, minLength: minLength(6) }
+  })
+  
+  // Vuelidate instance
+  const v$ = useVuelidate(loginRules, loginReq)
+  
+  // Action dengan validation
+  async function loginAction(): Promise<boolean> {
+    const valid = await v$.value.$validate()
+    if (!valid) return false
+    
+    // Proceed with API call
+    ...
+  }
+  
+  return { loginReq, v$, loginAction }
+})
+```
+
+**✅ DO:** Gunakan validation dari store di component
+
+```vue
 <script setup lang="ts">
-import { useAuthStore } from '@/stores/auth.store'
-import { storeToRefs } from 'pinia'
-
 const authStore = useAuthStore()
+const loginReq = authStore.loginReq
+const v$ = authStore.loginReqValid
 
-// Destructure with reactivity
-const { user, token, loading } = storeToRefs(authStore)
-
-// Actions still accessed directly
-const { loginAction, logoutAction } = authStore
+const handleSubmit = async () => {
+  const valid = await v$.value.$validate()
+  if (!valid) return
+  await authStore.loginAction()
+}
 </script>
+
+<template>
+  <UiInput
+    v-model="loginReq.username"
+    :error="v$.username.$error"
+    :error-message="v$.username.$errors[0]?.$message"
+  />
+</template>
+```
+
+### **3. Available Validators**
+
+```typescript
+import {
+  required,
+  email,
+  minLength,
+  maxLength,
+  minValue,
+  maxValue,
+  between,
+  alpha,
+  alphaNum,
+  numeric,
+  url,
+  or,
+  and,
+  not
+} from '@vuelidate/validators'
+```
+
+### **4. Custom Validators**
+
+```typescript
+const customRules = {
+  username: {
+    required,
+    isValid: (value: string) => /^[a-zA-Z0-9_]+$/.test(value)
+  }
+}
 ```
 
 ---
@@ -717,15 +970,32 @@ const routes: RouteRecordRaw[] = [
 
 ## ✅ Code Review Checklist
 
+### **TypeScript**
 - [ ] TypeScript interfaces menggunakan prefix `I`
 - [ ] Type aliases menggunakan prefix `T`
 - [ ] Generic parameters: `T` + descriptive (`TData`, `TEntity`)
 - [ ] Component props typed dengan interface
 - [ ] Interfaces didefinisikan di store file (bukan folder terpisah)
 - [ ] Generic interfaces di `src/lib/axios.ts`
+
+### **State Management**
+- [ ] Pinia store untuk state management
+- [ ] API calls langsung di store (bukan component)
+- [ ] Form state disimpan di store (bukan component)
+- [ ] Validation rules di store dengan Vuelidate
+
+### **UI Components**
+- [ ] Gunakan reusable components (UiInput, UiButton, UiPassword)
+- [ ] Minimal props pattern
+- [ ] Barrel export untuk imports
+
+### **Error Handling**
 - [ ] Error handling dengan try-catch
 - [ ] Loading states untuk async operations
 - [ ] SweetAlert untuk user feedback
 - [ ] Axios interceptors untuk auth
-- [ ] Pinia store untuk state management (API calls langsung di store)
+
+### **Code Quality**
 - [ ] ESLint & Prettier pass
+- [ ] Follow import order
+- [ ] No semicolons, single quotes
