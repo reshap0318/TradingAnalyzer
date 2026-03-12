@@ -55,7 +55,7 @@ type TradeDayStat struct {
 	PnL                float64
 }
 
-// ============== TRADE RUN DTOs ==============
+// ============== TRADE MONITOR DTOs ==============
 
 // ProcessTradeResult holds the result of processing a trade
 type ProcessTradeResult struct {
@@ -69,7 +69,7 @@ type ProcessTradeResult struct {
 	UpdatedCount int    `json:"updated_count"`
 }
 
-// TradeRunRequest represents the request to process a single trade
-type TradeRunRequest struct {
+// TradeMonitorRequest represents the request to process a single trade
+type TradeMonitorRequest struct {
 	TradeID uint `json:"trade_id" binding:"required"`
 }

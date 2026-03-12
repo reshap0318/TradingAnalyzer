@@ -12,8 +12,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// TradeRunProcessAllActive processes all active trades (called by cron job every 1 minute)
-func (s *Services) TradeRunProcessAllActive(ctx *gin.Context) ([]dtos.ProcessTradeResult, error) {
+// TradeMonitorProcessAllActive processes all active trades (called by cron job every 1 minute)
+func (s *Services) TradeMonitorProcessAllActive(ctx *gin.Context) ([]dtos.ProcessTradeResult, error) {
 	// Get all active trades with entries
 	trades, err := s.repo.Trade.FindAllActiveWithEntries(nil)
 	if err != nil {
@@ -24,7 +24,7 @@ func (s *Services) TradeRunProcessAllActive(ctx *gin.Context) ([]dtos.ProcessTra
 
 	// Process each trade
 	for i := range trades {
-		result, err := s.tradeRunProcessTrade(ctx, &trades[i])
+		result, err := s.tradeMonitorProcessTrade(ctx, &trades[i])
 		if err != nil {
 			// Log error but continue processing other trades
 			fmt.Printf("Error processing trade %d (%s): %v\n", trades[i].ID, trades[i].Symbol, err)
@@ -42,9 +42,9 @@ func (s *Services) TradeRunProcessAllActive(ctx *gin.Context) ([]dtos.ProcessTra
 	return results, nil
 }
 
-// tradeRunProcessTrade processes a single active trade (private function)
+// tradeMonitorProcessTrade processes a single active trade (private function)
 // This is the main function called for each trade
-func (s *Services) tradeRunProcessTrade(ctx *gin.Context, trade *models.Trade) (*dtos.ProcessTradeResult, error) {
+func (s *Services) tradeMonitorProcessTrade(ctx *gin.Context, trade *models.Trade) (*dtos.ProcessTradeResult, error) {
 	result := &dtos.ProcessTradeResult{
 		TradeID: trade.ID,
 		Symbol:  trade.Symbol,
@@ -76,7 +76,7 @@ func (s *Services) tradeRunProcessTrade(ctx *gin.Context, trade *models.Trade) (
 	// ========================================================================
 	// FASE 1: CEK TP / SL (Prioritas Utama Pencegah Ghost Order)
 	// ========================================================================
-	fase1Result, shouldReturn, err := s.tradeRunFase1CheckTPSL(ctx, trade, orderMap)
+	fase1Result, shouldReturn, err := s.tradeMonitorFase1CheckTPSL(ctx, trade, orderMap)
 	if err != nil {
 		return nil, fmt.Errorf("fase 1 failed: %w", err)
 	}
@@ -98,7 +98,7 @@ func (s *Services) tradeRunProcessTrade(ctx *gin.Context, trade *models.Trade) (
 	// ========================================================================
 	// FASE 2: SINKRONISASI JARING / ENTRY
 	// ========================================================================
-	fase2Result, err := s.tradeRunFase2SyncEntries(ctx, trade, orderMap)
+	fase2Result, err := s.tradeMonitorFase2SyncEntries(ctx, trade, orderMap)
 	if err != nil {
 		return nil, fmt.Errorf("fase 2 failed: %w", err)
 	}
@@ -114,7 +114,7 @@ func (s *Services) tradeRunProcessTrade(ctx *gin.Context, trade *models.Trade) (
 	// ========================================================================
 	// FASE 3: NETTING & FINALISASI
 	// ========================================================================
-	err = s.tradeRunFase3Netting(ctx, trade)
+	err = s.tradeMonitorFase3Netting(ctx, trade)
 	if err != nil {
 		return nil, fmt.Errorf("fase 3 failed: %w", err)
 	}
@@ -131,8 +131,8 @@ func (s *Services) tradeRunProcessTrade(ctx *gin.Context, trade *models.Trade) (
 	return result, nil
 }
 
-// tradeRunFase1CheckTPSL handles Fase 1: Cek TP/SL
-func (s *Services) tradeRunFase1CheckTPSL(
+// tradeMonitorFase1CheckTPSL handles Fase 1: Cek TP/SL
+func (s *Services) tradeMonitorFase1CheckTPSL(
 	ctx *gin.Context,
 	trade *models.Trade,
 	orderMap map[int64]*binance.OrderResponse,
@@ -260,8 +260,8 @@ func (s *Services) tradeRunFase1CheckTPSL(
 	return result, shouldReturn, nil
 }
 
-// tradeRunFase2SyncEntries handles Fase 2: Sinkronisasi Entry
-func (s *Services) tradeRunFase2SyncEntries(
+// tradeMonitorFase2SyncEntries handles Fase 2: Sinkronisasi Entry
+func (s *Services) tradeMonitorFase2SyncEntries(
 	ctx *gin.Context,
 	trade *models.Trade,
 	orderMap map[int64]*binance.OrderResponse,
@@ -402,16 +402,16 @@ func (s *Services) tradeRunFase2SyncEntries(
 			// Skenario 1: Jika DB belum punya tp_order_id (Ini Entry Pertama)
 			if trade.TPOrderID == 0 && totalFilledQty > 0 {
 				// Hit API Binance CREATE order TP & SL sesuai qty yang didapat
-				tpOrderID, slOrderID, err := s.tradeRunCreateTPOrder(trade, totalFilledQty)
+				tpOrderID, slOrderID, err := s.tradeMonitorCreateTPOrder(trade, totalFilledQty)
 				if err != nil {
 					return result, fmt.Errorf("failed to create TP/SL orders: %w", err)
 				}
 
 				// Simpan ID TP/SL barunya ke DB
 				updateTrade := &models.Trade{
-					TPOrderID:  tpOrderID,
-					SLOrderID:  slOrderID,
-					TotalQty:   totalFilledQty,
+					TPOrderID:   tpOrderID,
+					SLOrderID:   slOrderID,
+					TotalQty:    totalFilledQty,
 					CapitalUsed: totalFilledQty * entry.FilledPrice, // Approximate
 				}
 				_, err = s.repo.Trade.Update(nil, &models.Trade{ID: trade.ID}, updateTrade)
@@ -452,10 +452,10 @@ func (s *Services) tradeRunFase2SyncEntries(
 				}
 
 				// Create TP/SL baru
-				tpOrderID, slOrderID, err := s.tradeRunCreateTPOrder(trade, totalFilledQty)
+				tpOrderID, slOrderID, err := s.tradeMonitorCreateTPOrder(trade, totalFilledQty)
 				if err != nil {
 					// 🚨 JIKA GAGAL CREATE, TRADE TIDAK PUNYA TP/SL DI BINANCE SAMA SEKALI
-					// Kita harus mengosongkan TPOrderID & SLOrderID di Database agar 
+					// Kita harus mengosongkan TPOrderID & SLOrderID di Database agar
 					// di putaran cron berikutnya bot ini men-trigger "Skenario 1" dan mencoba membuat TP/SL ulang.
 					fallbackUpdate := &models.Trade{
 						TPOrderID: 0,
@@ -463,7 +463,7 @@ func (s *Services) tradeRunFase2SyncEntries(
 					}
 					// Update DB dengan error handling yang aman
 					s.repo.Trade.Update(nil, &models.Trade{ID: trade.ID}, fallbackUpdate)
-					
+
 					trade.TPOrderID = 0
 					trade.SLOrderID = 0
 
@@ -496,8 +496,8 @@ func (s *Services) tradeRunFase2SyncEntries(
 	return result, nil
 }
 
-// tradeRunCreateTPOrder creates TP and SL orders for a trade
-func (s *Services) tradeRunCreateTPOrder(trade *models.Trade, totalQty float64) (int64, int64, error) {
+// tradeMonitorCreateTPOrder creates TP and SL orders for a trade
+func (s *Services) tradeMonitorCreateTPOrder(trade *models.Trade, totalQty float64) (int64, int64, error) {
 	// Get symbol info for precision adjustment
 	symbolInfo, err := s.BinanceClient.GetSymbolInfo(trade.Symbol)
 	if err != nil {
@@ -550,8 +550,8 @@ func (s *Services) tradeRunCreateTPOrder(trade *models.Trade, totalQty float64) 
 	return tpResp.OrderID, slResp.OrderID, nil
 }
 
-// tradeRunFase3Netting handles Fase 3: Netting & Finalisasi
-func (s *Services) tradeRunFase3Netting(ctx *gin.Context, trade *models.Trade) error {
+// tradeMonitorFase3Netting handles Fase 3: Netting & Finalisasi
+func (s *Services) tradeMonitorFase3Netting(ctx *gin.Context, trade *models.Trade) error {
 	// ========================================================================
 	// FASE 3: NETTING & FINALISASI
 	// ========================================================================
@@ -608,9 +608,9 @@ func (s *Services) tradeRunFase3Netting(ctx *gin.Context, trade *models.Trade) e
 	if allCancelledOrRejected && !hasAnyFilled {
 		now := time.Now()
 		updateTrade := &models.Trade{
-			Status:      "CANCELLED",
-			ClosedAt:    &now,
-			ExitReason:  "DEAD_SIGNAL",
+			Status:     "CANCELLED",
+			ClosedAt:   &now,
+			ExitReason: "DEAD_SIGNAL",
 		}
 		_, err = s.repo.Trade.Update(nil, &models.Trade{ID: trade.ID}, updateTrade)
 		if err != nil {
@@ -668,9 +668,9 @@ func roundToPrecision(value float64, precision int) float64 {
 	return math.Round(value*pow) / pow
 }
 
-// TradeRunProcessSingle processes a single trade by ID (public function for controller)
-// Fetches trade details from DB and calls tradeRunProcessTrade
-func (s *Services) TradeRunProcessSingle(ctx *gin.Context, req *dtos.TradeRunRequest) (*dtos.ProcessTradeResult, error) {
+// TradeMonitorProcessSingle processes a single trade by ID (public function for controller)
+// Fetches trade details from DB and calls tradeMonitorProcessTrade
+func (s *Services) TradeMonitorProcessSingle(ctx *gin.Context, req *dtos.TradeMonitorRequest) (*dtos.ProcessTradeResult, error) {
 	// Get trade with entries from DB
 	trade, err := s.repo.Trade.FindWithEntries(nil, req.TradeID)
 	if err != nil {
@@ -678,5 +678,5 @@ func (s *Services) TradeRunProcessSingle(ctx *gin.Context, req *dtos.TradeRunReq
 	}
 
 	// Call private function to process the trade
-	return s.tradeRunProcessTrade(ctx, trade)
+	return s.tradeMonitorProcessTrade(ctx, trade)
 }
