@@ -172,17 +172,18 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Failed to fetch position from Binance: %v", err))
 		} else {
 			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Actual Binance PositionAmt is %v", position.PositionAmt))
-			
+
 			// Jika di DB kita punya barang, tapi di Binance PositionAmt == 0,
 			// artinya user telah MENUTUP posisi ini secara manual lewat aplikasi!
 			if position.PositionAmt == 0 {
 				processResult.Logs = append(processResult.Logs, "🚨 EMERGENCY: Binance position is 0 but DB has coins! User must have closed manually.")
-				
+
 				err := s.repo.TxManager.WithinTransaction(func(tx *gorm.DB) error {
 					// Hitung PnL untuk dicatat di DB
 					pnl := calculatePnL(trade, position.MarkPrice)
 					pnlPct := calculatePnLPct(trade, pnl)
 
+					processResult.Logs = append(processResult.Logs, fmt.Sprintf("Close Position With Market Price %.2f, pnl %.3f", position.MarkPrice, pnl))
 					// 1. Update trade status
 					now := time.Now()
 					updateTrade := &models.Trade{
@@ -211,7 +212,7 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 								Symbol:  trade.Symbol,
 								OrderID: entry.BinanceOrderID,
 							})
-							
+
 							if err != nil {
 								processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Cancel entry order %d failed: %v", entry.BinanceOrderID, err))
 							} else {

@@ -141,14 +141,6 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 		}, nil
 	}
 
-	fmt.Printf("[DEBUG] MAX_DAILY_TRADES = %d, RISK_REWARD_TARGET = %.2f\n",
-		mmConfig.MAX_DAILY_TRADES, mmConfig.RISK_REWARD_TARGET)
-
-	fmt.Printf("[DEBUG] symStat.Count = %d, symStat.Active = %d, Symbol = %s\n",
-		symStat.Count, symStat.Active, req.Symbol)
-
-	fmt.Printf("[DEBUG] analyzeRes.Signal.TradingPlan.RiskRewardRatio = %.2f\n",
-		analyzeRes.Signal.TradingPlan.RiskRewardRatio)
 	// VALIDATION 5: SOFT LIMIT - Daily Trade Count & RR Ratio TARGET Override
 	if symStat.Count >= mmConfig.MAX_DAILY_TRADES {
 		isExcellentSetup := analyzeRes.Signal.TradingPlan.RiskRewardRatio >= float64(mmConfig.RISK_REWARD_TARGET)
