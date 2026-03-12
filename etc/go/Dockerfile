@@ -31,4 +31,4 @@ EXPOSE 8000
 ENV BINANCE_IS_TESTNET=true
 
 # Run air for hot reload
-CMD ["air", "-c", ".air-linux.toml"]
+CMD ["go", "run", "cmd/main/main.go"]

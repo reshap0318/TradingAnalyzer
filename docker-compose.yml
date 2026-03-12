@@ -1,6 +1,5 @@
 name: trading-bot
 services:
-  # Go Application with Air (Hot Reload)
   app:
     build:
       context: .
