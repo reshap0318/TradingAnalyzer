@@ -179,17 +179,23 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 				processResult.Logs = append(processResult.Logs, "🚨 EMERGENCY: Binance position is 0 but DB has coins! User must have closed manually.")
 				
 				err := s.repo.TxManager.WithinTransaction(func(tx *gorm.DB) error {
+					// Hitung PnL untuk dicatat di DB
+					pnl := calculatePnL(trade, position.MarkPrice)
+					pnlPct := calculatePnLPct(trade, pnl)
+
 					// 1. Update trade status
 					now := time.Now()
 					updateTrade := &models.Trade{
-						Status:     "MANUAL_CLOSE",
+						Status:     "CLOSED",
 						ClosedAt:   &now,
 						ExitPrice:  position.MarkPrice, // Approximate closing price
 						ExitReason: "MANUAL_CLOSE",
+						PnL:        pnl,
+						PnLPct:     pnlPct,
 					}
 					_, err := s.repo.Trade.Update(tx, &models.Trade{ID: trade.ID}, updateTrade)
 					if err != nil {
-						return fmt.Errorf("failed to update trade status to MANUAL_CLOSE: %w", err)
+						return fmt.Errorf("failed to update trade status to CLOSED (Manual): %w", err)
 					}
 
 					// 2. Cancel semua order jaring (Entry) yang masih ngantre ("NEW")
@@ -303,28 +309,31 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 
 		err := s.repo.TxManager.WithinTransaction(func(tx *gorm.DB) error {
 			// Determine exit reason and status
-			exitStatus := "TP_HIT"
+			exitReason := "TP_HIT"
+			exitPrice := trade.TPPrice
 			if slFilled {
-				exitStatus = "SL_HIT"
+				exitReason = "SL_HIT"
+				exitPrice = trade.SLPrice
 			}
-			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Exit condition met: %s. Updating trade status in DB...", exitStatus))
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Exit condition met: %s. Updating trade status in DB...", exitReason))
 
-			// Update trade status
+			// Hitung PnL
+			pnl := calculatePnL(trade, exitPrice)
+			pnlPct := calculatePnLPct(trade, pnl)
+
+			// Update trade status to CLOSED
 			now := time.Now()
 			updateTrade := &models.Trade{
-				Status:     exitStatus,
+				Status:     "CLOSED",
 				ClosedAt:   &now,
-				ExitPrice:  trade.TPPrice, // Will be updated later with actual fill
-				ExitReason: func() string {
-					if slFilled {
-						return "SL_HIT"
-					}
-					return "TP_HIT"
-				}(),
+				ExitPrice:  exitPrice,
+				ExitReason: exitReason,
+				PnL:        pnl,
+				PnLPct:     pnlPct,
 			}
 			_, err := s.repo.Trade.Update(tx, &models.Trade{ID: trade.ID}, updateTrade)
 			if err != nil {
-				return fmt.Errorf("failed to update trade status: %w", err)
+				return fmt.Errorf("failed to update trade status to CLOSED (%s): %w", exitReason, err)
 			}
 
 			// 🚨 CRITICAL: Cancel semua order jaring (Entry) yang masih ngantre ("NEW")

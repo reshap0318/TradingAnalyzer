@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -251,9 +252,10 @@ func (s *Services) tradeExecuteBinance(
 		// Check if error is "No need to change margin type" (Binance error code -4046)
 		// If so, we can safely ignore it and continue
 		errMsg := err.Error()
-		if errMsg != "No need to change margin type" {
+		if !strings.Contains(errMsg, "-4046") && !strings.Contains(errMsg, "No need to change margin type") {
 			return nil, fmt.Errorf("failed to set margin mode to ISOLATED: %w", err)
 		}
+		// Error ignored successfully
 	}
 
 	// 3. Setup Leverage
