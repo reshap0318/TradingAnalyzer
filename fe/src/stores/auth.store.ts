@@ -1,50 +1,54 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { post } from '@/lib/axios'
-import type { IApiResponse } from '@/interfaces/common'
-import type { IUser, ILoginResponse } from '@/interfaces/auth'
-import { setToken, removeToken, getToken } from '@/lib/axios'
+import { type IApiResponse, post } from '@/lib/axios'
 import { showSuccess, showError } from '@/lib/sweetalert'
+import { destroySession, getToken, setToken } from '@/lib/storage'
 
 const BASE_URL = '/auth'
+
+interface ILoginRequest {
+  email: string
+  password: string
+}
+
+export interface ILoginResponse {
+  token: string
+  user?: IUser
+}
+
+export interface IUser {
+  id: number
+  email: string
+  name?: string
+  created_at?: string
+}
 
 /**
  * Authentication Store
  * Manages user authentication state and actions
- *
- * NOTE: Only includes actions for endpoints that exist in backend API
+ * Centralized token management (no need to reload page)
  */
 export const useAuthStore = defineStore('auth', () => {
   // State
-  const user = ref<IUser | null>(null)
   const loading = ref(false)
-  const error = ref<string | undefined>()
-  const isAuthenticated = computed(() => !!getToken())
+  const user = ref<IUser | null>(null)
+  const token = ref<string | null>(getToken())
 
-  // Actions
-  /**
-   * Login user
-   */
-  async function loginAction(email: string, password: string, remember = false): Promise<boolean> {
+  // Getters
+  const isAuthenticated = computed(() => !!token.value)
+
+  async function loginAction(param: ILoginRequest): Promise<boolean> {
     loading.value = true
-    error.value = undefined
 
     try {
-      const response = await post<IApiResponse<ILoginResponse>>(`${BASE_URL}/login`, { email, password })
+      const response = await post<IApiResponse<ILoginResponse>>(`${BASE_URL}/login`, param)
 
-      // Save token to localStorage
+      // Save token to store and localStorage
       setToken(response.data.data.token)
 
       // Set user data if returned
       if (response.data.data.user) {
         user.value = response.data.data.user
-      }
-
-      // Optionally persist for "remember me"
-      if (remember) {
-        localStorage.setItem('remember_email', email)
-      } else {
-        localStorage.removeItem('remember_email')
       }
 
       showSuccess(
@@ -53,8 +57,8 @@ export const useAuthStore = defineStore('auth', () => {
       )
       return true
     } catch (err: any) {
-      error.value = err.response?.data?.message || 'Login failed. Please check your credentials.'
-      showError('Login Failed', error.value)
+      const error = err.response?.data?.message || 'Login failed. Please check your credentials.'
+      showError('Login Failed', error)
       return false
     } finally {
       loading.value = false
@@ -68,41 +72,28 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       // Try to call logout API (if it exists)
       await post<IApiResponse<void>>(`${BASE_URL}/logout`).catch(() => {
-        // Ignore if endpoint doesn't exist
         console.warn('Logout endpoint not available, skipping API call')
       })
     } finally {
       // Always clear local state
-      removeToken()
+      destroySession()
       user.value = null
+      token.value = null
       showSuccess('Logged out', 'You have been successfully logged out.')
     }
-  }
-
-  /**
-   * Clear user state (for cleanup)
-   */
-  function clearUserState(): void {
-    user.value = null
-    error.value = undefined
-    loading.value = false
   }
 
   return {
     // State
     user,
+    token,
     loading,
-    error,
-    isAuthenticated,
 
     // Getters (computed)
-    userEmail: computed(() => user.value?.email ?? ''),
-    userName: computed(() => user.value?.name ?? user.value?.email ?? 'User'),
-    userId: computed(() => user.value?.id ?? null),
+    isAuthenticated,
 
     // Actions
     loginAction,
-    logoutAction,
-    clearUserState
+    logoutAction
   }
 })
