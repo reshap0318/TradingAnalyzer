@@ -51,9 +51,19 @@ func NewClient(cfg *config.BinanceConfig, cacheClient *database.CacheClient) *Cl
 	// Use Futures testnet or mainnet
 	if cfg.IsTestnet {
 		client.BaseURL = "https://testnet.binancefuture.com"
+		// Only required for older go-binance versions, but safe to set
+		futures.UseTestnet = true
 	}
 
 	log.Printf("Creating BinanceClient - Testnet: %v | baseURL: %s", cfg.IsTestnet, client.BaseURL)
+
+	// Sync Server Time with Binance to prevent "Timestamp outside recvWindow (-1021)" error
+	timeOffset, err := client.NewSetServerTimeService().Do(context.Background())
+	if err != nil {
+		log.Printf("Warning: Failed to sync server time with Binance: %v", err)
+	} else {
+		log.Printf("Binance server time synced successfully. Offset: %d ms", timeOffset)
+	}
 
 	return &Client{
 		apiClient: client,
