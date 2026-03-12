@@ -33,7 +33,7 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 	mmConfig := s.getConfigMM(strategy)
 	minBalance := 3.0
 
-	symStat := s.tradeTodayStat(req.Symbol)
+	symStat := s.tradeExecuteTodayStat(req.Symbol)
 
 	// VALIDATION 1: LOCAL HARD LIMIT - Active Trade
 	if symStat.Active > 0 {
@@ -171,10 +171,11 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 	}
 
 	// If valid, Proceed to Execution Preparation
-	return s.executeBinanceTrade(req.Symbol, mmConfig, analyzeRes, actualCapitalUsed)
+	return s.tradeExecuteBinance(req.Symbol, mmConfig, analyzeRes, actualCapitalUsed)
 }
 
-func (s *Services) tradeTodayStat(symbol string) dtos.TradeDayStat {
+// tradeExecuteTodayStat calculates trading statistics for today
+func (s *Services) tradeExecuteTodayStat(symbol string) dtos.TradeDayStat {
 	stat := dtos.TradeDayStat{}
 	countConsecutive := true
 
@@ -220,8 +221,8 @@ func (s *Services) tradeTodayStat(symbol string) dtos.TradeDayStat {
 	return stat
 }
 
-// executeBinanceTrade handles the actual external API calling for order execution
-func (s *Services) executeBinanceTrade(
+// tradeExecuteBinance handles the actual external API calling for order execution
+func (s *Services) tradeExecuteBinance(
 	symbol string,
 	config *config.MMConfig,
 	analyzeRes *dtos.SignalAnalyzeResponse,
@@ -394,7 +395,7 @@ func (s *Services) executeBinanceTrade(
 		avgEntryPrice = avgEntryPriceSum / totalFilledQty
 	}
 
-	err = s.saveTradeRecord(symbol, side, tpPlan, analyzeRes, capitalUsed, float64(config.LEVERAGE), executedOrders, tpOrderID, slOrderID, avgEntryPrice, totalFilledQty)
+	err = s.tradeExecuteSaveRecord(symbol, side, tpPlan, analyzeRes, capitalUsed, float64(config.LEVERAGE), executedOrders, tpOrderID, slOrderID, avgEntryPrice, totalFilledQty)
 	if err != nil {
 		fmt.Printf("Warning: Trade executed but DB tracking failed: %v", err)
 	}
@@ -418,8 +419,8 @@ func (s *Services) executeBinanceTrade(
 	}, nil
 }
 
-// saveTradeRecord saves the completed transaction to your DB
-func (s *Services) saveTradeRecord(
+// tradeExecuteSaveRecord saves the completed transaction to your DB
+func (s *Services) tradeExecuteSaveRecord(
 	symbol string,
 	side binance.OrderSide,
 	tpPlan *dtos.TradingPlan,
