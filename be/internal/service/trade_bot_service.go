@@ -13,12 +13,12 @@ import (
 )
 
 var (
-	tradeBotActive      bool                  // Is trade bot service active?
-	tradeBotCancel      context.CancelFunc    // Cancel function to stop goroutines
-	tradeBotMutex       sync.Mutex            // Mutex for thread safety
-	tradeBotStrategy    *uint                 // Active strategy ID
-	tradeExecutorRunning bool                 // Track if trade execution cycle is currently running
-	tradeMonitorRunning  bool                 // Track if trade monitor cycle is currently running
+	tradeBotActive       bool                  // Is trade bot service active?
+	tradeBotCancel       context.CancelFunc    // Cancel function to stop goroutines
+	tradeBotMutex        sync.Mutex            // Mutex for thread safety
+	tradeBotStrategy     *uint                 // Active strategy ID
+	tradeExecutorRunning bool                  // Track if trade execution cycle is currently running
+	tradeMonitorRunning  bool                  // Track if trade monitor cycle is currently running
 	tradeExecutorLogger  *helpers.WorkerLogger // Logger for trade executor
 	tradeMonitorLogger   *helpers.WorkerLogger // Logger for trade monitor
 
@@ -102,12 +102,12 @@ func (s *Services) TradeBotActivate(ctx *gin.Context, strategyID *uint) (res map
 	go s.runBackgroundTradeMonitor(ctxBot, monitorInterval, tradeMonitorLogger)
 
 	return map[string]interface{}{
-		"is_active":         true,
-		"message":           "Trade bot activated successfully",
+		"is_active":          true,
+		"message":            "Trade bot activated successfully",
 		"execution_interval": executionInterval.Minutes(),
-		"monitor_interval":  1,
-		"strategy_id":       strategy.ID,
-		"log_number":        currentLogNumber,
+		"monitor_interval":   1,
+		"strategy_id":        strategy.ID,
+		"log_number":         currentLogNumber,
 	}, nil
 }
 
@@ -242,7 +242,7 @@ func (s *Services) runBackgroundTradeMonitor(ctx context.Context, monitorInterva
 	defer ticker.Stop()
 
 	// Initial run immediately
-	s.runTradeMonitorCheckCycle(logger)
+	s.runTradeMonitorCycle(logger)
 
 	for {
 		select {
@@ -260,7 +260,7 @@ func (s *Services) runBackgroundTradeMonitor(ctx context.Context, monitorInterva
 			tradeMonitorRunning = true
 			tradeBotMutex.Unlock()
 
-			s.runTradeMonitorCheckCycle(logger)
+			s.runTradeMonitorCycle(logger)
 		}
 	}
 }
@@ -384,16 +384,16 @@ func (s *Services) runTradeExecutionCycle(logger *helpers.WorkerLogger) {
 	}
 }
 
-// runTradeMonitorCheckCycle runs a single trade monitor check cycle
+// runTradeMonitorCycle runs a single trade monitor check cycle
 // This function:
 // 1. Calls TradeMonitorProcessAllActive() to check all active trades
 // 2. Logs results for each trade (TP/SL hit, entry sync, netting)
-func (s *Services) runTradeMonitorCheckCycle(logger *helpers.WorkerLogger) {
+func (s *Services) runTradeMonitorCycle(logger *helpers.WorkerLogger) {
 	cycleStart := time.Now()
 
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Error("PANIC recovered in runTradeMonitorCheckCycle: %v", r)
+			logger.Error("PANIC recovered in runTradeMonitorCycle: %v", r)
 		}
 		duration := time.Since(cycleStart)
 
@@ -419,6 +419,14 @@ func (s *Services) runTradeMonitorCheckCycle(logger *helpers.WorkerLogger) {
 	processed := 0
 	errors := 0
 	for _, res := range results {
+		// Log detailed execution flow
+		if len(res.Logs) > 0 {
+			logger.Info("Flow Logs for Trade ID %d (%s):", res.TradeID, res.Symbol)
+			for _, flowLog := range res.Logs {
+				logger.Info("  -> %s", flowLog)
+			}
+		}
+
 		if res.Status == "ERROR" {
 			errors++
 			logger.Error("Trade ID %d (%s) failed: %s", res.TradeID, res.Symbol, res.Message)

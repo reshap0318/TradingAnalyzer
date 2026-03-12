@@ -54,20 +54,25 @@ func (s *Services) tradeMonitorProcessTrade(ctx *gin.Context, trade *models.Trad
 	// FASE 0: PERSIAPAN DATA
 	// ========================================================================
 
+	result.Logs = append(result.Logs, fmt.Sprintf("Starting evaluation for trade #%d (%s)", trade.ID, trade.Symbol))
+
 	// 1. Validasi: Jika status Trade bukan "ACTIVE", langsung RETURN
 	if trade.Status != "ACTIVE" {
 		result.Status = "SKIPPED"
+		result.Logs = append(result.Logs, fmt.Sprintf("Trade skipped: Status is %s (not ACTIVE)", trade.Status))
 		result.Message = fmt.Sprintf("Trade status is %s, not ACTIVE", trade.Status)
 		return result, nil
 	}
 
 	// 2. Tarik Binance: GET All Open Orders untuk symbol ini (cache untuk cek di bawah)
+	result.Logs = append(result.Logs, "Fetching open orders from Binance...")
 	openOrders, err := s.BinanceClient.GetOpenOrders(trade.Symbol)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch open orders: %w", err)
 	}
 
 	// Build map for quick lookup: order_id -> order
+	result.Logs = append(result.Logs, fmt.Sprintf("Found %d open orders on Binance", len(openOrders)))
 	orderMap := make(map[int64]*binance.OrderResponse, len(openOrders))
 	for i := range openOrders {
 		orderMap[openOrders[i].OrderID] = &openOrders[i]
@@ -76,8 +81,10 @@ func (s *Services) tradeMonitorProcessTrade(ctx *gin.Context, trade *models.Trad
 	// ========================================================================
 	// FASE 1: CEK TP / SL (Prioritas Utama Pencegah Ghost Order)
 	// ========================================================================
-	fase1Result, shouldReturn, err := s.tradeMonitorFase1CheckTPSL(ctx, trade, orderMap)
+	result.Logs = append(result.Logs, "Phase 1: Checking TP/SL status...")
+	fase1Result, shouldReturn, err := s.tradeMonitorFase1CheckTPSL(ctx, trade, orderMap, result)
 	if err != nil {
+		result.Logs = append(result.Logs, fmt.Sprintf("ERROR in Phase 1: %v", err))
 		return nil, fmt.Errorf("fase 1 failed: %w", err)
 	}
 
@@ -90,6 +97,7 @@ func (s *Services) tradeMonitorProcessTrade(ctx *gin.Context, trade *models.Trad
 
 	if shouldReturn {
 		// TP/SL hit - trade sudah close
+		result.Logs = append(result.Logs, "Trade closed due to TP/SL hit. Halting further checks.")
 		result.Status = trade.Status // TP_HIT atau SL_HIT
 		result.Message = "TP/SL hit, trade closed"
 		return result, nil
@@ -98,8 +106,10 @@ func (s *Services) tradeMonitorProcessTrade(ctx *gin.Context, trade *models.Trad
 	// ========================================================================
 	// FASE 2: SINKRONISASI JARING / ENTRY
 	// ========================================================================
-	fase2Result, err := s.tradeMonitorFase2SyncEntries(ctx, trade, orderMap)
+	result.Logs = append(result.Logs, "Phase 2: Syncing Entry orders...")
+	fase2Result, err := s.tradeMonitorFase2SyncEntries(ctx, trade, orderMap, result)
 	if err != nil {
+		result.Logs = append(result.Logs, fmt.Sprintf("ERROR in Phase 2: %v", err))
 		return nil, fmt.Errorf("fase 2 failed: %w", err)
 	}
 
@@ -114,12 +124,15 @@ func (s *Services) tradeMonitorProcessTrade(ctx *gin.Context, trade *models.Trad
 	// ========================================================================
 	// FASE 3: NETTING & FINALISASI
 	// ========================================================================
-	err = s.tradeMonitorFase3Netting(ctx, trade)
+	result.Logs = append(result.Logs, "Phase 3: Performing netting and finalizing metrics...")
+	err = s.tradeMonitorFase3Netting(ctx, trade, result)
 	if err != nil {
+		result.Logs = append(result.Logs, fmt.Sprintf("ERROR in Phase 3: %v", err))
 		return nil, fmt.Errorf("fase 3 failed: %w", err)
 	}
 
 	// Reload trade to get final status
+	result.Logs = append(result.Logs, "Reloading trade state from DB...")
 	trade, err = s.repo.Trade.FindWithEntries(nil, trade.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reload trade: %w", err)
@@ -136,12 +149,14 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 	ctx *gin.Context,
 	trade *models.Trade,
 	orderMap map[int64]*binance.OrderResponse,
+	processResult *dtos.ProcessTradeResult,
 ) (*dtos.ProcessTradeResult, bool, error) {
 	result := &dtos.ProcessTradeResult{}
 	shouldReturn := false
 
 	// Cek DB: Apakah tp_order_id sudah ada isinya?
 	if trade.TPOrderID == 0 {
+		processResult.Logs = append(processResult.Logs, "No TP order ID found in DB. Skipping Phase 1.")
 		return result, false, nil
 	}
 
@@ -153,6 +168,7 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 	// Jika status TP atau SL sudah "FILLED", order akan hilang dari orderMap!
 	// Oleh karena itu, jika tidak ada di orderMap, kita wajib hit GET Order Detail.
 	if !tpExists && trade.TPOrderID > 0 {
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("TP Order %d not found in open orders. Fetching manually...", trade.TPOrderID))
 		tpOrderDetail, err := s.BinanceClient.GetOrder(&binance.GetOrdersRequest{
 			Symbol:  trade.Symbol,
 			OrderID: trade.TPOrderID,
@@ -160,10 +176,16 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 		if err == nil {
 			tpOrder = tpOrderDetail
 			tpExists = true
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("TP Order %d retrieved, status: %s", trade.TPOrderID, tpOrder.Status))
+		} else {
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Failed to fetch TP Order %d: %v", trade.TPOrderID, err))
 		}
+	} else if tpExists {
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("TP Order %d is in open orders, status: %s", trade.TPOrderID, tpOrder.Status))
 	}
 
 	if !slExists && trade.SLOrderID > 0 {
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("SL Order %d not found in open orders. Fetching manually...", trade.SLOrderID))
 		slOrderDetail, err := s.BinanceClient.GetOrder(&binance.GetOrdersRequest{
 			Symbol:  trade.Symbol,
 			OrderID: trade.SLOrderID,
@@ -171,7 +193,12 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 		if err == nil {
 			slOrder = slOrderDetail
 			slExists = true
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("SL Order %d retrieved, status: %s", trade.SLOrderID, slOrder.Status))
+		} else {
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Failed to fetch SL Order %d: %v", trade.SLOrderID, err))
 		}
+	} else if slExists {
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("SL Order %d is in open orders, status: %s", trade.SLOrderID, slOrder.Status))
 	}
 
 	tpFilled := tpExists && tpOrder.Status == "FILLED"
@@ -191,6 +218,7 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 			if slFilled {
 				exitStatus = "SL_HIT"
 			}
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Exit condition met: %s. Updating trade status in DB...", exitStatus))
 
 			// Update trade status
 			now := time.Now()
@@ -220,6 +248,8 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 			// Cancel pending entries
 			for _, entry := range entries {
 				if entry.Status == "PENDING" || entry.Status == "NEW" {
+					processResult.Logs = append(processResult.Logs, fmt.Sprintf("Canceling pending Entry Order %d...", entry.BinanceOrderID))
+
 					// Cancel order on Binance
 					_, err := s.BinanceClient.CancelOrder(&binance.CancelOrderRequest{
 						Symbol:  trade.Symbol,
@@ -229,6 +259,9 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 					// Ignore error if order already filled/cancelled
 					if err != nil {
 						fmt.Printf("Warning: Failed to cancel entry order %d: %v\n", entry.BinanceOrderID, err)
+						processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Cancel entry order %d failed: %v", entry.BinanceOrderID, err))
+					} else {
+						processResult.Logs = append(processResult.Logs, fmt.Sprintf("Entry Order %d canceled on Binance successfully.", entry.BinanceOrderID))
 					}
 
 					// Update DB status Entry jadi "CANCELLED"
@@ -265,6 +298,7 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 	ctx *gin.Context,
 	trade *models.Trade,
 	orderMap map[int64]*binance.OrderResponse,
+	processResult *dtos.ProcessTradeResult,
 ) (*dtos.ProcessTradeResult, error) {
 	result := &dtos.ProcessTradeResult{}
 	updatedCount := 0
@@ -290,8 +324,10 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 				})
 
 				if err != nil {
+					processResult.Logs = append(processResult.Logs, fmt.Sprintf("Failed to fetch detail for Entry Order %d (%v).", entry.BinanceOrderID, err))
 					// Order tidak ditemukan/gagal di-fetch - anggap cancelled HANYA jika belum punya barang
 					if entry.Status == "PENDING" || entry.Status == "NEW" {
+						processResult.Logs = append(processResult.Logs, fmt.Sprintf("Entry Order %d is missing and was pending. Marking as CANCELLED.", entry.BinanceOrderID))
 						entry.Status = "CANCELLED"
 						updatedCount++
 					}
@@ -300,8 +336,10 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 
 				binanceOrder = orderDetail
 				exists = true
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("Entry order %d recovered manually. Status: %s", entry.BinanceOrderID, binanceOrder.Status))
 			} else {
 				// Entry sudah filled/cancelled sebelumnya secara permanen, skip
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("Entry order %d already has final status %s, skipping.", entry.BinanceOrderID, entry.Status))
 				continue
 			}
 		}
@@ -320,6 +358,7 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 			expirationDuration := time.Duration(expirationHours) * time.Hour
 
 			if orderAge > expirationDuration {
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("Entry Order %d expired (Age: %v). Canceling...", entry.BinanceOrderID, orderAge))
 				// Expired - Cancel order
 				_, err := s.BinanceClient.CancelOrder(&binance.CancelOrderRequest{
 					Symbol:  trade.Symbol,
@@ -328,6 +367,9 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 
 				if err != nil {
 					fmt.Printf("Warning: Failed to cancel expired order %d: %v\n", entry.BinanceOrderID, err)
+					processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Failed to cancel expired Entry Order %d: %v", entry.BinanceOrderID, err))
+				} else {
+					processResult.Logs = append(processResult.Logs, fmt.Sprintf("Expired Entry Order %d canceled on Binance.", entry.BinanceOrderID))
 				}
 
 				// Update DB status = "CANCELLED"
@@ -346,6 +388,7 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 		// KONDISI B: Status Binance = "PARTIALLY_FILLED"
 		// ========================================================================
 		if binanceOrder.Status == "PARTIALLY_FILLED" {
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Entry Order %d is PARTIALLY_FILLED. Updating DB...", entry.BinanceOrderID))
 			// Update DB status = "PARTIALLY_FILLED"
 			// Update DB filled_qty sesuai data Binance yang baru
 			_, err := s.repo.TradeEntry.UpdateFilled(nil, entry.ID,
@@ -368,6 +411,7 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 		// KONDISI C: Status Binance = "FILLED" (Dapet Barang)
 		// ========================================================================
 		if binanceOrder.Status == "FILLED" {
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Entry Order %d is FILLED! Updating DB...", entry.BinanceOrderID))
 			// Update DB status = "FILLED"
 			// Update DB filled_qty, filled_price, dan filled_at
 			now := time.Now()
@@ -401,8 +445,9 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 
 			// Skenario 1: Jika DB belum punya tp_order_id (Ini Entry Pertama)
 			if trade.TPOrderID == 0 && totalFilledQty > 0 {
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("First entry filled (Total Qty: %v). Creating original TP/SL...", totalFilledQty))
 				// Hit API Binance CREATE order TP & SL sesuai qty yang didapat
-				tpOrderID, slOrderID, err := s.tradeMonitorCreateTPOrder(trade, totalFilledQty)
+				tpOrderID, slOrderID, err := s.tradeMonitorCreateTPOrder(trade, totalFilledQty, processResult)
 				if err != nil {
 					return result, fmt.Errorf("failed to create TP/SL orders: %w", err)
 				}
@@ -430,6 +475,8 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 				// 3. Hit API Binance CREATE order TP/SL baru dengan TotalQtyBaru (Harga target TP/SL tetap)
 				// 4. Update DB timpa ID TP/SL lama dengan ID yang baru
 
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("Averaging entry filled. Canceling old TP/SL to replace with Total Qty: %v", totalFilledQty))
+
 				// Cancel TP/SL lama
 				if trade.TPOrderID > 0 {
 					_, err := s.BinanceClient.CancelOrder(&binance.CancelOrderRequest{
@@ -438,6 +485,9 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 					})
 					if err != nil {
 						fmt.Printf("Warning: Failed to cancel old TP order %d: %v\n", trade.TPOrderID, err)
+						processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Failed to cancel old TP Order %d: %v", trade.TPOrderID, err))
+					} else {
+						processResult.Logs = append(processResult.Logs, fmt.Sprintf("Old TP Order %d canceled successfully.", trade.TPOrderID))
 					}
 				}
 
@@ -448,11 +498,14 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 					})
 					if err != nil {
 						fmt.Printf("Warning: Failed to cancel old SL order %d: %v\n", trade.SLOrderID, err)
+						processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Failed to cancel old SL Order %d: %v", trade.SLOrderID, err))
+					} else {
+						processResult.Logs = append(processResult.Logs, fmt.Sprintf("Old SL Order %d canceled successfully.", trade.SLOrderID))
 					}
 				}
 
 				// Create TP/SL baru
-				tpOrderID, slOrderID, err := s.tradeMonitorCreateTPOrder(trade, totalFilledQty)
+				tpOrderID, slOrderID, err := s.tradeMonitorCreateTPOrder(trade, totalFilledQty, processResult)
 				if err != nil {
 					// 🚨 JIKA GAGAL CREATE, TRADE TIDAK PUNYA TP/SL DI BINANCE SAMA SEKALI
 					// Kita harus mengosongkan TPOrderID & SLOrderID di Database agar
@@ -497,7 +550,7 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 }
 
 // tradeMonitorCreateTPOrder creates TP and SL orders for a trade
-func (s *Services) tradeMonitorCreateTPOrder(trade *models.Trade, totalQty float64) (int64, int64, error) {
+func (s *Services) tradeMonitorCreateTPOrder(trade *models.Trade, totalQty float64, processResult *dtos.ProcessTradeResult) (int64, int64, error) {
 	// Get symbol info for precision adjustment
 	symbolInfo, err := s.BinanceClient.GetSymbolInfo(trade.Symbol)
 	if err != nil {
@@ -516,6 +569,7 @@ func (s *Services) tradeMonitorCreateTPOrder(trade *models.Trade, totalQty float
 	qtyAdjusted := binance.AdjustQuantityPrecision(totalQty, symbolInfo.StepSize)
 
 	// Place Take Profit Market
+	processResult.Logs = append(processResult.Logs, fmt.Sprintf("Requesting new TP Order (Price: %v, Qty: %v, Side: %s)...", tpAdjusted, qtyAdjusted, closeSide))
 	tpReq := &binance.PlaceOrderRequest{
 		Symbol:     trade.Symbol,
 		Side:       closeSide,
@@ -527,10 +581,13 @@ func (s *Services) tradeMonitorCreateTPOrder(trade *models.Trade, totalQty float
 
 	tpResp, err := s.BinanceClient.PlaceOrder(tpReq)
 	if err != nil {
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("FAILED setting Take Profit: %v", err))
 		return 0, 0, fmt.Errorf("failed to place TP order: %w", err)
 	}
+	processResult.Logs = append(processResult.Logs, fmt.Sprintf("SUCCESS setting Take Profit (OrderID: %d)", tpResp.OrderID))
 
 	// Place Stop Loss Market
+	processResult.Logs = append(processResult.Logs, fmt.Sprintf("Requesting new SL Order (Price: %v, Qty: %v, Side: %s)...", slAdjusted, qtyAdjusted, closeSide))
 	slReq := &binance.PlaceOrderRequest{
 		Symbol:     trade.Symbol,
 		Side:       closeSide,
@@ -542,16 +599,18 @@ func (s *Services) tradeMonitorCreateTPOrder(trade *models.Trade, totalQty float
 
 	slResp, err := s.BinanceClient.PlaceOrder(slReq)
 	if err != nil {
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("FAILED setting Stop Loss: %v", err))
 		// TP sudah dibuat, tapi SL gagal - kita tetap return TP
 		fmt.Printf("Warning: SL order failed but TP created: %v\n", err)
 		return tpResp.OrderID, 0, nil
 	}
+	processResult.Logs = append(processResult.Logs, fmt.Sprintf("SUCCESS setting Stop Loss (OrderID: %d)", slResp.OrderID))
 
 	return tpResp.OrderID, slResp.OrderID, nil
 }
 
 // tradeMonitorFase3Netting handles Fase 3: Netting & Finalisasi
-func (s *Services) tradeMonitorFase3Netting(ctx *gin.Context, trade *models.Trade) error {
+func (s *Services) tradeMonitorFase3Netting(ctx *gin.Context, trade *models.Trade, processResult *dtos.ProcessTradeResult) error {
 	// ========================================================================
 	// FASE 3: NETTING & FINALISASI
 	// ========================================================================
@@ -606,6 +665,7 @@ func (s *Services) tradeMonitorFase3Netting(ctx *gin.Context, trade *models.Trad
 
 	// Jika YA (semua cancelled/rejected) dan tidak ada yang filled: Update DB Trade.status = "CANCELLED"
 	if allCancelledOrRejected && !hasAnyFilled {
+		processResult.Logs = append(processResult.Logs, "Zero entries filled and all entries cancelled/rejected. Marking trade as DEAD_SIGNAL (CANCELLED).")
 		now := time.Now()
 		updateTrade := &models.Trade{
 			Status:     "CANCELLED",
@@ -616,6 +676,8 @@ func (s *Services) tradeMonitorFase3Netting(ctx *gin.Context, trade *models.Trad
 		if err != nil {
 			return fmt.Errorf("failed to update trade as dead signal: %w", err)
 		}
+	} else {
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("Netting updated. Current average entry price: %f, Total Qty: %f, Capital Used: %f", avgEntryPrice, totalQty, capitalUsed))
 	}
 
 	return nil
