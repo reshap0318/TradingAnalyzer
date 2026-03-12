@@ -177,19 +177,18 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 			// artinya user telah MENUTUP posisi ini secara manual lewat aplikasi!
 			if position.PositionAmt == 0 {
 				processResult.Logs = append(processResult.Logs, "🚨 EMERGENCY: Binance position is 0 but DB has coins! User must have closed manually.")
-
+				curPrice, _ := s.BinanceClient.GetPrice(trade.Symbol)
 				err := s.repo.TxManager.WithinTransaction(func(tx *gorm.DB) error {
 					// Hitung PnL untuk dicatat di DB
-					pnl := calculatePnL(trade, position.MarkPrice)
+					pnl := calculatePnL(trade, curPrice.Price)
 					pnlPct := calculatePnLPct(trade, pnl)
-
-					processResult.Logs = append(processResult.Logs, fmt.Sprintf("Close Position With Market Price %.2f, pnl %.3f", position.MarkPrice, pnl))
+					processResult.Logs = append(processResult.Logs, fmt.Sprintf("Close Position With Market Price %.2f, pnl %.3f", curPrice.Price, pnl))
 					// 1. Update trade status
 					now := time.Now()
 					updateTrade := &models.Trade{
 						Status:     "CLOSED",
 						ClosedAt:   &now,
-						ExitPrice:  position.MarkPrice, // Approximate closing price
+						ExitPrice:  curPrice.Price, // Approximate closing price
 						ExitReason: "MANUAL_CLOSE",
 						PnL:        pnl,
 						PnLPct:     pnlPct,
