@@ -154,9 +154,98 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 	result := &dtos.ProcessTradeResult{}
 	shouldReturn := false
 
+	// Hitung total qty dari semua entry yang filled/partially filled menurut Database
+	totalFilledQtyDB := 0.0
+	for _, e := range trade.Entries {
+		if e.Status == "FILLED" || e.Status == "PARTIALLY_FILLED" {
+			totalFilledQtyDB += e.FilledQty
+		}
+	}
+
+	// ========================================================================
+	// CEK POSISI: Validasi apakah user melakukan Manual Close di Binance
+	// ========================================================================
+	if totalFilledQtyDB > 0 {
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("Checking actual Binance position size. DB thinks we have %v coins.", totalFilledQtyDB))
+		position, err := s.BinanceClient.GetPosition(trade.Symbol)
+		if err != nil {
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Failed to fetch position from Binance: %v", err))
+		} else {
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Actual Binance PositionAmt is %v", position.PositionAmt))
+			
+			// Jika di DB kita punya barang, tapi di Binance PositionAmt == 0,
+			// artinya user telah MENUTUP posisi ini secara manual lewat aplikasi!
+			if position.PositionAmt == 0 {
+				processResult.Logs = append(processResult.Logs, "🚨 EMERGENCY: Binance position is 0 but DB has coins! User must have closed manually.")
+				
+				err := s.repo.TxManager.WithinTransaction(func(tx *gorm.DB) error {
+					// 1. Update trade status
+					now := time.Now()
+					updateTrade := &models.Trade{
+						Status:     "MANUAL_CLOSE",
+						ClosedAt:   &now,
+						ExitPrice:  position.MarkPrice, // Approximate closing price
+						ExitReason: "MANUAL_CLOSE",
+					}
+					_, err := s.repo.Trade.Update(tx, &models.Trade{ID: trade.ID}, updateTrade)
+					if err != nil {
+						return fmt.Errorf("failed to update trade status to MANUAL_CLOSE: %w", err)
+					}
+
+					// 2. Cancel semua order jaring (Entry) yang masih ngantre ("NEW")
+					entries, err := s.repo.TradeEntry.FindByTradeID(tx, trade.ID)
+					if err != nil {
+						return fmt.Errorf("failed to fetch entries: %w", err)
+					}
+
+					for _, entry := range entries {
+						if entry.Status == "PENDING" || entry.Status == "NEW" {
+							processResult.Logs = append(processResult.Logs, fmt.Sprintf("Canceling pending Entry Order %d...", entry.BinanceOrderID))
+							_, err := s.BinanceClient.CancelOrder(&binance.CancelOrderRequest{
+								Symbol:  trade.Symbol,
+								OrderID: entry.BinanceOrderID,
+							})
+							
+							if err != nil {
+								processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Cancel entry order %d failed: %v", entry.BinanceOrderID, err))
+							} else {
+								processResult.Logs = append(processResult.Logs, fmt.Sprintf("Entry Order %d canceled on Binance successfully.", entry.BinanceOrderID))
+							}
+
+							err = s.repo.TradeEntry.UpdateStatus(tx, entry.ID, "CANCELLED", "Manual close")
+							if err != nil {
+								return fmt.Errorf("failed to update entry status: %w", err)
+							}
+						}
+					}
+
+					// 3. Cancel TP/SL if they still exist (often closed automatically by Binance, but just to be sure)
+					if trade.TPOrderID > 0 {
+						s.BinanceClient.CancelOrder(&binance.CancelOrderRequest{Symbol: trade.Symbol, OrderID: trade.TPOrderID})
+					}
+					if trade.SLOrderID > 0 {
+						s.BinanceClient.CancelOrder(&binance.CancelOrderRequest{Symbol: trade.Symbol, OrderID: trade.SLOrderID})
+					}
+
+					return nil
+				})
+
+				if err != nil {
+					return result, false, err
+				}
+
+				processResult.Logs = append(processResult.Logs, "Trade closed manually by user. Halting further checks.")
+				trade.Status = "MANUAL_CLOSE"
+				result.TPUpdated = false
+				result.SLUpdated = false
+				return result, true, nil
+			}
+		}
+	}
+
 	// Cek DB: Apakah tp_order_id sudah ada isinya?
 	if trade.TPOrderID == 0 {
-		processResult.Logs = append(processResult.Logs, "No TP order ID found in DB. Skipping Phase 1.")
+		processResult.Logs = append(processResult.Logs, "No TP order ID found in DB. Skipping Phase 1 TP/SL check.")
 		return result, false, nil
 	}
 
