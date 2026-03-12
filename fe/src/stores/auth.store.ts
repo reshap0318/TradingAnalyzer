@@ -3,24 +3,19 @@ import { ref, computed } from 'vue'
 import { type IApiResponse, post } from '@/lib/axios'
 import { showSuccess, showError } from '@/lib/sweetalert'
 import { destroySession, getToken, setToken } from '@/lib/storage'
+import useVuelidate from '@vuelidate/core'
+import { required } from '@vuelidate/validators'
 
 const BASE_URL = '/auth'
 
-interface ILoginRequest {
-  email: string
+export interface ILoginRequest {
+  username: string
   password: string
 }
 
-export interface ILoginResponse {
-  token: string
-  user?: IUser
-}
-
 export interface IUser {
-  id: number
-  email: string
-  name?: string
-  created_at?: string
+  name: string
+  token: string
 }
 
 /**
@@ -33,28 +28,32 @@ export const useAuthStore = defineStore('auth', () => {
   const loading = ref(false)
   const user = ref<IUser | null>(null)
   const token = ref<string | null>(getToken())
+  const loginReq = ref<ILoginRequest>({
+    username: '',
+    password: ''
+  })
+  const loginRules = ref({
+    username: { required },
+    password: { required }
+  })
+  const loginReqValid = useVuelidate(loginRules, loginReq, {})
 
   // Getters
   const isAuthenticated = computed(() => !!token.value)
 
-  async function loginAction(param: ILoginRequest): Promise<boolean> {
+  async function loginAction(): Promise<boolean> {
     loading.value = true
 
+    const valid = await loginReqValid.value.$validate()
+    if (!valid) return false
+
     try {
-      const response = await post<IApiResponse<ILoginResponse>>(`${BASE_URL}/login`, param)
-
+      const response = await post<IApiResponse<IUser>>(`${BASE_URL}/login`, loginReq.value)
+      const data = response.data.data
       // Save token to store and localStorage
-      setToken(response.data.data.token)
+      setToken(data.token)
 
-      // Set user data if returned
-      if (response.data.data.user) {
-        user.value = response.data.data.user
-      }
-
-      showSuccess(
-        'Welcome back!',
-        `Hello, ${response.data.data.user?.name || response.data.data.user?.email || 'User'}`
-      )
+      showSuccess('Welcome back!', `Hello, ${data.name || 'User'}`)
       return true
     } catch (err: any) {
       const error = err.response?.data?.message || 'Login failed. Please check your credentials.'
@@ -65,9 +64,6 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  /**
-   * Logout user
-   */
   async function logoutAction(): Promise<void> {
     try {
       // Try to call logout API (if it exists)
@@ -88,8 +84,12 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     token,
     loading,
+    loginReq,
 
-    // Getters (computed)
+    // Validation
+    loginReqValid,
+
+    // Getters
     isAuthenticated,
 
     // Actions

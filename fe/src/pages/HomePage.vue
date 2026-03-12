@@ -23,7 +23,7 @@ const handleLogout = async () => {
         <h1 class="text-2xl font-bold text-primary">TradingAnalyzer</h1>
         <div class="flex items-center gap-4">
           <div v-if="user" class="text-sm text-gray-600 dark:text-gray-400">
-            <span class="font-semibold">{{ user.name || user.email }}</span>
+            <span class="font-semibold">{{ user.name }}</span>
           </div>
           <button
             @click="handleLogout"
@@ -39,7 +39,7 @@ const handleLogout = async () => {
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div v-if="isAuthenticated" class="text-center">
         <h2 class="text-4xl font-bold text-gray-900 dark:text-white mb-4">
-          Welcome back, {{ user?.name || user?.email || 'User' }}! 🎉
+          Welcome back, {{ user?.name }}! 🎉
         </h2>
         <p class="text-lg text-gray-600 dark:text-gray-400 mb-8">
           You are successfully logged in. Dashboard coming soon...
