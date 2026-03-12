@@ -141,6 +141,14 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 		}, nil
 	}
 
+	fmt.Printf("[DEBUG] MAX_DAILY_TRADES = %d, RISK_REWARD_TARGET = %.2f\n",
+		mmConfig.MAX_DAILY_TRADES, mmConfig.RISK_REWARD_TARGET)
+
+	fmt.Printf("[DEBUG] symStat.Count = %d, symStat.Active = %d, Symbol = %s\n",
+		symStat.Count, symStat.Active, req.Symbol)
+
+	fmt.Printf("[DEBUG] analyzeRes.Signal.TradingPlan.RiskRewardRatio = %.2f\n",
+		analyzeRes.Signal.TradingPlan.RiskRewardRatio)
 	// VALIDATION 5: SOFT LIMIT - Daily Trade Count & RR Ratio TARGET Override
 	if symStat.Count >= mmConfig.MAX_DAILY_TRADES {
 		isExcellentSetup := analyzeRes.Signal.TradingPlan.RiskRewardRatio >= float64(mmConfig.RISK_REWARD_TARGET)
@@ -445,6 +453,9 @@ func (s *Services) tradeExecuteSaveRecord(
 			}
 		}
 
+		// Convert ScoringBreakdown to JSONMap for RawSignal
+		rawSignal := s.convertScoringToJSONMap(analyzeRes.Scoring)
+
 		// Save Parent Trade
 		parentTrade := &models.Trade{
 			Symbol:          symbol,
@@ -452,7 +463,7 @@ func (s *Services) tradeExecuteSaveRecord(
 			Side:            string(side),
 			Confidence:      analyzeRes.Scoring.Confidence,
 			TotalScore:      analyzeRes.Scoring.TotalScore,
-			RawSignal:       nil, // Assign JSON map properly later
+			RawSignal:       rawSignal,
 			IsAggressive:    tpPlan.Mode == "AGGRESSIVE",
 			TPPrice:         tpPlan.TakeProfit,
 			SLPrice:         tpPlan.StopLoss,
@@ -518,4 +529,42 @@ func (s *Services) tradeExecuteSaveRecord(
 	})
 
 	return err
+}
+
+// convertScoringToJSONMap converts ScoringBreakdown to JSONMap for database storage
+func (s *Services) convertScoringToJSONMap(scoring dtos.ScoringBreakdown) models.JSONMap {
+	// Convert TimeframeSignalData breakdown to JSON array
+	breakdownJSON := make([]map[string]interface{}, len(scoring.Breakdown))
+	for i, tf := range scoring.Breakdown {
+		// Convert IndicatorBreakdown array to JSON array
+		indicatorsJSON := make([]map[string]interface{}, len(tf.Indicator))
+		for j, ind := range tf.Indicator {
+			indicatorsJSON[j] = map[string]interface{}{
+				"name":         ind.Name,
+				"raw_signal":   ind.RawSignal,
+				"weight":       ind.Weight,
+				"contribution": ind.Contribution,
+				"details":      ind.Details,
+				"value":        ind.Value,
+				"zone":         ind.Zone,
+			}
+		}
+
+		breakdownJSON[i] = map[string]interface{}{
+			"timeframe":    tf.Timeframe,
+			"trend":        tf.Trend,
+			"raw_signal":   tf.RawSignal,
+			"weight":       tf.Weight,
+			"contribution": tf.Contribution,
+			"indicator":    indicatorsJSON,
+		}
+	}
+
+	// Build final JSON map
+	return models.JSONMap{
+		"total_score": scoring.TotalScore,
+		"confidence":  scoring.Confidence,
+		"breakdown":   breakdownJSON,
+		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+	}
 }
