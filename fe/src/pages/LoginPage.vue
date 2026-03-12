@@ -2,8 +2,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
-import UiInput from '@/components/common/UiInput.vue'
-import UiButton from '@/components/common/UiButton.vue'
+import { UiInput, UiButton, UiPassword } from '@/components/common'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -60,12 +59,10 @@ const handleKeyPress = (e: KeyboardEvent) => {
 
           <!-- Password Field -->
           <div class="mb-6">
-            <UiInput
+            <UiPassword
               v-model="loginReq.password"
               label="Password"
-              type="password"
               placeholder="Enter your password"
-              autocomplete="current-password"
               :error="v$.password.$error"
               :error-message="v$.password.$errors[0]?.$message"
             />
