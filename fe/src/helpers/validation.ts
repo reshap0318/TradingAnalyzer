@@ -1,5 +1,3 @@
-import type { Validation } from '@vuelidate/core'
-
 /**
  * Global error messages for validators
  * Override this object to customize error messages globally
@@ -35,12 +33,12 @@ export const validationMessages: Record<string, string> = {
  * </p>
  * ```
  */
-export function getValidationErrors(fieldValidation: Validation): string[] {
+export function getValidationErrors(fieldValidation: any): string[] {
   if (!fieldValidation?.$errors || fieldValidation.$errors.length === 0) {
     return []
   }
 
-  return fieldValidation.$errors.map((error) => {
+  return fieldValidation.$errors.map((error: any) => {
     const validatorName = error.$validator
     const message = validationMessages[validatorName as keyof typeof validationMessages]
 
@@ -55,7 +53,9 @@ export function getValidationErrors(fieldValidation: Validation): string[] {
 
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
-        formattedMessage = formattedMessage.replace(`{${key}}`, String(value))
+        // Handle Ref types by accessing .value
+        const paramValue = value?.value ?? value
+        formattedMessage = formattedMessage.replace(`{${key}}`, String(paramValue))
       })
     }
 
@@ -73,7 +73,7 @@ export function getValidationErrors(fieldValidation: Validation): string[] {
  * const firstError = getFirstError(v$.username)
  * ```
  */
-export function getFirstError(fieldValidation: Validation): string {
+export function getFirstError(fieldValidation: any): string {
   const errors = getValidationErrors(fieldValidation)
   return errors[0] || ''
 }
@@ -88,7 +88,7 @@ export function getFirstError(fieldValidation: Validation): string {
  * const hasError = hasValidationErrors(v$.username)
  * ```
  */
-export function hasValidationErrors(fieldValidation: Validation): boolean {
+export function hasValidationErrors(fieldValidation: any): boolean {
   return fieldValidation?.$errors?.length > 0
 }
 
