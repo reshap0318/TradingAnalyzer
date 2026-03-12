@@ -7,7 +7,11 @@ RUN apk add --no-cache \
     curl \
     gcc \
     musl-dev \
+    tzdata \
     && go install github.com/air-verse/air@latest
+
+# Set timezone to Asia/Jakarta (WIB)
+ENV TZ=Asia/Jakarta
 
 # Set working directory
 WORKDIR /app
