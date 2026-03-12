@@ -1,15 +1,13 @@
-import {
-  createRouter,
-  createWebHistory,
-  type RouteRecordRaw,
-  type RouteLocationNormalized
-} from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'home',
-    component: () => import('@/pages/HomePage.vue')
+    component: () => import('@/pages/HomePage.vue'),
+    meta: {
+      requiresAuth: true
+    }
   },
   {
     path: '/login',
@@ -25,25 +23,23 @@ const router = createRouter({
   routes
 })
 
-// Navigation guards
-router.beforeEach((to: RouteLocationNormalized, _from: RouteLocationNormalized, next: any) => {
+// Navigation guards - Vue Router 5 pattern (return instead of next())
+router.beforeEach((to) => {
   const token = localStorage.getItem('auth_token')
   const isAuthenticated = !!token
 
   // Check if route is for guests only (login, register)
   if (to.meta.guest && isAuthenticated) {
-    next({ name: 'home' })
+    return { name: 'home' }
   }
 
-  // Check if route requires authentication (add meta: { requiresAuth: true } to routes)
-  else if (to.matched.some((record) => record.meta.requiresAuth) && !isAuthenticated) {
-    next({ name: 'login' })
+  // Check if route requires authentication
+  if (to.matched.some((record) => record.meta.requiresAuth) && !isAuthenticated) {
+    return { name: 'login' }
   }
 
-  // Otherwise, allow navigation
-  else {
-    next()
-  }
+  // Allow navigation
+  return true
 })
 
 export default router
