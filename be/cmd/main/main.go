@@ -57,15 +57,15 @@ func main() {
 		routes.RegisterTradeRoutes(protected, engine.Ctrl)
 	}
 
-	// Auto-run Watchlist Scanner on startup
+	// Auto-run Trade Bot on startup
 	go func() {
-		fmt.Println("⏳ Starting auto-run Watchlist Scanner...")
+		fmt.Println("⏳ Starting auto-run Trade Bot...")
 		ctx := &gin.Context{}
-		_, err := engine.Srvc.WatchlistScannerActivate(ctx, nil)
+		_, err := engine.Srvc.TradeBotActivate(ctx, nil)
 		if err != nil {
-			fmt.Printf("⚠️ Failed to auto-start Scanner: %v\n", err)
+			fmt.Printf("⚠️ Failed to auto-start Trade Bot: %v\n", err)
 		} else {
-			fmt.Println("✅ Watchlist Scanner auto-started successfully!")
+			fmt.Println("✅ Trade Bot auto-started successfully!")
 		}
 	}()
 
