@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.store'
 import { UiInput, UiButton, UiPassword } from '@/components/common'
+import { getFirstError } from '@/helpers/validation'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -53,7 +54,7 @@ const handleKeyPress = (e: KeyboardEvent) => {
               placeholder="Enter your username"
               autocomplete="username"
               :error="v$.username.$error"
-              :error-message="v$.username.$errors[0]?.$message"
+              :error-message="getFirstError(v$.username)"
             />
           </div>
 
@@ -64,28 +65,15 @@ const handleKeyPress = (e: KeyboardEvent) => {
               label="Password"
               placeholder="Enter your password"
               :error="v$.password.$error"
-              :error-message="v$.password.$errors[0]?.$message"
+              :error-message="getFirstError(v$.password)"
             />
           </div>
 
           <!-- Submit Button -->
-          <UiButton
-            type="submit"
-            variant="primary"
-            :loading="isLoading"
-            full-width
-          >
+          <UiButton type="submit" variant="primary" :loading="isLoading" full-width>
             {{ isLoading ? 'Signing in...' : 'Sign In' }}
           </UiButton>
         </form>
-
-        <!-- Divider -->
-        <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-          <p class="text-center text-sm text-gray-500 dark:text-gray-400">
-            Don't have an account?
-            <a href="#" class="text-primary hover:text-primary-dark font-semibold">Contact admin</a>
-          </p>
-        </div>
       </div>
 
       <!-- Footer -->
