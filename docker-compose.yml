@@ -1,6 +1,5 @@
 name: trading-bot
 services:
-  # Go Application with Air (Hot Reload)
   app:
     build:
       context: .
@@ -12,9 +11,20 @@ services:
       - "8000"
     env_file:
       - ./be/.env
+    environment:
+      - TZ=Asia/Jakarta
     volumes:
       - ./be:/app
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
+    extra_hosts:
+      - "api.binance.com:13.225.103.45"
+      - "api1.binance.com:13.225.103.45"
+      - "api2.binance.com:13.225.103.45"
+      - "api3.binance.com:13.225.103.45"
     networks:
       - trading-bot-network
       - mysql-network
@@ -44,6 +54,8 @@ services:
     container_name: trading-worker
     profiles:
       - worker
+    environment:
+      - TZ=Asia/Jakarta
     volumes:
       - ./etc/script:/app
     working_dir: /app

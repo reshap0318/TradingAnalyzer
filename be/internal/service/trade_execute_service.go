@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -33,7 +34,7 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 	mmConfig := s.getConfigMM(strategy)
 	minBalance := 3.0
 
-	symStat := s.tradeTodayStat(req.Symbol)
+	symStat := s.tradeExecuteTodayStat(req.Symbol)
 
 	// VALIDATION 1: LOCAL HARD LIMIT - Active Trade
 	if symStat.Active > 0 {
@@ -140,6 +141,15 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 		}, nil
 	}
 
+	fmt.Printf("[DEBUG] MAX_DAILY_TRADES = %d, RISK_REWARD_TARGET = %.2f\n",
+		mmConfig.MAX_DAILY_TRADES, mmConfig.RISK_REWARD_TARGET)
+
+	fmt.Printf("[DEBUG] symStat.Count = %d, symStat.Active = %d, Symbol = %s\n",
+		symStat.Count, symStat.Active, req.Symbol)
+
+	fmt.Printf("[DEBUG] analyzeRes.Signal.TradingPlan.RiskRewardRatio = %.2f\n",
+		analyzeRes.Signal.TradingPlan.RiskRewardRatio)
+
 	// VALIDATION 5: SOFT LIMIT - Daily Trade Count & RR Ratio TARGET Override
 	if symStat.Count >= mmConfig.MAX_DAILY_TRADES {
 		isExcellentSetup := analyzeRes.Signal.TradingPlan.RiskRewardRatio >= float64(mmConfig.RISK_REWARD_TARGET)
@@ -171,10 +181,11 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 	}
 
 	// If valid, Proceed to Execution Preparation
-	return s.executeBinanceTrade(req.Symbol, mmConfig, analyzeRes, actualCapitalUsed)
+	return s.tradeExecuteBinance(req.Symbol, mmConfig, analyzeRes, actualCapitalUsed)
 }
 
-func (s *Services) tradeTodayStat(symbol string) dtos.TradeDayStat {
+// tradeExecuteTodayStat calculates trading statistics for today
+func (s *Services) tradeExecuteTodayStat(symbol string) dtos.TradeDayStat {
 	stat := dtos.TradeDayStat{}
 	countConsecutive := true
 
@@ -220,8 +231,8 @@ func (s *Services) tradeTodayStat(symbol string) dtos.TradeDayStat {
 	return stat
 }
 
-// executeBinanceTrade handles the actual external API calling for order execution
-func (s *Services) executeBinanceTrade(
+// tradeExecuteBinance handles the actual external API calling for order execution
+func (s *Services) tradeExecuteBinance(
 	symbol string,
 	config *config.MMConfig,
 	analyzeRes *dtos.SignalAnalyzeResponse,
@@ -250,9 +261,10 @@ func (s *Services) executeBinanceTrade(
 		// Check if error is "No need to change margin type" (Binance error code -4046)
 		// If so, we can safely ignore it and continue
 		errMsg := err.Error()
-		if errMsg != "No need to change margin type" {
+		if !strings.Contains(errMsg, "-4046") && !strings.Contains(errMsg, "No need to change margin type") {
 			return nil, fmt.Errorf("failed to set margin mode to ISOLATED: %w", err)
 		}
+		// Error ignored successfully
 	}
 
 	// 3. Setup Leverage
@@ -394,7 +406,7 @@ func (s *Services) executeBinanceTrade(
 		avgEntryPrice = avgEntryPriceSum / totalFilledQty
 	}
 
-	err = s.saveTradeRecord(symbol, side, tpPlan, analyzeRes, capitalUsed, float64(config.LEVERAGE), executedOrders, tpOrderID, slOrderID, avgEntryPrice, totalFilledQty)
+	err = s.tradeExecuteSaveRecord(symbol, side, tpPlan, analyzeRes, capitalUsed, float64(config.LEVERAGE), executedOrders, tpOrderID, slOrderID, avgEntryPrice, totalFilledQty)
 	if err != nil {
 		fmt.Printf("Warning: Trade executed but DB tracking failed: %v", err)
 	}
@@ -418,8 +430,8 @@ func (s *Services) executeBinanceTrade(
 	}, nil
 }
 
-// saveTradeRecord saves the completed transaction to your DB
-func (s *Services) saveTradeRecord(
+// tradeExecuteSaveRecord saves the completed transaction to your DB
+func (s *Services) tradeExecuteSaveRecord(
 	symbol string,
 	side binance.OrderSide,
 	tpPlan *dtos.TradingPlan,
@@ -442,6 +454,9 @@ func (s *Services) saveTradeRecord(
 			}
 		}
 
+		// Convert ScoringBreakdown to JSONMap for RawSignal
+		rawSignal := s.convertScoringToJSONMap(analyzeRes.Scoring)
+
 		// Save Parent Trade
 		parentTrade := &models.Trade{
 			Symbol:          symbol,
@@ -449,7 +464,7 @@ func (s *Services) saveTradeRecord(
 			Side:            string(side),
 			Confidence:      analyzeRes.Scoring.Confidence,
 			TotalScore:      analyzeRes.Scoring.TotalScore,
-			RawSignal:       nil, // Assign JSON map properly later
+			RawSignal:       rawSignal,
 			IsAggressive:    tpPlan.Mode == "AGGRESSIVE",
 			TPPrice:         tpPlan.TakeProfit,
 			SLPrice:         tpPlan.StopLoss,
@@ -515,4 +530,42 @@ func (s *Services) saveTradeRecord(
 	})
 
 	return err
+}
+
+// convertScoringToJSONMap converts ScoringBreakdown to JSONMap for database storage
+func (s *Services) convertScoringToJSONMap(scoring dtos.ScoringBreakdown) models.JSONMap {
+	// Convert TimeframeSignalData breakdown to JSON array
+	breakdownJSON := make([]map[string]interface{}, len(scoring.Breakdown))
+	for i, tf := range scoring.Breakdown {
+		// Convert IndicatorBreakdown array to JSON array
+		indicatorsJSON := make([]map[string]interface{}, len(tf.Indicator))
+		for j, ind := range tf.Indicator {
+			indicatorsJSON[j] = map[string]interface{}{
+				"name":         ind.Name,
+				"raw_signal":   ind.RawSignal,
+				"weight":       ind.Weight,
+				"contribution": ind.Contribution,
+				"details":      ind.Details,
+				"value":        ind.Value,
+				"zone":         ind.Zone,
+			}
+		}
+
+		breakdownJSON[i] = map[string]interface{}{
+			"timeframe":    tf.Timeframe,
+			"trend":        tf.Trend,
+			"raw_signal":   tf.RawSignal,
+			"weight":       tf.Weight,
+			"contribution": tf.Contribution,
+			"indicator":    indicatorsJSON,
+		}
+	}
+
+	// Build final JSON map
+	return models.JSONMap{
+		"total_score": scoring.TotalScore,
+		"confidence":  scoring.Confidence,
+		"breakdown":   breakdownJSON,
+		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+	}
 }

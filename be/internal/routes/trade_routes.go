@@ -9,7 +9,27 @@ import (
 func RegisterTradeRoutes(router *gin.RouterGroup, ctrl *controller.Controller) {
 	tradeGroup := router.Group("/trade")
 	{
-		// POST /api/trade/auto - Analyze and Execute trade automatically
-		tradeGroup.POST("/auto", ctrl.TradeExecute)
+		// POST /api/trade/ - Execute single trade manually
+		tradeGroup.POST("/execute", ctrl.TradeExecute)
+
+		// Trade Monitor endpoints (for debugging/manual trigger)
+		monitorGroup := tradeGroup.Group("/monitor")
+		{
+			// POST /api/trade/monitor/all - Process all active trades
+			monitorGroup.POST("/all", ctrl.TradeMonitorProcessAllActive)
+			// POST /api/trade/monitor/:id - Process single trade by ID
+			monitorGroup.POST("/:id", ctrl.TradeMonitorProcessSingle)
+		}
+
+		// Trade Bot control endpoints
+		botGroup := tradeGroup.Group("/bot")
+		{
+			// GET /api/trade/bot/status - Get bot status
+			botGroup.GET("/status", ctrl.TradeBotGetStatus)
+			// POST /api/trade/bot/activate - Activate bot
+			botGroup.POST("/activate", ctrl.TradeBotActivate)
+			// POST /api/trade/bot/deactivate - Deactivate bot
+			botGroup.POST("/deactivate", ctrl.TradeBotDeactivate)
+		}
 	}
 }
