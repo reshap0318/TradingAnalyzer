@@ -251,7 +251,147 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 
 	// Cek DB: Apakah tp_order_id sudah ada isinya?
 	if trade.TPOrderID == 0 {
-		processResult.Logs = append(processResult.Logs, "No TP order ID found in DB. Skipping Phase 1 TP/SL check.")
+		processResult.Logs = append(processResult.Logs, "No TP order ID found in DB.")
+		
+		// 🆕 FALLBACK: Cek apakah ada entry yang sudah filled tapi tidak punya TP/SL
+		hasFilledEntry := false
+		totalFilledQty := 0.0
+		
+		for _, e := range trade.Entries {
+			if e.Status == "FILLED" || e.Status == "PARTIALLY_FILLED" {
+				hasFilledEntry = true
+				totalFilledQty += e.FilledQty
+			}
+		}
+		
+		if hasFilledEntry && totalFilledQty > 0 {
+			processResult.Logs = append(processResult.Logs, 
+				fmt.Sprintf("⚠️ WARNING: Trade has %.8f filled qty but NO TP/SL! Checking price manually...", totalFilledQty))
+			
+			// 🆕 Cek harga sekarang vs TP/SL price di DB
+			curPrice, err := s.BinanceClient.GetPrice(trade.Symbol)
+			if err != nil {
+				return result, false, fmt.Errorf("failed to get price: %w", err)
+			}
+			
+			// Cek apakah harga sudah hit TP atau SL
+			hitTP := false
+			hitSL := false
+			
+			// Note: trade.Side menggunakan "BUY" untuk LONG dan "SELL" untuk SHORT
+			if trade.Side == "BUY" {
+				// LONG: TP di atas, SL di bawah
+				if curPrice.Price >= trade.TPPrice {
+					hitTP = true
+					processResult.Logs = append(processResult.Logs,
+						fmt.Sprintf("🚨 TP HIT SYSTEM! Price: %.8f >= TP: %.8f", curPrice.Price, trade.TPPrice))
+				}
+				if curPrice.Price <= trade.SLPrice {
+					hitSL = true
+					processResult.Logs = append(processResult.Logs,
+						fmt.Sprintf("🚨 SL HIT SYSTEM! Price: %.8f <= SL: %.8f", curPrice.Price, trade.SLPrice))
+				}
+			} else if trade.Side == "SELL" {
+				// SHORT: TP di bawah, SL di atas
+				if curPrice.Price <= trade.TPPrice {
+					hitTP = true
+					processResult.Logs = append(processResult.Logs,
+						fmt.Sprintf("🚨 TP HIT SYSTEM! Price: %.8f <= TP: %.8f", curPrice.Price, trade.TPPrice))
+				}
+				if curPrice.Price >= trade.SLPrice {
+					hitSL = true
+					processResult.Logs = append(processResult.Logs,
+						fmt.Sprintf("🚨 SL HIT SYSTEM! Price: %.8f >= SL: %.8f", curPrice.Price, trade.SLPrice))
+				}
+			}
+			
+			// Jika TP/SL hit, langsung close trade
+			if hitTP || hitSL {
+				processResult.Logs = append(processResult.Logs, "Executing manual TP/SL close...")
+
+				exitReason := "TP_HIT_SYSTEM"
+				if hitSL {
+					exitReason = "SL_HIT_SYSTEM"
+				}
+
+				err := s.repo.TxManager.WithinTransaction(func(tx *gorm.DB) error {
+					// Gunakan current price sebagai exit price (real market price saat close)
+					// Ini konsisten dengan manual close behavior di Binance
+					exitPrice := curPrice.Price
+
+					// Hitung PnL
+					pnl := calculatePnL(trade, exitPrice)
+					pnlPct := calculatePnLPct(trade, pnl)
+
+					processResult.Logs = append(processResult.Logs,
+						fmt.Sprintf("Close Position With Price %.8f, PnL: %.8f (%.2f%%)", exitPrice, pnl, pnlPct))
+
+					// Update trade status
+					now := time.Now()
+					updateTrade := &models.Trade{
+						Status:     "CLOSED",
+						ClosedAt:   &now,
+						ExitPrice:  exitPrice,
+						ExitReason: exitReason,
+						PnL:        pnl,
+						PnLPct:     pnlPct,
+					}
+					_, err := s.repo.Trade.Update(tx, &models.Trade{ID: trade.ID}, updateTrade)
+					if err != nil {
+						return fmt.Errorf("failed to update trade: %w", err)
+					}
+
+					// Cancel semua pending entry orders untuk symbol ini (1 API call untuk semua orders)
+					processResult.Logs = append(processResult.Logs,
+						fmt.Sprintf("Canceling ALL open orders for symbol %s...", trade.Symbol))
+
+					if cancelErr := s.BinanceClient.CancelAllOrders(trade.Symbol); cancelErr != nil {
+						processResult.Logs = append(processResult.Logs,
+							fmt.Sprintf("Warning: Failed to cancel all orders for %s: %v", trade.Symbol, cancelErr))
+					} else {
+						processResult.Logs = append(processResult.Logs,
+							fmt.Sprintf("ALL orders for %s canceled on Binance successfully.", trade.Symbol))
+					}
+
+					// Update semua entry status jadi CANCELLED di DB
+					entries, err := s.repo.TradeEntry.FindByTradeID(tx, trade.ID)
+					if err != nil {
+						return fmt.Errorf("failed to fetch entries: %w", err)
+					}
+
+					for _, entry := range entries {
+						if entry.Status == "PENDING" || entry.Status == "NEW" {
+							err = s.repo.TradeEntry.UpdateStatus(tx, entry.ID, "CANCELLED", "Manual TP/SL hit")
+							if err != nil {
+								return fmt.Errorf("failed to update entry: %w", err)
+							}
+						}
+					}
+
+					return nil
+				})
+
+				if err != nil {
+					return result, false, err
+				}
+
+				trade.Status = "CLOSED"
+				result.TPUpdated = hitTP
+				result.SLUpdated = hitSL
+				shouldReturn = true
+				processResult.Logs = append(processResult.Logs,
+					fmt.Sprintf("Trade closed by system due to TP/SL hit without orders. Exit Reason: %s", exitReason))
+				return result, true, nil
+			}
+			
+			// Jika belum hit, log warning dan lanjutkan (akan retry create TP/SL di Fase 2 jika ada entry baru)
+			processResult.Logs = append(processResult.Logs, 
+				fmt.Sprintf("⚠️ TP/SL not hit yet. Current: %.8f, TP: %.8f, SL: %.8f. Will retry creating orders if new entry filled.", 
+					curPrice.Price, trade.TPPrice, trade.SLPrice))
+		} else {
+			processResult.Logs = append(processResult.Logs, "No filled entries yet, skipping TP/SL check.")
+		}
+		
 		return result, false, nil
 	}
 
