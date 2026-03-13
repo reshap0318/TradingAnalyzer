@@ -715,7 +715,7 @@ func seedStrategy(db *gorm.DB) {
 			strategy := models.Strategy{
 				Name:      s.Name,
 				PrimaryTF: s.PrimaryTF,
-				IsActive:  true,
+				IsActive:  s.PrimaryTF == "15m",
 			}
 			if err := db.Create(&strategy).Error; err != nil {
 				log.Printf("Failed to create strategy '%s': %v", s.Name, err)

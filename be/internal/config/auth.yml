@@ -2,4 +2,4 @@ users:
     - username: admin
       password: qLZ$%xTAQ&sxq4x1
       name: Administrator
-      session: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFkbWluIiwibmFtZSI6IkFkbWluaXN0cmF0b3IiLCJleHAiOjE3NzMyNjM3MDUsImlhdCI6MTc3MzE3NzMwNX0.vRMWRDDzGlaHc7VaOQGoMEyjowFP771mYIIu6iMkncs
+      session: ""

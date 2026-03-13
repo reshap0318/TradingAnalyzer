@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@theme {
+    /* Colors - Trading Theme */
+    --color-primary: #3b82f6;
+    --color-primary-dark: #2563eb;
+    --color-primary-light: #60a5fa;
+
+    --color-success: #22c55e;
+    --color-success-dark: #16a34a;
+    --color-success-light: #4ade80;
+
+    --color-danger: #ef4444;
+    --color-danger-dark: #dc2626;
+    --color-danger-light: #f87171;
+
+    --color-warning: #f59e0b;
+    --color-warning-dark: #d97706;
+    --color-warning-light: #fbbf24;
+
+    --color-info: #06b6d4;
+    --color-info-dark: #0891b2;
+    --color-info-light: #22d3ee;
+
+    /* Trading Signals */
+    --color-strong-buy: #16a34a;
+    --color-buy: #22c55e;
+    --color-wait: #6b7280;
+    --color-sell: #ef4444;
+    --color-strong-sell: #dc2626;
+
+    /* Fonts */
+    --font-family-sans: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-family-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+    /* Spacing */
+    --spacing-container: 1280px;
+}
+
+/* Global Styles */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-family-sans);
+    background-color: #f9fafb;
+    color: #111827;
+    margin: 0;
+    min-height: 100vh;
+}
+
+/* Custom Utilities */
+@utility container {
+    margin-inline: auto;
+    padding-inline: 1rem;
+
+    @media (width >=theme(--breakpoint-sm)) {
+        padding-inline: 2rem;
+    }
+
+    @media (width >=theme(--breakpoint-lg)) {
+        padding-inline: 4rem;
+    }
+
+    max-width: var(--spacing-container);
+}
+
+/* Dark mode support (optional) */
+@media (prefers-color-scheme: dark) {
+    body {
+        background-color: #111827;
+        color: #f9fafb;
+    }
+}

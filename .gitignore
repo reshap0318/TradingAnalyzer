@@ -1,6 +1,3 @@
-# Ignore frontend directory
-fe/
-
 # OS
 .DS_Store
 Thumbs.db
