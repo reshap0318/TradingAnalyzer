@@ -17,7 +17,7 @@ const props = withDefaults(defineProps<IUiInputProps>(), {
   error: false,
   errorMessage: '',
   disabled: false,
-  autocomplete: ''
+  autocomplete: 'off'
 })
 
 const emit = defineEmits<{

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
@@ -23,6 +24,16 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 	router.SetTrustedProxies(nil)
+
+	// CORS Configuration
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * 3600, // 12 hours
+	}))
 
 	cfg := config.LoadConfig()
 
@@ -58,16 +69,16 @@ func main() {
 	}
 
 	// Auto-run Watchlist Scanner on startup
-	// go func() {
-	// 	fmt.Println("⏳ Starting auto-run Watchlist Scanner...")
-	// 	ctx := &gin.Context{}
-	// 	_, err := engine.Srvc.WatchlistScannerActivate(ctx, nil)
-	// 	if err != nil {
-	// 		fmt.Printf("⚠️ Failed to auto-start Scanner: %v\n", err)
-	// 	} else {
-	// 		fmt.Println("✅ Watchlist Scanner auto-started successfully!")
-	// 	}
-	// }()
+	go func() {
+		fmt.Println("⏳ Starting auto-run Watchlist Scanner...")
+		ctx := &gin.Context{}
+		_, err := engine.Srvc.WatchlistScannerActivate(ctx, nil)
+		if err != nil {
+			fmt.Printf("⚠️ Failed to auto-start Scanner: %v\n", err)
+		} else {
+			fmt.Println("✅ Watchlist Scanner auto-started successfully!")
+		}
+	}()
 
 	// Menjalankan HTTP server (BLOCKING)
 	router.Run(fmt.Sprintf("%s:%s", host, port))
