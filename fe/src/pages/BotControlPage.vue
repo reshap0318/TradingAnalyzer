@@ -6,14 +6,13 @@ import {
   PhRobot,
   PhPower,
   PhStop,
-  PhTrendUp,
   PhArrowCounterClockwise,
   PhChartLineUp,
   PhGearSix,
   PhFlask
 } from '@phosphor-icons/vue'
 import Swal from 'sweetalert2'
-import { ActiveTradeCard } from '@/components/features/bot-control'
+import { ActiveTradeCard, TradeExecutedCard } from '@/components/features/bot-control'
 
 const store = useTradeBotStore()
 
@@ -297,19 +296,7 @@ onUnmounted(() => {
         <!-- Stats Overview -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <!-- Trades Executed -->
-          <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-            <div class="flex items-center gap-3 mb-4">
-              <div class="p-3 bg-blue-50 rounded-xl">
-                <PhTrendUp :size="24" class="text-blue-600" weight="fill" />
-              </div>
-              <span class="text-sm text-gray-600">Trades Executed</span>
-            </div>
-            <div v-if="summaryLoading" class="animate-spin rounded-full h-8 w-8 border-4 border-blue-200 border-t-blue-600"></div>
-            <p v-else class="text-3xl font-bold text-gray-900">{{ sessionSummary?.executed ?? 0 }}</p>
-            <p v-if="sessionSummary" class="text-xs text-gray-500 mt-1">
-              Total: {{ sessionSummary.total_trades }} • Skipped: {{ sessionSummary.skipped }}
-            </p>
-          </div>
+          <TradeExecutedCard :trades="store.executedTrades" />
 
           <!-- Active Trades -->
           <ActiveTradeCard :trades="activeTrades" />

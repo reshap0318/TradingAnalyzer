@@ -114,6 +114,7 @@ export const useTradeBotStore = defineStore('tradebot', () => {
   // Session data state
   const sessionSummary = ref<ISessionSummary | null>(null)
   const activeTrades = ref<ITrade[]>([])
+  const executedTrades = ref<ITrade[]>([])
   const summaryLoading = ref(false)
 
   // Actions
@@ -246,18 +247,20 @@ export const useTradeBotStore = defineStore('tradebot', () => {
   // Session data actions
   async function fetchSessionData() {
     if (!botStatus.value?.is_active) return
-    
+
     summaryLoading.value = true
     try {
       // Fetch all three endpoints in parallel
-      const [summaryRes, activeRes] = await Promise.all([
+      const [summaryRes, activeRes, executedRes] = await Promise.all([
         get<IApiResponse<ISessionSummary>>(`${BASE_URL}/summary`),
-        get<IApiResponse<ITrade[]>>(`${BASE_URL}/active`)
+        get<IApiResponse<ITrade[]>>(`${BASE_URL}/active`),
+        get<IApiResponse<ITrade[]>>(`${BASE_URL}/`)
       ])
 
       // Set data from responses
       sessionSummary.value = summaryRes.data.data
-      activeTrades.value = activeRes.data.data
+      activeTrades.value = activeRes.data.data || []
+      executedTrades.value = executedRes.data.data || []
     } catch (error) {
       // Ignore errors - if bot not running, endpoints will fail and that's OK
       console.warn('Failed to fetch session data (bot may not be running):', error)
@@ -269,6 +272,7 @@ export const useTradeBotStore = defineStore('tradebot', () => {
   function clearSessionData() {
     sessionSummary.value = null
     activeTrades.value = []
+    executedTrades.value = []
   }
 
   return {
@@ -281,6 +285,7 @@ export const useTradeBotStore = defineStore('tradebot', () => {
     strategiesLoaded,
     sessionSummary,
     activeTrades,
+    executedTrades,
     summaryLoading,
 
     // Actions

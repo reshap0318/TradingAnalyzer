@@ -88,7 +88,6 @@ const handleClose = () => {
     <p v-if="trades.length > 0" class="text-xs text-gray-500 mt-1">
       From session
     </p>
-    <p v-if="trades.length > 0" class="text-xs text-green-600 mt-2 font-medium">Click to view details →</p>
   </div>
 
   <!-- Modal - Full trade details -->
