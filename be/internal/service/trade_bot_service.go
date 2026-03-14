@@ -17,8 +17,8 @@ var (
 	tradeBotCancel       context.CancelFunc    // Cancel function to stop goroutines
 	tradeBotMutex        sync.Mutex            // Mutex for thread safety
 	tradeBotStrategy     *uint                 // Active strategy ID
-	tradeExecutorRunning bool                  // Track if trade execution cycle is currently running
-	tradeMonitorRunning  bool                  // Track if trade monitor cycle is currently running
+	tradeExecutorRunning *time.Time            // Timestamp when trade execution cycle started (nil if not running)
+	tradeMonitorRunning  *time.Time            // Timestamp when trade monitor cycle started (nil if not running)
 	tradeExecutorLogger  *helpers.WorkerLogger // Logger for trade executor
 	tradeMonitorLogger   *helpers.WorkerLogger // Logger for trade monitor
 
@@ -123,8 +123,8 @@ func (s *Services) TradeBotDeactivate(ctx *gin.Context) (res map[string]interfac
 		tradeBotCancel()
 	}
 	tradeBotActive = false
-	tradeExecutorRunning = false // Reset executor flag
-	tradeMonitorRunning = false  // Reset monitor flag
+	tradeExecutorRunning = nil // Reset executor flag
+	tradeMonitorRunning = nil  // Reset monitor flag
 
 	// Close logger file handle for trade executor
 	if tradeExecutorLogger != nil {
@@ -170,9 +170,40 @@ func (s *Services) TradeBotGetStatus(ctx *gin.Context) (res map[string]interface
 		}
 	}
 
+	// Build executor and monitor status
+	var executorStatus map[string]interface{}
+	if tradeExecutorRunning != nil {
+		executorStatus = map[string]interface{}{
+			"is_running":  true,
+			"started_at":  tradeExecutorRunning.Format(time.RFC3339),
+			"duration":    time.Since(*tradeExecutorRunning).String(),
+			"duration_sec": time.Since(*tradeExecutorRunning).Seconds(),
+		}
+	} else {
+		executorStatus = map[string]interface{}{
+			"is_running": false,
+		}
+	}
+
+	var monitorStatus map[string]interface{}
+	if tradeMonitorRunning != nil {
+		monitorStatus = map[string]interface{}{
+			"is_running":  true,
+			"started_at":  tradeMonitorRunning.Format(time.RFC3339),
+			"duration":    time.Since(*tradeMonitorRunning).String(),
+			"duration_sec": time.Since(*tradeMonitorRunning).Seconds(),
+		}
+	} else {
+		monitorStatus = map[string]interface{}{
+			"is_running": false,
+		}
+	}
+
 	return map[string]interface{}{
-		"is_active": tradeBotActive,
-		"strategy":  strategyData,
+		"is_active":        tradeBotActive,
+		"strategy":         strategyData,
+		"trade_executor":   executorStatus,
+		"trade_monitor":    monitorStatus,
 	}, nil
 }
 
@@ -187,7 +218,7 @@ func (s *Services) runBackgroundTradeExecutor(ctx context.Context, executionInte
 			// Reset flags as safety net if goroutine crashes
 			tradeBotMutex.Lock()
 			tradeBotActive = false
-			tradeExecutorRunning = false
+			tradeExecutorRunning = nil
 			tradeBotMutex.Unlock()
 		}
 	}()
@@ -222,12 +253,13 @@ func (s *Services) runBackgroundTradeExecutor(ctx context.Context, executionInte
 
 			// Skip if execution is already running
 			tradeBotMutex.Lock()
-			if tradeExecutorRunning {
+			if tradeExecutorRunning != nil {
 				tradeBotMutex.Unlock()
 				logger.Skip("Previous trade execution still running - skipping this interval")
 				continue
 			}
-			tradeExecutorRunning = true
+			now := time.Now()
+			tradeExecutorRunning = &now
 			tradeBotMutex.Unlock()
 
 			// Run trade execution (tradeExecutorRunning will be reset by runTradeExecutionCycle's defer)
@@ -268,12 +300,13 @@ func (s *Services) runBackgroundTradeMonitor(ctx context.Context, monitorInterva
 		case <-ticker.C:
 			// Default interval triggered
 			tradeBotMutex.Lock()
-			if tradeMonitorRunning {
+			if tradeMonitorRunning != nil {
 				tradeBotMutex.Unlock()
 				logger.Skip("Previous trade monitor cycle still active - skipping this interval")
 				continue
 			}
-			tradeMonitorRunning = true
+			now := time.Now()
+			tradeMonitorRunning = &now
 			tradeBotMutex.Unlock()
 
 			s.runTradeMonitorCycle(logger)
@@ -349,7 +382,7 @@ func (s *Services) runTradeExecutionCycle(logger *helpers.WorkerLogger) {
 		duration := time.Since(cycleStart)
 		logger.CycleSummary(len(watchlists), tradesExecuted, tradesSkipped, duration)
 		tradeBotMutex.Lock()
-		tradeExecutorRunning = false
+		tradeExecutorRunning = nil
 		tradeBotMutex.Unlock()
 	}()
 
@@ -414,7 +447,7 @@ func (s *Services) runTradeMonitorCycle(logger *helpers.WorkerLogger) {
 		duration := time.Since(cycleStart)
 
 		tradeBotMutex.Lock()
-		tradeMonitorRunning = false
+		tradeMonitorRunning = nil
 		tradeBotMutex.Unlock()
 
 		logger.Info("Trade monitor cycle completed in %v", duration)
