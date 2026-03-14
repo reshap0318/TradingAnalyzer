@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTradeBotStore } from '@/stores/tradebot.store'
 import { DefaultLayout } from '@/layouts'
 import {
@@ -9,22 +9,40 @@ import {
   PhTrendUp,
   PhArrowCounterClockwise,
   PhChartLineUp,
-  PhWallet,
   PhGearSix,
   PhFlask
 } from '@phosphor-icons/vue'
 import Swal from 'sweetalert2'
+import { ActiveTradeCard } from '@/components/features/bot-control'
 
 const store = useTradeBotStore()
 
 const isActive = computed(() => store.botStatus?.is_active ?? false)
 const strategy = computed(() => store.strategy)
+const botRunningDuration = computed(() => store.botStatus?.bot_running_seconds || 0)
+
+// Format bot running duration to human readable
+const formattedBotDuration = computed(() => {
+  const seconds = botRunningDuration.value
+  if (seconds < 60) return `${Math.floor(seconds)}s`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.floor(seconds % 60)}s`
+  if (seconds < 86400) {
+    // Less than 1 day
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    return `${hours}h ${minutes}m`
+  }
+  // More than 1 day
+  const days = Math.floor(seconds / 86400)
+  const hours = Math.floor((seconds % 86400) / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  return `${days}d ${hours}h ${minutes}m`
+})
 
 // Session summary state
-const sessionSummary = ref<any>(null)
-const executedTrades = ref<any[]>([])
-const activeTrades = ref<any[]>([])
-const summaryLoading = ref(false)
+const sessionSummary = computed(() => store.sessionSummary)
+const activeTrades = computed(() => store.activeTrades)
+const summaryLoading = computed(() => store.summaryLoading)
 
 // Calculate total indicator weight
 const totalIndicatorWeight = computed(() => {
@@ -34,59 +52,45 @@ const totalIndicatorWeight = computed(() => {
   return strategy.value.indicator_weights.reduce((sum, ind) => sum + ind.weight, 0) * 100
 })
 
-// Calculate active trades count
-const activeTradesCount = computed(() => activeTrades.value.length)
-
 // Calculate total PnL from session
 const totalPnL = computed(() => {
   if (!sessionSummary.value) return 0
   return sessionSummary.value.total_pnl || 0
 })
 
-// Fetch session data when bot becomes active
-watch(() => isActive.value, async (newActive) => {
-  if (newActive) {
-    await fetchSessionData()
-  } else {
-    // Clear data when bot becomes inactive
-    sessionSummary.value = null
-    executedTrades.value = []
-    activeTrades.value = []
-  }
-}, { immediate: true })
+// Background reload for session data (every 3 minutes when bot is active)
+const RELOAD_INTERVAL_MS = 3 * 60 * 1000 // 3 minutes in milliseconds
+let reloadIntervalId: ReturnType<typeof setInterval> | null = null
 
-// Fetch session data (summary, executed trades, active trades)
-const fetchSessionData = async () => {
-  if (!isActive.value) return
-  
-  summaryLoading.value = true
-  try {
-    // Fetch all three endpoints in parallel
-    const [summaryRes, executedRes, activeRes] = await Promise.all([
-      fetch('/api/trade/bot/summary').then(r => r.ok ? r.json() : null),
-      fetch('/api/trade/bot/').then(r => r.ok ? r.json() : null),
-      fetch('/api/trade/bot/active').then(r => r.ok ? r.json() : null)
-    ])
+const startBackgroundReload = () => {
+  // Stop existing interval if any
+  stopBackgroundReload()
 
-    // Set data if responses are successful (ignore errors)
-    if (summaryRes?.data) {
-      sessionSummary.value = summaryRes.data
-    }
-    
-    if (executedRes?.data) {
-      executedTrades.value = executedRes.data
-    }
-    
-    if (activeRes?.data) {
-      activeTrades.value = activeRes.data
-    }
-  } catch (error) {
-    // Ignore errors - if bot not running, endpoints will fail and that's OK
-    console.warn('Failed to fetch session data (bot may not be running):', error)
-  } finally {
-    summaryLoading.value = false
+  // Fetch immediately first
+  store.fetchSessionData()
+
+  // Then set interval for subsequent reloads
+  reloadIntervalId = setInterval(() => {
+    store.fetchSessionData()
+  }, RELOAD_INTERVAL_MS)
+}
+
+const stopBackgroundReload = () => {
+  if (reloadIntervalId) {
+    clearInterval(reloadIntervalId)
+    reloadIntervalId = null
   }
 }
+
+// Watch bot active state to start/stop background reload
+watch(() => isActive.value, async (newActive) => {
+  if (newActive) {
+    startBackgroundReload()
+  } else {
+    stopBackgroundReload()
+    store.clearSessionData()
+  }
+}, { immediate: true })
 
 // Strategy selection
 const showStrategyModal = ref(false)
@@ -113,7 +117,7 @@ const handleRefresh = async () => {
   await store.fetchBotStatus()
   // Also refresh session data if bot is active
   if (isActive.value) {
-    await fetchSessionData()
+    await store.fetchSessionData()
   }
 }
 
@@ -132,6 +136,10 @@ const handleStrategySelect = async () => {
 
 onMounted(() => {
   store.fetchBotStatus()
+})
+
+onUnmounted(() => {
+  stopBackgroundReload()
 })
 </script>
 
@@ -287,7 +295,7 @@ onMounted(() => {
         </div>
 
         <!-- Stats Overview -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <!-- Trades Executed -->
           <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
             <div class="flex items-center gap-3 mb-4">
@@ -303,20 +311,8 @@ onMounted(() => {
             </p>
           </div>
 
-          <!-- Active Trades Count -->
-          <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-            <div class="flex items-center gap-3 mb-4">
-              <div class="p-3 bg-green-50 rounded-xl">
-                <PhWallet :size="24" class="text-green-600" weight="fill" />
-              </div>
-              <span class="text-sm text-gray-600">Active Trades</span>
-            </div>
-            <div v-if="summaryLoading" class="animate-spin rounded-full h-8 w-8 border-4 border-green-200 border-t-green-600"></div>
-            <p v-else class="text-3xl font-bold text-gray-900">{{ activeTradesCount }}</p>
-            <p v-if="isActive && sessionSummary" class="text-xs text-gray-500 mt-1">
-              From session
-            </p>
-          </div>
+          <!-- Active Trades -->
+          <ActiveTradeCard :trades="activeTrades" />
 
           <!-- Total PnL -->
           <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
@@ -332,6 +328,21 @@ onMounted(() => {
             </p>
             <p v-if="sessionSummary" class="text-xs text-gray-500 mt-1">
               Success Rate: {{ sessionSummary.success_rate?.toFixed(1) ?? 0 }}%
+            </p>
+          </div>
+
+          <!-- Bot Running Duration -->
+          <div class="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-2xl shadow-lg border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="p-3 bg-gray-700 rounded-xl">
+                <PhRobot :size="24" :class="isActive ? 'text-green-400' : 'text-gray-400'" weight="fill" />
+              </div>
+              <span class="text-sm text-gray-400">Running Duration</span>
+            </div>
+            <div v-if="!isActive" class="text-2xl font-bold text-gray-500">-</div>
+            <p v-else class="text-2xl font-bold text-green-400">{{ formattedBotDuration }}</p>
+            <p v-if="isActive && store.botStatus?.bot_started_at" class="text-xs text-gray-500 mt-1">
+              Since: {{ new Date(store.botStatus.bot_started_at).toLocaleTimeString() }}
             </p>
           </div>
         </div>
@@ -515,22 +526,4 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* Custom scrollbar for modal */
-.overflow-y-auto::-webkit-scrollbar {
-  width: 8px;
-}
-
-.overflow-y-auto::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 4px;
-}
-
-.overflow-y-auto::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 4px;
-}
-
-.overflow-y-auto::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a1;
-}
 </style>

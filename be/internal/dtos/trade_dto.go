@@ -59,10 +59,10 @@ type TradeDayStat struct {
 
 // ProcessTradeResult holds the result of processing a trade
 type ProcessTradeResult struct {
-	TradeID      uint   `json:"trade_id"`
-	Symbol       string `json:"symbol"`
-	Status       string `json:"status"`
-	Message      string `json:"message"`
+	TradeID      uint     `json:"trade_id"`
+	Symbol       string   `json:"symbol"`
+	Status       string   `json:"status"`
+	Message      string   `json:"message"`
 	EntriesSync  int      `json:"entries_sync"`
 	TPUpdated    bool     `json:"tp_updated"`
 	SLUpdated    bool     `json:"sl_updated"`
@@ -79,29 +79,30 @@ type TradeMonitorRequest struct {
 
 // TradeData represents trade data in responses
 type TradeData struct {
-	ID              uint       `json:"id"`
-	Symbol          string     `json:"symbol"`
-	Interval        string     `json:"interval"`
-	Side            string     `json:"side"`
-	Confidence      float64    `json:"confidence"`
-	TotalScore      float64    `json:"total_score"`
-	IsAggressive    bool       `json:"is_aggressive"`
-	TPPrice         float64    `json:"tp_price"`
-	SLPrice         float64    `json:"sl_price"`
-	RiskRewardRatio float64    `json:"risk_reward_ratio"`
-	AvgEntryPrice   float64    `json:"avg_entry_price"`
-	Leverage        int        `json:"leverage"`
-	CapitalUsed     float64    `json:"capital_used"`
-	TotalQty        float64    `json:"total_qty"`
-	Status          string     `json:"status"`
-	Description     string     `json:"description"`
-	TPOrderID       int64      `json:"tp_order_id"`
-	SLOrderID       int64      `json:"sl_order_id"`
-	TPSLStatus      string     `json:"tp_sl_status"`
-	ExitPrice       float64    `json:"exit_price"`
-	PnL             float64    `json:"pnl"`
-	PnLPct          float64    `json:"pnl_pct"`
-	CreatedAt       string     `json:"created_at"`
-	UpdatedAt       string     `json:"updated_at"`
-	ClosedAt        *time.Time `json:"closed_at"`
+	ID              uint        `json:"id"`
+	Symbol          string      `json:"symbol"`
+	Interval        string      `json:"interval"`
+	Side            string      `json:"side"`
+	Confidence      float64     `json:"confidence"`
+	TotalScore      float64     `json:"total_score"`
+	IsAggressive    bool        `json:"is_aggressive"`
+	TPPrice         float64     `json:"tp_price"`
+	SLPrice         float64     `json:"sl_price"`
+	RiskRewardRatio float64     `json:"risk_reward_ratio"`
+	AvgEntryPrice   float64     `json:"avg_entry_price"`
+	Leverage        int         `json:"leverage"`
+	CapitalUsed     float64     `json:"capital_used"`
+	TotalQty        float64     `json:"total_qty"`
+	Status          string      `json:"status"`
+	Description     string      `json:"description"`
+	TPOrderID       int64       `json:"tp_order_id"`
+	SLOrderID       int64       `json:"sl_order_id"`
+	TPSLStatus      string      `json:"tp_sl_status"`
+	ExitPrice       float64     `json:"exit_price"`
+	PnL             float64     `json:"pnl"`
+	PnLPct          float64     `json:"pnl_pct"`
+	CreatedAt       string      `json:"created_at"`
+	UpdatedAt       string      `json:"updated_at"`
+	ClosedAt        *time.Time  `json:"closed_at"`
+	Orders          []OrderInfo `json:"orders,omitempty"`
 }

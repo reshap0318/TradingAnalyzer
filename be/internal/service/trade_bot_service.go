@@ -174,10 +174,21 @@ func (s *Services) TradeBotGetStatus(ctx *gin.Context) (res map[string]interface
 		}
 	}
 
+	// Calculate bot running duration
+	var botRunningDuration string
+	var botRunningSeconds float64
+	if tradeBotTime != nil {
+		duration := time.Since(*tradeBotTime)
+		botRunningDuration = duration.String()
+		botRunningSeconds = duration.Seconds()
+	}
+
 	return map[string]interface{}{
-		"is_active":        tradeBotActive,
-		"strategy":         strategyData,
-		"bot_started_at":   tradeBotTime,
+		"is_active":            tradeBotActive,
+		"strategy":             strategyData,
+		"bot_started_at":       tradeBotTime,
+		"bot_running_duration": botRunningDuration,
+		"bot_running_seconds":  botRunningSeconds,
 	}, nil
 }
 
@@ -605,31 +616,46 @@ func (s *Services) TradeBotGetActiveTrades(ctx *gin.Context) (res []dtos.TradeDa
 
 // convertTradeToDTO converts model.Trade to dtos.TradeData
 func (s *Services) convertTradeToDTO(trade models.Trade) dtos.TradeData {
+	orders := []dtos.OrderInfo{}
+
+	for _, order := range trade.Entries {
+		o := dtos.OrderInfo{
+			EntryNumber:    order.EntryNumber,
+			BinanceOrderID: order.BinanceOrderID,
+			Price:          order.EntryPrice,
+			Quantity:       order.PositionQty,
+			Type:           order.EntryType,
+			Status:         order.Status,
+		}
+		orders = append(orders, o)
+	}
+
 	return dtos.TradeData{
-		ID:            trade.ID,
-		Symbol:        trade.Symbol,
-		Interval:      trade.Interval,
-		Side:          trade.Side,
-		Confidence:    trade.Confidence,
-		TotalScore:    trade.TotalScore,
-		IsAggressive:  trade.IsAggressive,
-		TPPrice:       trade.TPPrice,
-		SLPrice:       trade.SLPrice,
+		ID:              trade.ID,
+		Symbol:          trade.Symbol,
+		Interval:        trade.Interval,
+		Side:            trade.Side,
+		Confidence:      trade.Confidence,
+		TotalScore:      trade.TotalScore,
+		IsAggressive:    trade.IsAggressive,
+		TPPrice:         trade.TPPrice,
+		SLPrice:         trade.SLPrice,
 		RiskRewardRatio: trade.RiskRewardRatio,
-		AvgEntryPrice: trade.AvgEntryPrice,
-		Leverage:      trade.Leverage,
-		CapitalUsed:   trade.CapitalUsed,
-		TotalQty:      trade.TotalQty,
-		Status:        trade.Status,
-		Description:   trade.Description,
-		TPOrderID:     trade.TPOrderID,
-		SLOrderID:     trade.SLOrderID,
-		TPSLStatus:    trade.TPSLStatus,
-		ExitPrice:     trade.ExitPrice,
-		PnL:           trade.PnL,
-		PnLPct:        trade.PnLPct,
-		CreatedAt:     trade.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:     trade.UpdatedAt.Format(time.RFC3339),
-		ClosedAt:      trade.ClosedAt,
+		AvgEntryPrice:   trade.AvgEntryPrice,
+		Leverage:        trade.Leverage,
+		CapitalUsed:     trade.CapitalUsed,
+		TotalQty:        trade.TotalQty,
+		Status:          trade.Status,
+		Description:     trade.Description,
+		TPOrderID:       trade.TPOrderID,
+		SLOrderID:       trade.SLOrderID,
+		TPSLStatus:      trade.TPSLStatus,
+		ExitPrice:       trade.ExitPrice,
+		PnL:             trade.PnL,
+		PnLPct:          trade.PnLPct,
+		CreatedAt:       trade.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:       trade.UpdatedAt.Format(time.RFC3339),
+		ClosedAt:        trade.ClosedAt,
+		Orders:          orders,
 	}
 }

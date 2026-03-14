@@ -7,16 +7,14 @@ const BASE_URL = '/trade/bot'
 
 // Interfaces
 export interface IBotStatus {
-  id: number
   is_active: boolean
-  active_since?: string
-  strategy_id?: number
-  last_scan?: string
-  trades_executed?: number
-  scan_interval?: number
+  strategy?: IStrategy | null
+  bot_started_at?: string
+  bot_running_duration?: string
+  bot_running_seconds?: number
 }
 
-export interface IStrategyData {
+export interface IStrategy {
   id: number
   strategy_name: string
   primary_tf: string
@@ -51,24 +49,78 @@ export interface IMoneyManagement {
   max_position_size?: number
   risk_reward_ratio?: number
   leverage?: number
-  is_agressive?: boolean
+  is_agressive?: number
   order_expiration_hours?: number
+}
+
+// Session data interfaces
+export interface ISessionSummary {
+  total_trades: number
+  executed: number
+  skipped: number
+  success_rate: number
+  total_pnl: number
+  symbols_traded: string[]
+  session_started: string
+}
+
+export interface ITradeOrder {
+  entry_number: number
+  binance_order_id: number
+  price: number
+  quantity: number
+  type: string
+  status: 'PENDING' | 'FILLED' | 'CANCELLED' | 'REJECTED'
+}
+
+export interface ITrade {
+  id: number
+  symbol: string
+  interval: string
+  side: string
+  confidence: number
+  total_score: number
+  is_aggressive: boolean
+  tp_price: number
+  sl_price: number
+  risk_reward_ratio: number
+  avg_entry_price: number
+  leverage: number
+  capital_used: number
+  total_qty: number
+  status: string
+  description: string
+  tp_order_id: number
+  sl_order_id: number
+  tp_sl_status: string
+  exit_price: number
+  pnl: number
+  pnl_pct: number
+  created_at: string
+  updated_at: string
+  closed_at: string | null
+  orders: ITradeOrder[]
 }
 
 export const useTradeBotStore = defineStore('tradebot', () => {
   // State
   const botStatus = ref<IBotStatus | null>(null)
-  const strategy = ref<IStrategyData | null>(null)
-  const strategies = ref<IStrategyData[]>([])
+  const strategy = ref<IStrategy | null>(null)
+  const strategies = ref<IStrategy[]>([])
   const loading = ref(false)
   const toggling = ref(false)
   const strategiesLoaded = ref(false)
+  
+  // Session data state
+  const sessionSummary = ref<ISessionSummary | null>(null)
+  const activeTrades = ref<ITrade[]>([])
+  const summaryLoading = ref(false)
 
   // Actions
   async function fetchBotStatus() {
     loading.value = true
     try {
-      const response = await get<IApiResponse<IBotStatus & { strategy?: IStrategyData | null }>>(`${BASE_URL}/status`)
+      const response = await get<IApiResponse<IBotStatus & { strategy?: IStrategy | null }>>(`${BASE_URL}/status`)
       botStatus.value = response.data.data
       
       // Clear strategy if bot is not active
@@ -80,9 +132,6 @@ export const useTradeBotStore = defineStore('tradebot', () => {
       // Assign strategy from response if exists
       if (response.data.data.strategy) {
         strategy.value = response.data.data.strategy
-      } else if (botStatus.value.strategy_id) {
-        // Fallback: fetch strategy if bot active but strategy not in response
-        await fetchStrategy(botStatus.value.strategy_id)
       }
     } catch (error: any) {
       // If 404 or bot not found, set to null (not active)
@@ -97,21 +146,12 @@ export const useTradeBotStore = defineStore('tradebot', () => {
     }
   }
 
-  async function fetchStrategy(strategyId: number) {
-    try {
-      const response = await get<IApiResponse<IStrategyData>>(`/strategies/${strategyId}`)
-      strategy.value = response.data.data
-    } catch (error: any) {
-      console.warn('Failed to fetch strategy:', error)
-    }
-  }
-
   async function fetchStrategies() {
     if (strategiesLoaded.value) return
     
     loading.value = true
     try {
-      const response = await get<IApiResponse<IStrategyData[]>>('/strategies')
+      const response = await get<IApiResponse<IStrategy[]>>('/strategies')
       strategies.value = response.data.data
       strategiesLoaded.value = true
     } catch (error: any) {
@@ -194,13 +234,41 @@ export const useTradeBotStore = defineStore('tradebot', () => {
     } else {
       success = await activateBot()
     }
-    
+
     // Refresh status after toggle
     if (success) {
       await fetchBotStatus()
     }
-    
+
     return success
+  }
+
+  // Session data actions
+  async function fetchSessionData() {
+    if (!botStatus.value?.is_active) return
+    
+    summaryLoading.value = true
+    try {
+      // Fetch all three endpoints in parallel
+      const [summaryRes, activeRes] = await Promise.all([
+        get<IApiResponse<ISessionSummary>>(`${BASE_URL}/summary`),
+        get<IApiResponse<ITrade[]>>(`${BASE_URL}/active`)
+      ])
+
+      // Set data from responses
+      sessionSummary.value = summaryRes.data.data
+      activeTrades.value = activeRes.data.data
+    } catch (error) {
+      // Ignore errors - if bot not running, endpoints will fail and that's OK
+      console.warn('Failed to fetch session data (bot may not be running):', error)
+    } finally {
+      summaryLoading.value = false
+    }
+  }
+
+  function clearSessionData() {
+    sessionSummary.value = null
+    activeTrades.value = []
   }
 
   return {
@@ -211,6 +279,9 @@ export const useTradeBotStore = defineStore('tradebot', () => {
     loading,
     toggling,
     strategiesLoaded,
+    sessionSummary,
+    activeTrades,
+    summaryLoading,
 
     // Actions
     fetchBotStatus,
@@ -218,6 +289,8 @@ export const useTradeBotStore = defineStore('tradebot', () => {
     deactivateBot,
     toggleBot,
     fetchStrategies,
-    selectStrategy
+    selectStrategy,
+    fetchSessionData,
+    clearSessionData
   }
 })
