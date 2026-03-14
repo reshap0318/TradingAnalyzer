@@ -174,34 +174,9 @@ func (s *Services) TradeBotGetStatus(ctx *gin.Context) (res map[string]interface
 		}
 	}
 
-	// Build executor and monitor status
-	var executorStatus map[string]interface{}
-	if tradeExecutorRunning {
-		executorStatus = map[string]interface{}{
-			"is_running":  true,
-		}
-	} else {
-		executorStatus = map[string]interface{}{
-			"is_running": false,
-		}
-	}
-
-	var monitorStatus map[string]interface{}
-	if tradeMonitorRunning {
-		monitorStatus = map[string]interface{}{
-			"is_running":  true,
-		}
-	} else {
-		monitorStatus = map[string]interface{}{
-			"is_running": false,
-		}
-	}
-
 	return map[string]interface{}{
 		"is_active":        tradeBotActive,
 		"strategy":         strategyData,
-		"trade_executor":   executorStatus,
-		"trade_monitor":    monitorStatus,
 		"bot_started_at":   tradeBotTime,
 	}, nil
 }
