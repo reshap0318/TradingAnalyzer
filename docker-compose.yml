@@ -23,9 +23,7 @@ services:
     image: trading.be/v:0.0.1
     container_name: trading.be
     ports:
-      - "9000:9000"
-    expose:
-      - "9000"
+      - "9001:9000"
     env_file:
       - ./be/.env
     environment:
@@ -86,7 +84,7 @@ services:
       - tc-network
 
 networks:
-  tc-network:
+  tc-network: #nanti tukar ke trading-network, jika tidak bermain saham lagi
     driver: bridge
     name: tc-network
   mysql-network:
