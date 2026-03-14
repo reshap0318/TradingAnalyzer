@@ -19,7 +19,7 @@ func main() {
 	godotenv.Load()
 
 	host := helpers.GetEnv("APP_HOST", "0.0.0.0")
-	port := helpers.GetEnv("APP_PORT", "8000")
+	port := helpers.GetEnv("APP_PORT", "9000")
 
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
@@ -27,7 +27,7 @@ func main() {
 
 	// CORS Configuration
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"},
+		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "http://localhost:9001", "http://127.0.0.1:9001"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},

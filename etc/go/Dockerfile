@@ -29,10 +29,11 @@ COPY be/ ./
 COPY be/.air-linux.toml .air.toml
 
 # Expose application port
-EXPOSE 8000
+EXPOSE 9000
 
 # Set environment variable to use testnet by default
 ENV BINANCE_IS_TESTNET=true
+ENV PORT=9000
 
 # Run air for hot reload
-CMD ["air", "-c", ".air-linux.toml"]
+CMD ["go", "run", "cmd/main/main.go"]

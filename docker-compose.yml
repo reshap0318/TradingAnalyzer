@@ -1,14 +1,31 @@
 name: trading-bot
 services:
-  app:
+  webserver:
+    image: nginx:alpine
+    container_name: trading.webserver
+    restart: unless-stopped
+    tty: true
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "9001:80"
+    volumes:
+      - ./:/var/www/
+      - ./etc/nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - trading-network
+
+  backend:
     build:
       context: .
       dockerfile: etc/go/Dockerfile
-    container_name: trading-bot
+    image: trading.be/v:0.0.1
+    container_name: trading.be
     ports:
-      - "8000:8000"
+      - "9000:9000"
     expose:
-      - "8000"
+      - "9000"
     env_file:
       - ./be/.env
     environment:
@@ -26,7 +43,7 @@ services:
       - "api2.binance.com:13.225.103.45"
       - "api3.binance.com:13.225.103.45"
     networks:
-      - trading-bot-network
+      - trading-network
       - mysql-network
       - redis-network
     healthcheck:
@@ -37,9 +54,9 @@ services:
           "--no-verbose",
           "--tries=1",
           "--spider",
-          "http://localhost:8000/health",
+          "http://localhost:9000/health",
         ]
-      interval: 180s
+      interval: 300s
       timeout: 3s
       retries: 3
       start_period: 15s
@@ -49,10 +66,29 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  frontend:
+    build:
+      context: .
+      dockerfile: ./etc/node/Dockerfile
+    image: trading.fe/v:0.0.1
+    container_name: trading.fe
+    restart: unless-stopped
+    tty: true
+    depends_on:
+      - backend
+    environment:
+      TZ: Asia/Jakarta
+    volumes:
+      - ./fe:/app
+      - /app/node_modules
+    working_dir: /app
+    networks:
+      - trading-network
+
 networks:
-  trading-bot-network:
+  trading-network:
     driver: bridge
-    name: trading-bot-network
+    name: trading-network
   mysql-network:
     driver: bridge
     name: mysql-network
