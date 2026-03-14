@@ -1052,6 +1052,393 @@ Authorization: Bearer <token>
 
 ---
 
+#### **GET /api/trade/bot/status**
+
+Get current trade bot status.
+
+**Request:**
+```bash
+GET http://localhost:8000/api/trade/bot/status
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+    "code": 200,
+    "message": "success",
+    "data": {
+        "is_active": true,
+        "strategy": {
+            "id": 1,
+            "strategy_name": "Day Trading Pro",
+            "primary_tf": "15m",
+            "is_active": true,
+            "created_at": "2025-03-08T10:00:00Z",
+            "updated_at": "2025-03-10T08:00:00Z",
+            "timeframes": [
+                {
+                    "tf": "15m",
+                    "weight": 0.6
+                },
+                {
+                    "tf": "1h",
+                    "weight": 0.4
+                }
+            ],
+            "indicator_weights": [
+                {
+                    "indicator_id": 1,
+                    "weight": 0.3
+                },
+                {
+                    "indicator_id": 2,
+                    "weight": 0.2
+                }
+            ],
+            "money_management": {
+                "min_confidence": 45,
+                "max_daily_trades": 10,
+                "max_daily_loss_percent": 5,
+                "max_position_size": 0.15,
+                "risk_reward_ratio": 1.5,
+                "leverage": 5,
+                "is_agressive": false,
+                "order_expiration_hours": 4
+            }
+        },
+        "trade_executor": {
+            "is_running": true,
+            "started_at": "2025-03-14T10:30:00Z",
+            "duration": "5m30s",
+            "duration_sec": 330.5
+        },
+        "trade_monitor": {
+            "is_running": false
+        }
+    }
+}
+```
+
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `is_active` | boolean | Whether trade bot service is active |
+| `strategy` | object | Active strategy details (null if bot not active) |
+| `strategy.id` | integer | Strategy ID |
+| `strategy.strategy_name` | string | Strategy name |
+| `strategy.primary_tf` | string | Primary timeframe |
+| `strategy.is_active` | boolean | Whether strategy is marked as active |
+| `strategy.timeframes` | array | List of timeframes with weights |
+| `strategy.indicator_weights` | array | List of indicators with weights |
+| `strategy.money_management` | object | Money management configuration |
+| `trade_executor` | object | Trade executor worker status |
+| `trade_executor.is_running` | boolean | Whether executor cycle is currently running |
+| `trade_executor.started_at` | string | RFC3339 timestamp when current cycle started (null if not running) |
+| `trade_executor.duration` | string | Human-readable duration since cycle started (e.g., "5m30s") |
+| `trade_executor.duration_sec` | number | Duration in seconds (float) |
+| `trade_monitor` | object | Trade monitor worker status |
+| `trade_monitor.is_running` | boolean | Whether monitor cycle is currently running |
+| `trade_monitor.started_at` | string | RFC3339 timestamp when current cycle started (null if not running) |
+| `trade_monitor.duration` | string | Human-readable duration since cycle started |
+| `trade_monitor.duration_sec` | number | Duration in seconds (float) |
+
+**Example: Bot Not Active**
+```json
+{
+    "code": 200,
+    "message": "success",
+    "data": {
+        "is_active": false,
+        "strategy": null,
+        "trade_executor": {
+            "is_running": false
+        },
+        "trade_monitor": {
+            "is_running": false
+        }
+    }
+}
+```
+
+**Example: Bot Active, Workers Idle**
+```json
+{
+    "code": 200,
+    "message": "success",
+    "data": {
+        "is_active": true,
+        "strategy": { ... },
+        "trade_executor": {
+            "is_running": false
+        },
+        "trade_monitor": {
+            "is_running": false
+        }
+    }
+}
+```
+
+**Example: Bot Active, Executor Running**
+```json
+{
+    "code": 200,
+    "message": "success",
+    "data": {
+        "is_active": true,
+        "strategy": { ... },
+        "trade_executor": {
+            "is_running": true
+        },
+        "trade_monitor": {
+            "is_running": false
+        },
+        "bot_started_at": "2025-03-14T10:30:00Z"
+    }
+}
+```
+
+---
+
+#### **GET /api/trade/bot/summary**
+
+Get summary statistics for current trading session (since bot was activated).
+
+**Request:**
+```bash
+GET http://localhost:8000/api/trade/bot/summary
+Authorization: Bearer <token>
+```
+
+**Response (Success):**
+```json
+{
+    "code": 200,
+    "message": "Session summary retrieved successfully",
+    "data": {
+        "total_trades": 5,
+        "executed": 4,
+        "skipped": 1,
+        "success_rate": 75.0,
+        "total_pnl": 150.50,
+        "symbols_traded": ["BTCUSDT", "ETHUSDT", "BNBUSDT"],
+        "session_started": "2025-03-14T10:30:00Z"
+    }
+}
+```
+
+**Response (Bot Not Running):**
+```json
+{
+    "code": 400,
+    "message": "trade bot is not running. Please activate the bot first",
+    "error": "trade bot is not running. Please activate the bot first"
+}
+```
+
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `total_trades` | integer | Total trades found in current session |
+| `executed` | integer | Trades with status ACTIVE or COMPLETED |
+| `skipped` | integer | Other trades (CANCELLED, REJECTED, etc.) |
+| `success_rate` | number | Percentage of profitable COMPLETED trades (0-100) |
+| `total_pnl` | number | Sum of PnL from all trades in session |
+| `symbols_traded` | array | List of unique symbols traded |
+| `session_started` | string | RFC3339 timestamp when bot was activated |
+
+**Notes:**
+- Returns **400 error** if bot is not active
+- Filter: `created_at > bot_started_at` (all trades since bot activation)
+- `success_rate` calculated from COMPLETED trades only
+- `total_pnl` includes both profitable and losing trades
+
+---
+
+#### **GET /api/trade/bot/**
+
+Get list of trades executed in current trading session.
+
+**Request:**
+```bash
+GET http://localhost:8000/api/trade/bot/
+Authorization: Bearer <token>
+```
+
+**Response (Success):**
+```json
+{
+    "code": 200,
+    "message": "Executed trades retrieved successfully",
+    "data": [
+        {
+            "id": 1,
+            "symbol": "BTCUSDT",
+            "interval": "15m",
+            "side": "LONG",
+            "confidence": 85.5,
+            "total_score": 0.92,
+            "is_aggressive": false,
+            "tp_price": 52000.00,
+            "sl_price": 48000.00,
+            "risk_reward_ratio": 1.5,
+            "avg_entry_price": 50000.00,
+            "leverage": 5,
+            "capital_used": 1000.00,
+            "total_qty": 0.02,
+            "status": "ACTIVE",
+            "description": "Strong buy signal with high confidence",
+            "tp_order_id": 12345678,
+            "sl_order_id": 87654321,
+            "tp_sl_status": "ACTIVE",
+            "exit_price": 0,
+            "pnl": 0,
+            "pnl_pct": 0,
+            "created_at": "2025-03-14T10:35:00Z",
+            "updated_at": "2025-03-14T10:35:00Z",
+            "closed_at": null
+        },
+        {
+            "id": 2,
+            "symbol": "ETHUSDT",
+            "interval": "15m",
+            "side": "LONG",
+            "confidence": 78.2,
+            "total_score": 0.85,
+            "is_aggressive": false,
+            "tp_price": 3200.00,
+            "sl_price": 3000.00,
+            "risk_reward_ratio": 1.8,
+            "avg_entry_price": 3100.00,
+            "leverage": 5,
+            "capital_used": 800.00,
+            "total_qty": 0.25,
+            "status": "COMPLETED",
+            "description": "Good buy signal",
+            "tp_order_id": 12345679,
+            "sl_order_id": 87654322,
+            "tp_sl_status": "TP_HIT",
+            "exit_price": 3200.00,
+            "pnl": 62.50,
+            "pnl_pct": 7.81,
+            "created_at": "2025-03-14T10:40:00Z",
+            "updated_at": "2025-03-14T11:15:00Z",
+            "closed_at": "2025-03-14T11:15:00Z"
+        }
+    ]
+}
+```
+
+**Response (Bot Not Running):**
+```json
+{
+    "code": 400,
+    "message": "trade bot is not running. Please activate the bot first",
+    "error": "trade bot is not running. Please activate the bot first"
+}
+```
+
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | integer | Trade ID |
+| `symbol` | string | Trading symbol (e.g., "BTCUSDT") |
+| `interval` | string | Timeframe used (e.g., "15m") |
+| `side` | string | Trade direction (LONG/SHORT) |
+| `confidence` | number | Confidence score (0-100) |
+| `total_score` | number | Total signal score (0-1) |
+| `is_aggressive` | boolean | Whether aggressive mode was used |
+| `tp_price` | number | Take-profit price |
+| `sl_price` | number | Stop-loss price |
+| `risk_reward_ratio` | number | Risk-reward ratio |
+| `avg_entry_price` | number | Average entry price |
+| `leverage` | integer | Leverage used |
+| `capital_used` | number | Capital used in USDT |
+| `total_qty` | number | Total quantity purchased |
+| `status` | string | Trade status (ACTIVE/COMPLETED/CANCELLED) |
+| `description` | string | Trade description |
+| `tp_order_id` | integer | Take-profit order ID |
+| `sl_order_id` | integer | Stop-loss order ID |
+| `tp_sl_status` | string | TP/SL status (ACTIVE/TP_HIT/SL_HIT) |
+| `exit_price` | number | Exit price (if closed) |
+| `pnl` | number | Profit/Loss in USDT |
+| `pnl_pct` | number | Profit/Loss percentage |
+| `created_at` | string | RFC3339 timestamp when trade was created |
+| `updated_at` | string | RFC3339 timestamp when trade was last updated |
+| `closed_at` | string | RFC3339 timestamp when trade was closed (null if active) |
+
+**Notes:**
+- Returns **400 error** if bot is not active
+- Returns **empty array** if no trades executed yet
+- Filter: `created_at > bot_started_at` (all trades since bot activation)
+- Trades sorted by `created_at DESC` (newest first)
+
+---
+
+#### **GET /api/trade/bot/active**
+
+Get list of currently active trades (all active trades, not limited to current session).
+
+**Request:**
+```bash
+GET http://localhost:8000/api/trade/bot/active
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+    "code": 200,
+    "message": "Active trades retrieved successfully",
+    "data": [
+        {
+            "id": 1,
+            "symbol": "BTCUSDT",
+            "interval": "15m",
+            "side": "LONG",
+            "status": "ACTIVE",
+            "tp_price": 52000.00,
+            "sl_price": 48000.00,
+            "pnl": 25.50,
+            "pnl_pct": 2.55,
+            "created_at": "2025-03-14T10:35:00Z",
+            "updated_at": "2025-03-14T10:50:00Z",
+            "closed_at": null
+        },
+        {
+            "id": 3,
+            "symbol": "BNBUSDT",
+            "interval": "1h",
+            "side": "LONG",
+            "status": "ACTIVE",
+            "tp_price": 350.00,
+            "sl_price": 330.00,
+            "pnl": -5.20,
+            "pnl_pct": -1.52,
+            "created_at": "2025-03-14T09:00:00Z",
+            "updated_at": "2025-03-14T10:45:00Z",
+            "closed_at": null
+        }
+    ]
+}
+```
+
+**Response Fields:**
+
+Same as **GET /api/trade/bot/** endpoint.
+
+**Notes:**
+- Returns **all active trades** in database (not limited to current session)
+- Filter: `status = 'ACTIVE'`
+- Returns **empty array** if no active trades
+- Trades sorted by `created_at DESC` (newest first)
+- Does **NOT** require bot to be running (can check active trades anytime)
+
+---
+
 #### **POST /api/trade/bot/activate**
 
 Activate automated trading bot.

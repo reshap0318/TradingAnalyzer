@@ -26,6 +26,12 @@ func RegisterTradeRoutes(router *gin.RouterGroup, ctrl *controller.Controller) {
 		{
 			// GET /api/trade/bot/status - Get bot status
 			botGroup.GET("/status", ctrl.TradeBotGetStatus)
+			// GET /api/trade/bot/summary - Get session summary
+			botGroup.GET("/summary", ctrl.TradeBotGetSessionSummary)
+			// GET /api/trade/bot/active - Get active trades
+			botGroup.GET("/active", ctrl.TradeBotGetActiveTrades)
+			// GET /api/trade/bot/ - Get executed trades in current session
+			botGroup.GET("/", ctrl.TradeBotGetExecutedTrades)
 			// POST /api/trade/bot/activate - Activate bot
 			botGroup.POST("/activate", ctrl.TradeBotActivate)
 			// POST /api/trade/bot/deactivate - Deactivate bot

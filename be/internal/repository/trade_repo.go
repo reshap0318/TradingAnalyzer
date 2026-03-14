@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/reshap/trading-bot/internal/models"
 	"gorm.io/gorm"
 )
@@ -119,4 +121,26 @@ func (r *TradeRepository) CountActiveBySymbol(tx *gorm.DB, symbol string) (int64
 	var count int64
 	err := db.Model(&models.Trade{}).Where("symbol = ? AND status = ?", symbol, "ACTIVE").Count(&count).Error
 	return count, err
+}
+
+// FindTradesInSession finds trades created after executor start time (current session)
+func (r *TradeRepository) FindTradesInSession(tx *gorm.DB, executorStartTime time.Time) ([]models.Trade, error) {
+	db := r.getDB(tx)
+	var trades []models.Trade
+	err := db.Preload("Entries").
+		Where("created_at > ?", executorStartTime).
+		Order("id desc").
+		Find(&trades).Error
+	return trades, err
+}
+
+// FindAllActiveTrades finds all trades with status ACTIVE
+func (r *TradeRepository) FindAllActiveTrades(tx *gorm.DB) ([]models.Trade, error) {
+	db := r.getDB(tx)
+	var trades []models.Trade
+	err := db.Preload("Entries").
+		Where("status = ?", "ACTIVE").
+		Order("id desc").
+		Find(&trades).Error
+	return trades, err
 }

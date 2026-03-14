@@ -17,8 +17,9 @@ var (
 	tradeBotCancel       context.CancelFunc    // Cancel function to stop goroutines
 	tradeBotMutex        sync.Mutex            // Mutex for thread safety
 	tradeBotStrategy     *uint                 // Active strategy ID
-	tradeExecutorRunning *time.Time            // Timestamp when trade execution cycle started (nil if not running)
-	tradeMonitorRunning  *time.Time            // Timestamp when trade monitor cycle started (nil if not running)
+	tradeBotTime         *time.Time            // Timestamp when bot was activated
+	tradeExecutorRunning bool                  // Track if trade execution cycle is currently running
+	tradeMonitorRunning  bool                  // Track if trade monitor cycle is currently running
 	tradeExecutorLogger  *helpers.WorkerLogger // Logger for trade executor
 	tradeMonitorLogger   *helpers.WorkerLogger // Logger for trade monitor
 
@@ -92,6 +93,8 @@ func (s *Services) TradeBotActivate(ctx *gin.Context, strategyID *uint) (res map
 	ctxBot, cancel := context.WithCancel(context.Background())
 	tradeBotCancel = cancel
 	tradeBotActive = true
+	now := time.Now()
+	tradeBotTime = &now
 	tradeBotStrategy = &strategy.ID
 
 	// Start background goroutine 1: Trade Executor (dynamic interval based on strategy timeframe)
@@ -123,8 +126,9 @@ func (s *Services) TradeBotDeactivate(ctx *gin.Context) (res map[string]interfac
 		tradeBotCancel()
 	}
 	tradeBotActive = false
-	tradeExecutorRunning = nil // Reset executor flag
-	tradeMonitorRunning = nil  // Reset monitor flag
+	tradeExecutorRunning = false // Reset executor flag
+	tradeMonitorRunning = false  // Reset monitor flag
+	tradeBotTime = nil           // Reset bot time
 
 	// Close logger file handle for trade executor
 	if tradeExecutorLogger != nil {
@@ -172,12 +176,9 @@ func (s *Services) TradeBotGetStatus(ctx *gin.Context) (res map[string]interface
 
 	// Build executor and monitor status
 	var executorStatus map[string]interface{}
-	if tradeExecutorRunning != nil {
+	if tradeExecutorRunning {
 		executorStatus = map[string]interface{}{
 			"is_running":  true,
-			"started_at":  tradeExecutorRunning.Format(time.RFC3339),
-			"duration":    time.Since(*tradeExecutorRunning).String(),
-			"duration_sec": time.Since(*tradeExecutorRunning).Seconds(),
 		}
 	} else {
 		executorStatus = map[string]interface{}{
@@ -186,12 +187,9 @@ func (s *Services) TradeBotGetStatus(ctx *gin.Context) (res map[string]interface
 	}
 
 	var monitorStatus map[string]interface{}
-	if tradeMonitorRunning != nil {
+	if tradeMonitorRunning {
 		monitorStatus = map[string]interface{}{
 			"is_running":  true,
-			"started_at":  tradeMonitorRunning.Format(time.RFC3339),
-			"duration":    time.Since(*tradeMonitorRunning).String(),
-			"duration_sec": time.Since(*tradeMonitorRunning).Seconds(),
 		}
 	} else {
 		monitorStatus = map[string]interface{}{
@@ -204,6 +202,7 @@ func (s *Services) TradeBotGetStatus(ctx *gin.Context) (res map[string]interface
 		"strategy":         strategyData,
 		"trade_executor":   executorStatus,
 		"trade_monitor":    monitorStatus,
+		"bot_started_at":   tradeBotTime,
 	}, nil
 }
 
@@ -218,7 +217,7 @@ func (s *Services) runBackgroundTradeExecutor(ctx context.Context, executionInte
 			// Reset flags as safety net if goroutine crashes
 			tradeBotMutex.Lock()
 			tradeBotActive = false
-			tradeExecutorRunning = nil
+			tradeExecutorRunning = false
 			tradeBotMutex.Unlock()
 		}
 	}()
@@ -253,13 +252,12 @@ func (s *Services) runBackgroundTradeExecutor(ctx context.Context, executionInte
 
 			// Skip if execution is already running
 			tradeBotMutex.Lock()
-			if tradeExecutorRunning != nil {
+			if tradeExecutorRunning {
 				tradeBotMutex.Unlock()
 				logger.Skip("Previous trade execution still running - skipping this interval")
 				continue
 			}
-			now := time.Now()
-			tradeExecutorRunning = &now
+			tradeExecutorRunning = true
 			tradeBotMutex.Unlock()
 
 			// Run trade execution (tradeExecutorRunning will be reset by runTradeExecutionCycle's defer)
@@ -300,13 +298,12 @@ func (s *Services) runBackgroundTradeMonitor(ctx context.Context, monitorInterva
 		case <-ticker.C:
 			// Default interval triggered
 			tradeBotMutex.Lock()
-			if tradeMonitorRunning != nil {
+			if tradeMonitorRunning {
 				tradeBotMutex.Unlock()
 				logger.Skip("Previous trade monitor cycle still active - skipping this interval")
 				continue
 			}
-			now := time.Now()
-			tradeMonitorRunning = &now
+			tradeMonitorRunning = true
 			tradeBotMutex.Unlock()
 
 			s.runTradeMonitorCycle(logger)
@@ -382,7 +379,7 @@ func (s *Services) runTradeExecutionCycle(logger *helpers.WorkerLogger) {
 		duration := time.Since(cycleStart)
 		logger.CycleSummary(len(watchlists), tradesExecuted, tradesSkipped, duration)
 		tradeBotMutex.Lock()
-		tradeExecutorRunning = nil
+		tradeExecutorRunning = false
 		tradeBotMutex.Unlock()
 	}()
 
@@ -447,7 +444,7 @@ func (s *Services) runTradeMonitorCycle(logger *helpers.WorkerLogger) {
 		duration := time.Since(cycleStart)
 
 		tradeBotMutex.Lock()
-		tradeMonitorRunning = nil
+		tradeMonitorRunning = false
 		tradeBotMutex.Unlock()
 
 		logger.Info("Trade monitor cycle completed in %v", duration)
@@ -517,4 +514,147 @@ func extractSymbolsFromWatchlist(watchlists []models.Watchlist) string {
 	}
 	result += ", ..., " + symbols[len(symbols)-2] + ", " + symbols[len(symbols)-1]
 	return result
+}
+
+// TradeBotGetSessionSummary gets summary statistics for current trading session
+func (s *Services) TradeBotGetSessionSummary(ctx *gin.Context) (res map[string]interface{}, err error) {
+	tradeBotMutex.Lock()
+	defer tradeBotMutex.Unlock()
+
+	// Validate bot is active
+	if !tradeBotActive || tradeBotTime == nil {
+		return nil, fmt.Errorf("trade bot is not running. Please activate the bot first")
+	}
+
+	// Get trades from current session (using bot start time)
+	trades, err := s.repo.Trade.FindTradesInSession(nil, *tradeBotTime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get session trades: %w", err)
+	}
+
+	// Calculate statistics
+	totalTrades := len(trades)
+	executed := 0
+	skipped := 0
+	totalPnL := 0.0
+	symbolsMap := make(map[string]bool)
+
+	for _, trade := range trades {
+		// Track symbols
+		symbolsMap[trade.Symbol] = true
+
+		// Count executed vs skipped
+		if trade.Status == "ACTIVE" || trade.Status == "COMPLETED" {
+			executed++
+		} else {
+			skipped++
+		}
+
+		// Calculate PnL for closed trades
+		if trade.PnL != 0 {
+			totalPnL += trade.PnL
+		}
+	}
+
+	// Calculate success rate
+	successRate := 0.0
+	if executed > 0 {
+		// Count profitable trades
+		profitable := 0
+		for _, trade := range trades {
+			if trade.Status == "COMPLETED" && trade.PnL > 0 {
+				profitable++
+			}
+		}
+		successRate = float64(profitable) / float64(executed) * 100
+	}
+
+	// Convert symbols map to slice
+	symbols := make([]string, 0, len(symbolsMap))
+	for symbol := range symbolsMap {
+		symbols = append(symbols, symbol)
+	}
+
+	return map[string]interface{}{
+		"total_trades":    totalTrades,
+		"executed":        executed,
+		"skipped":         skipped,
+		"success_rate":    successRate,
+		"total_pnl":       totalPnL,
+		"symbols_traded":  symbols,
+		"session_started": tradeBotTime.Format(time.RFC3339),
+	}, nil
+}
+
+// TradeBotGetExecutedTrades gets list of trades executed in current session
+func (s *Services) TradeBotGetExecutedTrades(ctx *gin.Context) (res []dtos.TradeData, err error) {
+	tradeBotMutex.Lock()
+	defer tradeBotMutex.Unlock()
+
+	// Validate bot is active
+	if !tradeBotActive || tradeBotTime == nil {
+		return nil, fmt.Errorf("trade bot is not running. Please activate the bot first")
+	}
+
+	// Get trades from current session (using bot start time)
+	trades, err := s.repo.Trade.FindTradesInSession(nil, *tradeBotTime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get executed trades: %w", err)
+	}
+
+	// Convert to DTOs
+	for _, trade := range trades {
+		dto := s.convertTradeToDTO(trade)
+		res = append(res, dto)
+	}
+
+	return res, nil
+}
+
+// TradeBotGetActiveTrades gets list of currently active trades
+func (s *Services) TradeBotGetActiveTrades(ctx *gin.Context) (res []dtos.TradeData, err error) {
+	// Get all active trades
+	trades, err := s.repo.Trade.FindAllActiveTrades(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active trades: %w", err)
+	}
+
+	// Convert to DTOs
+	for _, trade := range trades {
+		dto := s.convertTradeToDTO(trade)
+		res = append(res, dto)
+	}
+
+	return res, nil
+}
+
+// convertTradeToDTO converts model.Trade to dtos.TradeData
+func (s *Services) convertTradeToDTO(trade models.Trade) dtos.TradeData {
+	return dtos.TradeData{
+		ID:            trade.ID,
+		Symbol:        trade.Symbol,
+		Interval:      trade.Interval,
+		Side:          trade.Side,
+		Confidence:    trade.Confidence,
+		TotalScore:    trade.TotalScore,
+		IsAggressive:  trade.IsAggressive,
+		TPPrice:       trade.TPPrice,
+		SLPrice:       trade.SLPrice,
+		RiskRewardRatio: trade.RiskRewardRatio,
+		AvgEntryPrice: trade.AvgEntryPrice,
+		Leverage:      trade.Leverage,
+		CapitalUsed:   trade.CapitalUsed,
+		TotalQty:      trade.TotalQty,
+		Status:        trade.Status,
+		Description:   trade.Description,
+		TPOrderID:     trade.TPOrderID,
+		SLOrderID:     trade.SLOrderID,
+		TPSLStatus:    trade.TPSLStatus,
+		ExitPrice:     trade.ExitPrice,
+		PnL:           trade.PnL,
+		PnLPct:        trade.PnLPct,
+		CreatedAt:     trade.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:     trade.UpdatedAt.Format(time.RFC3339),
+		ClosedAt:      trade.ClosedAt,
+	}
 }
