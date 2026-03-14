@@ -14,7 +14,7 @@ services:
       - ./:/var/www/
       - ./etc/nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf
     networks:
-      - trading-network
+      - tc-network
 
   backend:
     build:
@@ -43,7 +43,7 @@ services:
       - "api2.binance.com:13.225.103.45"
       - "api3.binance.com:13.225.103.45"
     networks:
-      - trading-network
+      - tc-network
       - mysql-network
       - redis-network
     healthcheck:
@@ -83,12 +83,12 @@ services:
       - /app/node_modules
     working_dir: /app
     networks:
-      - trading-network
+      - tc-network
 
 networks:
-  trading-network:
+  tc-network:
     driver: bridge
-    name: trading-network
+    name: tc-network
   mysql-network:
     driver: bridge
     name: mysql-network
