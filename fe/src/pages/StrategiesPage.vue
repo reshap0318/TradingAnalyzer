@@ -10,8 +10,6 @@ import {
   PhPlus,
   PhPencilSimple,
   PhTrash,
-  PhPower,
-  PhStop,
   PhMagnifyingGlass
 } from '@phosphor-icons/vue'
 import StrategyFormModal from '@/components/features/strategy/StrategyFormModal.vue'
@@ -53,14 +51,6 @@ const handleEdit = async (id: number) => {
 
 const handleDelete = async (id: number, name: string) => {
   await store.deleteStrategy(id, name)
-}
-
-const handleActivate = async (id: number, name: string) => {
-  await store.activateStrategy(id, name)
-}
-
-const handleDeactivate = async (id: number, name: string) => {
-  await store.deactivateStrategy(id, name)
 }
 
 const handleFormSubmit = async () => {
@@ -186,22 +176,6 @@ onMounted(() => {
               >
                 <PhPencilSimple :size="16" />
                 Edit
-              </button>
-
-              <button
-                v-if="strategy.is_active"
-                @click="handleDeactivate(strategy.id, strategy.strategy_name)"
-                class="flex items-center justify-center gap-1 px-3 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-all text-sm font-medium"
-              >
-                <PhStop :size="16" weight="bold" />
-              </button>
-
-              <button
-                v-else
-                @click="handleActivate(strategy.id, strategy.strategy_name)"
-                class="flex items-center justify-center gap-1 px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-all text-sm font-medium"
-              >
-                <PhPower :size="16" weight="bold" />
               </button>
 
               <button

@@ -232,50 +232,6 @@ export const useStrategiesStore = defineStore('strategies', () => {
     }
   }
 
-  async function activateStrategy(id: number, name: string): Promise<boolean> {
-    const result = await showConfirm(
-      'Activate Strategy?',
-      `Are you sure you want to activate "${name}"? This will deactivate the current active strategy.`
-    )
-
-    if (!result.isConfirmed) return false
-
-    loading.value = true
-    try {
-      await post<IApiResponse<IStrategy>>(`${BASE_URL}/${id}/activate`)
-      showSuccess('Success', `"${name}" activated successfully`)
-      await fetchStrategies()
-      return true
-    } catch (error: any) {
-      showError('Error', error.response?.data?.message || 'Failed to activate strategy')
-      return false
-    } finally {
-      loading.value = false
-    }
-  }
-
-  async function deactivateStrategy(id: number, name: string): Promise<boolean> {
-    const result = await showConfirm(
-      'Deactivate Strategy?',
-      `Are you sure you want to deactivate "${name}"?`
-    )
-
-    if (!result.isConfirmed) return false
-
-    loading.value = true
-    try {
-      await post<IApiResponse<IStrategy>>(`${BASE_URL}/${id}/deactivate`)
-      showSuccess('Success', `"${name}" deactivated successfully`)
-      await fetchStrategies()
-      return true
-    } catch (error: any) {
-      showError('Error', error.response?.data?.message || 'Failed to deactivate strategy')
-      return false
-    } finally {
-      loading.value = false
-    }
-  }
-
   function resetForm() {
     strategyForm.value = {
       strategy_name: '',
@@ -386,8 +342,6 @@ export const useStrategiesStore = defineStore('strategies', () => {
     createStrategy,
     updateStrategy,
     deleteStrategy,
-    activateStrategy,
-    deactivateStrategy,
     resetForm,
     loadStrategyToForm,
     getTimeframes,
