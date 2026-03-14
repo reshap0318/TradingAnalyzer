@@ -56,6 +56,33 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: true,
       title: 'Indicators'
     }
+  },
+  {
+    path: '/watchlists',
+    name: 'watchlists',
+    component: () => import('@/pages/WatchlistListPage.vue'),
+    meta: {
+      requiresAuth: true,
+      title: 'Watchlists'
+    }
+  },
+  {
+    path: '/bot-control',
+    name: 'bot-control',
+    component: () => import('@/pages/BotControlPage.vue'),
+    meta: {
+      requiresAuth: true,
+      title: 'Bot Control'
+    }
+  },
+  {
+    path: '/strategies',
+    name: 'strategies',
+    component: () => import('@/pages/StrategiesPage.vue'),
+    meta: {
+      requiresAuth: true,
+      title: 'Strategies'
+    }
   }
   // Add more routes here
 ]

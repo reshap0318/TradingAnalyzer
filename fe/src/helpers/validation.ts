@@ -1,13 +1,11 @@
-import type { Validation } from '@vuelidate/core'
-
 /**
  * Get all validation error messages from a field validation
  * @param fieldValidation - Vuelidate field validation object
  * @returns Array of error messages
  */
-export function getValidationErrors(fieldValidation: Validation): string[] {
+export function getValidationErrors(fieldValidation: any): string[] {
   if (!fieldValidation?.$errors) return []
-  return fieldValidation.$errors.map((e) => e.$message.toString()).filter(Boolean)
+  return fieldValidation.$errors.map((e: any) => e.$message.toString()).filter(Boolean)
 }
 
 /**
@@ -15,7 +13,7 @@ export function getValidationErrors(fieldValidation: Validation): string[] {
  * @param fieldValidation - Vuelidate field validation object
  * @returns First error message or empty string
  */
-export function getFirstError(fieldValidation: Validation): string {
+export function getFirstError(fieldValidation: any): string {
   const errors = getValidationErrors(fieldValidation)
   return errors[0] || ''
 }
@@ -25,6 +23,6 @@ export function getFirstError(fieldValidation: Validation): string {
  * @param fieldValidation - Vuelidate field validation object
  * @returns true if has errors
  */
-export function hasValidationErrors(fieldValidation: Validation): boolean {
+export function hasValidationErrors(fieldValidation: any): boolean {
   return fieldValidation?.$error ?? false
 }
