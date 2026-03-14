@@ -22,8 +22,6 @@ services:
       dockerfile: etc/go/Dockerfile
     image: trading.be/v:0.0.1
     container_name: trading.be
-    ports:
-      - "9001:9000"
     env_file:
       - ./be/.env
     environment:
