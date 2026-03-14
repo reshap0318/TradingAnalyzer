@@ -76,16 +76,16 @@ func main() {
 	}
 
 	// Auto-run Trade Bot on startup
-	// go func() {
-	// 	fmt.Println("⏳ Starting auto-run Trade Bot...")
-	// 	ctx := &gin.Context{}
-	// 	_, err := engine.Srvc.TradeBotActivate(ctx, nil)
-	// 	if err != nil {
-	// 		fmt.Printf("⚠️ Failed to auto-start Trade Bot: %v\n", err)
-	// 	} else {
-	// 		fmt.Println("✅ Trade Bot auto-started successfully!")
-	// 	}
-	// }()
+	go func() {
+		fmt.Println("⏳ Starting auto-run Trade Bot...")
+		ctx := &gin.Context{}
+		_, err := engine.Srvc.TradeBotActivate(ctx, nil)
+		if err != nil {
+			fmt.Printf("⚠️ Failed to auto-start Trade Bot: %v\n", err)
+		} else {
+			fmt.Println("✅ Trade Bot auto-started successfully!")
+		}
+	}()
 
 	// Menjalankan HTTP server (BLOCKING)
 	router.Run(fmt.Sprintf("%s:%s", host, port))
