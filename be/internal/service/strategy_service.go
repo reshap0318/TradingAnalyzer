@@ -282,7 +282,7 @@ func (s *Services) mapStrategyToDTO(strategy models.Strategy) dtos.StrategyData 
 		UpdatedAt:        helpers.FormatDateTime(strategy.UpdatedAt),
 		Timeframes:       []dtos.StrategyTimeframeData{},
 		IndicatorWeights: []dtos.StrategyIndicatorData{},
-		MoneyManagement:  parseMMConfigFromStrategy(strategy.MoneyManagement),
+		MoneyManagement:  s.parseMMConfigFromStrategy(strategy.MoneyManagement),
 	}
 
 	// Map timeframes
@@ -330,19 +330,20 @@ func (s *Services) mapStrategyToDTO(strategy models.Strategy) dtos.StrategyData 
 // parseMMConfigFromStrategy parses MoneyManagement configs into MMConfigResponse struct
 // Similar to LoadConfigDB but for strategy-specific money management
 // Default values are 0 or false (zero values), only set if data exists in DB
-func parseMMConfigFromStrategy(moneyMgmt []models.StrategyMoneyMgmt) *dtos.MMConfigResponse {
+func (s *Services) parseMMConfigFromStrategy(moneyMgmt []models.StrategyMoneyMgmt) *dtos.MMConfigResponse {
 	// Initialize with zero values (default)
 	mm := &dtos.MMConfigResponse{
-		MIN_CONFIDENCE:         0,
-		MAX_DAILY_TRADES:       0,
-		MAX_DAILY_LOSS_PERCENT: 0,
-		MAX_DAILY_LOSS_COUNT:   0,
-		RISK_REWARD_RATIO:      0,
-		RISK_REWARD_TARGET:     0,
-		MAX_POSITION_SIZE:      0,
-		LEVERAGE:               0,
-		IS_AGRESSIVE:           false,
-		ORDER_EXPIRATION_HOURS: 0,
+		MIN_CONFIDENCE:         s.cfg.MM.MIN_CONFIDENCE,
+		MAX_DAILY_TRADES:       s.cfg.MM.MAX_DAILY_TRADES,
+		MAX_DAILY_LOSS_PERCENT: s.cfg.MM.MAX_DAILY_LOSS_PERCENT,
+		MAX_DAILY_LOSS_COUNT:   s.cfg.MM.MAX_DAILY_LOSS_COUNT,
+		RISK_REWARD_RATIO:      s.cfg.MM.RISK_REWARD_RATIO,
+		RISK_REWARD_TARGET:     s.cfg.MM.RISK_REWARD_TARGET,
+		RISK_ENTRY_BUFFER:      s.cfg.MM.RISK_ENTRY_BUFFER,
+		MAX_POSITION_SIZE:      s.cfg.MM.MAX_POSITION_SIZE,
+		LEVERAGE:               s.cfg.MM.LEVERAGE,
+		IS_AGRESSIVE:           s.cfg.MM.IS_AGRESSIVE,
+		ORDER_EXPIRATION_HOURS: s.cfg.MM.ORDER_EXPIRATION_HOURS,
 	}
 
 	// Set values from database
@@ -371,6 +372,10 @@ func parseMMConfigFromStrategy(moneyMgmt []models.StrategyMoneyMgmt) *dtos.MMCon
 		case "RISK_REWARD_TARGET":
 			if val, err := helpers.ParseFloat(cfg.Value, 32); err == nil {
 				mm.RISK_REWARD_TARGET = float32(val)
+			}
+		case "RISK_ENTRY_BUFFER":
+			if val, err := helpers.ParseFloat(cfg.Value, 32); err == nil {
+				mm.RISK_ENTRY_BUFFER = float32(val)
 			}
 		case "MAX_POSITION_SIZE":
 			if val, err := helpers.ParseFloat(cfg.Value, 32); err == nil {

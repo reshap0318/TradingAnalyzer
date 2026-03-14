@@ -49,27 +49,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  script-bot:
-    image: alpine:latest
-    container_name: trading-worker
-    profiles:
-      - worker
-    environment:
-      - TZ=Asia/Jakarta
-    volumes:
-      - ./etc/script:/app
-    working_dir: /app
-    networks:
-      - trading-bot-network
-    depends_on:
-      - app
-    entrypoint:
-      [
-        "/bin/sh",
-        "-c",
-        "apk add --no-cache curl bash && chmod +x bot.sh && ./bot.sh",
-      ]
-
 networks:
   trading-bot-network:
     driver: bridge

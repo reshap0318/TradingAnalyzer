@@ -275,7 +275,7 @@ func (s *Services) getConfigMM(strategy *dtos.StrategyData) (mmConfig *config.MM
 		MAX_DAILY_LOSS_COUNT:   strategy.MoneyManagement.MAX_DAILY_LOSS_COUNT,
 		RISK_REWARD_RATIO:      strategy.MoneyManagement.RISK_REWARD_RATIO,
 		RISK_REWARD_TARGET:     strategy.MoneyManagement.RISK_REWARD_TARGET,
-		RISK_ENTRY_BUFFER:      strategy.MoneyManagement.MAX_RISK_ENTRY_BUFFER,
+		RISK_ENTRY_BUFFER:      strategy.MoneyManagement.RISK_ENTRY_BUFFER,
 		MAX_POSITION_SIZE:      strategy.MoneyManagement.MAX_POSITION_SIZE,
 		LEVERAGE:               strategy.MoneyManagement.LEVERAGE,
 		IS_AGRESSIVE:           strategy.MoneyManagement.IS_AGRESSIVE,

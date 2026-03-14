@@ -67,6 +67,7 @@ const actionOptions = [
   <UiModal
     :model-value="modelValue"
     :title="title"
+    size="xl"
     @update:model-value="handleCancel"
   >
     <form @submit.prevent="handleSubmit">
@@ -76,7 +77,7 @@ const actionOptions = [
           label="Category"
           placeholder="e.g., STRONG_BUY"
           :error="store.thresholdReqValid.category.$error"
-          :error-message="getValidationErrors(store.thresholdReqValid.category as any).join(', ')"
+          :error-message="getValidationErrors(store.thresholdReqValid.category).join(', ')"
           autocomplete="off"
         />
 
@@ -92,7 +93,7 @@ const actionOptions = [
               :class="{ 'border-danger': store.thresholdReqValid.min_value.$error }"
             />
             <p v-if="store.thresholdReqValid.min_value.$error" class="mt-1 text-sm text-danger">
-              {{ getValidationErrors(store.thresholdReqValid.min_value as any).join(', ') }}
+              {{ getValidationErrors(store.thresholdReqValid.min_value).join(', ') }}
             </p>
           </div>
 
@@ -107,7 +108,7 @@ const actionOptions = [
               :class="{ 'border-danger': store.thresholdReqValid.max_value.$error }"
             />
             <p v-if="store.thresholdReqValid.max_value.$error" class="mt-1 text-sm text-danger">
-              {{ getValidationErrors(store.thresholdReqValid.max_value as any).join(', ') }}
+              {{ getValidationErrors(store.thresholdReqValid.max_value).join(', ') }}
             </p>
           </div>
         </div>
@@ -163,7 +164,7 @@ const actionOptions = [
             :class="{ 'border-danger': store.thresholdReqValid.order_display.$error }"
           />
           <p v-if="store.thresholdReqValid.order_display.$error" class="mt-1 text-sm text-danger">
-            {{ getValidationErrors(store.thresholdReqValid.order_display as any).join(', ') }}
+            {{ getValidationErrors(store.thresholdReqValid.order_display).join(', ') }}
           </p>
         </div>
       </div>

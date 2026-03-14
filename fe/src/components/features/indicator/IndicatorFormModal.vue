@@ -94,7 +94,7 @@ const loadSampleParams = () => {
             label="Name"
             placeholder="e.g., Moving Average"
             :error="store.indicatorReqValid.name.$error"
-            :error-message="getValidationErrors(store.indicatorReqValid.name as any).join(', ')"
+            :error-message="getValidationErrors(store.indicatorReqValid.name).join(', ')"
             autocomplete="off"
           />
 
@@ -103,7 +103,7 @@ const loadSampleParams = () => {
             label="Indicator Key"
             placeholder="e.g., moving_average"
             :error="store.indicatorReqValid.indicator.$error"
-            :error-message="getValidationErrors(store.indicatorReqValid.indicator as any).join(', ')"
+            :error-message="getValidationErrors(store.indicatorReqValid.indicator).join(', ')"
             autocomplete="off"
           />
         </div>
@@ -130,7 +130,7 @@ const loadSampleParams = () => {
               :class="{ 'border-danger': store.indicatorReqValid.weight.$error }"
             />
             <p v-if="store.indicatorReqValid.weight.$error" class="mt-1 text-sm text-danger">
-              {{ getValidationErrors(store.indicatorReqValid.weight as any).join(', ') }}
+              {{ getValidationErrors(store.indicatorReqValid.weight).join(', ') }}
             </p>
           </div>
 
@@ -146,7 +146,7 @@ const loadSampleParams = () => {
               :class="{ 'border-danger': store.indicatorReqValid.order_view.$error }"
             />
             <p v-if="store.indicatorReqValid.order_view.$error" class="mt-1 text-sm text-danger">
-              {{ getValidationErrors(store.indicatorReqValid.order_view as any).join(', ') }}
+              {{ getValidationErrors(store.indicatorReqValid.order_view).join(', ') }}
             </p>
           </div>
 

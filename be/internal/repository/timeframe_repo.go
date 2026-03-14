@@ -16,6 +16,18 @@ func NewTimeframeRepository(db *gorm.DB) *TimeframeRepository {
 	}
 }
 
+func (r *TimeframeRepository) FindAllOrderByMinutes(tx *gorm.DB) ([]models.Timeframe, error) {
+	db := r.getDB(tx)
+	var intanceModel *models.Timeframe
+	datas := []models.Timeframe{}
+
+	if err := db.Model(&intanceModel).Order("in_minutes asc").Find(&datas).Error; err != nil {
+		return nil, err
+	}
+
+	return datas, nil
+}
+
 // FindByName finds a timeframe by name
 func (r *TimeframeRepository) FindByName(tx *gorm.DB, name string) (*models.Timeframe, error) {
 	db := r.getDB(tx)

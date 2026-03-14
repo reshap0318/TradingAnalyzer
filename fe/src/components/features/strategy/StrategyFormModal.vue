@@ -222,6 +222,23 @@ const handleSubmit = () => {
                 </p>
               </div>
             </div>
+
+            <!-- Is Active Checkbox -->
+            <div class="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <label class="flex items-start gap-3 cursor-pointer">
+                <input
+                  v-model="strategiesStore.strategyForm.is_active"
+                  type="checkbox"
+                  class="w-5 h-5 text-primary rounded border-gray-300 focus:ring-2 focus:ring-primary mt-0.5"
+                />
+                <div>
+                  <span class="text-sm font-medium text-gray-900">Active Strategy</span>
+                  <p class="text-xs text-gray-600 mt-1">
+                    Enable this strategy to be used by the trading bot. Only one strategy can be active at a time.
+                  </p>
+                </div>
+              </label>
+            </div>
           </div>
 
           <!-- 2. Timeframes -->

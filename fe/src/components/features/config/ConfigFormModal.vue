@@ -65,7 +65,7 @@ const categorySuggestions = [
           label="Config Key"
           placeholder="e.g., MIN_CONFIDENCE"
           :error="store.configReqValid.config_key.$error"
-          :error-message="getValidationErrors(store.configReqValid.config_key as any).join(', ')"
+          :error-message="getValidationErrors(store.configReqValid.config_key).join(', ')"
           autocomplete="off"
         />
 
@@ -74,7 +74,7 @@ const categorySuggestions = [
           label="Value"
           placeholder="e.g., 45"
           :error="store.configReqValid.value.$error"
-          :error-message="getValidationErrors(store.configReqValid.value as any).join(', ')"
+          :error-message="getValidationErrors(store.configReqValid.value).join(', ')"
           autocomplete="off"
         />
 
@@ -104,7 +104,7 @@ const categorySuggestions = [
             :class="{ 'border-danger': store.configReqValid.category.$error }"
           />
           <p v-if="store.configReqValid.category.$error" class="mt-1 text-sm text-danger">
-            {{ getValidationErrors(store.configReqValid.category as any).join(', ') }}
+            {{ getValidationErrors(store.configReqValid.category).join(', ') }}
           </p>
         </div>
       </div>

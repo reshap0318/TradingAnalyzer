@@ -56,7 +56,7 @@ const handleCancel = () => {
           label="Name"
           placeholder="e.g., 5m"
           :error="store.timeframeReqValid.name.$error"
-          :error-message="getValidationErrors(store.timeframeReqValid.name as any).join(', ')"
+          :error-message="getValidationErrors(store.timeframeReqValid.name).join(', ')"
           autocomplete="off"
         />
 
@@ -71,7 +71,7 @@ const handleCancel = () => {
             :class="{ 'border-danger': store.timeframeReqValid.in_minutes.$error }"
           />
           <p v-if="store.timeframeReqValid.in_minutes.$error" class="mt-1 text-sm text-danger">
-            {{ getValidationErrors(store.timeframeReqValid.in_minutes as any).join(', ') }}
+            {{ getValidationErrors(store.timeframeReqValid.in_minutes).join(', ') }}
           </p>
         </div>
       </div>

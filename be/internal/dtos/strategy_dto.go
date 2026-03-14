@@ -31,17 +31,17 @@ type StrategyMoneyMgmtRequest struct {
 // MMConfigResponse holds money management configuration (same as config.MMConfig)
 // This is a duplicate to avoid circular dependency
 type MMConfigResponse struct {
-	MIN_CONFIDENCE         int8    `json:"min_confidence,omitempty"`         // minimum confidence level to take a trade
-	MAX_DAILY_TRADES       int8    `json:"max_daily_trades,omitempty"`       // Soft limit trades per hari
-	MAX_DAILY_LOSS_PERCENT float32 `json:"max_daily_loss_percent,omitempty"` // ..% from balance (HARD LIMIT)
-	MAX_DAILY_LOSS_COUNT   int8    `json:"max_daily_loss_count,omitempty"`   //Max consecutive losses (HARD LIMIT)
-	RISK_REWARD_RATIO      float32 `json:"risk_reward_ratio,omitempty"`      // Minimum R:R required
-	RISK_REWARD_TARGET     float32 `json:"risk_reward_target,omitempty"`     // Target R:R untuk excellent setups
-	MAX_POSITION_SIZE      float32 `json:"max_position_size,omitempty"`      // ..% from balance per trade (HARD LIMIT)
-	MAX_RISK_ENTRY_BUFFER  float32 `json:"max_risk_entry_buffer,omitempty"`
-	LEVERAGE               int8    `json:"leverage,omitempty"`               // Leverage to use for futures trading
-	IS_AGRESSIVE           bool    `json:"is_agressive,omitempty"`           // true = hybrid entry, false = conservative
-	ORDER_EXPIRATION_HOURS int8    `json:"order_expiration_hours,omitempty"` // Hours before pending orders expire
+	MIN_CONFIDENCE         int8    `json:"min_confidence"`         // minimum confidence level to take a trade
+	MAX_DAILY_TRADES       int8    `json:"max_daily_trades"`       // Soft limit trades per hari
+	MAX_DAILY_LOSS_PERCENT float32 `json:"max_daily_loss_percent"` // ..% from balance (HARD LIMIT)
+	MAX_DAILY_LOSS_COUNT   int8    `json:"max_daily_loss_count"`   //Max consecutive losses (HARD LIMIT)
+	RISK_REWARD_RATIO      float32 `json:"risk_reward_ratio"`      // Minimum R:R required
+	RISK_REWARD_TARGET     float32 `json:"risk_reward_target"`     // Target R:R untuk excellent setups
+	RISK_ENTRY_BUFFER      float32 `json:"risk_entry_buffer"`
+	MAX_POSITION_SIZE      float32 `json:"max_position_size"`      // ..% from balance per trade (HARD LIMIT)
+	LEVERAGE               int8    `json:"leverage"`               // Leverage to use for futures trading
+	IS_AGRESSIVE           bool    `json:"is_agressive"`           // true = hybrid entry, false = conservative
+	ORDER_EXPIRATION_HOURS int8    `json:"order_expiration_hours"` // Hours before pending orders expire
 }
 
 // StrategyData represents strategy data in responses

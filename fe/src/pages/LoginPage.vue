@@ -50,7 +50,7 @@ const handleKeyPress = (e: KeyboardEvent) => {
               placeholder="Enter your username"
               autocomplete="username"
               :error="v$.username.$error"
-              :error-message="getValidationErrors(v$.username as any).join(',')"
+              :error-message="getValidationErrors(v$.username).join(',')"
             />
           </div>
 
@@ -61,7 +61,7 @@ const handleKeyPress = (e: KeyboardEvent) => {
               label="Password"
               placeholder="Enter your password"
               :error="v$.password.$error"
-              :error-message="getValidationErrors(v$.password as any).join(',')"
+              :error-message="getValidationErrors(v$.password).join(',')"
             />
           </div>
 

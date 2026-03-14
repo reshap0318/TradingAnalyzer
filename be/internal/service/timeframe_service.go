@@ -9,7 +9,7 @@ import (
 )
 
 func (s *Services) TimeframeGetAll(ctx *gin.Context) (res []dtos.TimeframeData, err error) {
-	Timeframes, err := s.repo.Timeframe.FindAll(nil)
+	Timeframes, err := s.repo.Timeframe.FindAllOrderByMinutes(nil)
 	if err != nil {
 		return nil, err
 	}

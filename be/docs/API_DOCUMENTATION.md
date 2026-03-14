@@ -11,8 +11,8 @@
    - [Indicators](#indicators)
    - [Thresholds](#thresholds)
    - [Configs](#configs)
+   - [Trade (Bot & Execution)](#trade-bot--execution)
    - [Watchlists](#watchlists)
-   - [Watchlist Scanner](#watchlist-scanner)
    - [Strategies](#strategies)
 
 ---
@@ -806,6 +806,313 @@ Authorization: Bearer <token>
 
 ---
 
+## 🤖 Trade (Bot & Execution)
+
+Trade bot untuk automated trading dan manual execution.
+
+### **POST /api/trade/execute**
+
+Execute single trade manually (trigger trading bot untuk symbol tertentu).
+
+**Request:**
+```bash
+POST http://localhost:8000/api/trade/execute
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+    "symbol": "BTCUSDT",
+    "strategy_id": 1
+}
+```
+
+**Request Body:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `symbol` | string | Yes | Trading pair symbol (e.g., "BTCUSDT") |
+| `strategy_id` | integer | No | Strategy ID. Jika tidak disediakan, akan menggunakan active strategy |
+
+**Response:**
+
+Response mengikuti format **SignalAnalyze Response** dengan struktur lengkap:
+
+```json
+{
+    "code": 200,
+    "message": "success",
+    "data": {
+        "symbol": "BTCUSDT",
+        "primary_timeframe": "15m",
+        "timestamp": "2025-03-10T08:30:00Z",
+        "signal": {
+            "valid": true,
+            "signal": "BUY",
+            "current_price": 50000.00,
+            "trading_plan": {
+                "mode": "CONSERVATIVE",
+                "entries": [...],
+                "take_profit": 50750.00,
+                "stop_loss": 48511.00,
+                "risk_reward_ratio": 0.51,
+                "buffer_percent": 1.50,
+                "summary": {
+                    "total_entries": 1,
+                    "total_position_value": 400.00,
+                    "max_risk_usdt": 59.16,
+                    "risk_from_capital": 14.79,
+                    "target_profit_usdt": 30.40,
+                    "profit_from_capital": 7.60,
+                    "effective_leverage": 5.00
+                }
+            }
+        },
+        "scoring": {
+            "totalScore": 0.75,
+            "confidence": 75.00,
+            "breakdown": [...]
+        },
+        "execution_info": {
+            "executed": true,
+            "message": "Order placed successfully",
+            "margin_type": "ISOLATED",
+            "leverage": 5,
+            "capital_used": 400.00,
+            "orders": [...],
+            "tp_order_id": 98765432,
+            "sl_order_id": 87654321
+        }
+    }
+}
+```
+
+**📚 Response Documentation:**
+
+Untuk dokumentasi lengkap tentang struktur response (signal, scoring, trading_plan), lihat:
+- **[SIGNAL_ANALYZE_RESPONSE.md](./SIGNAL_ANALYZE_RESPONSE.md)** - Complete response structure
+- **[SIGNAL_BREAKDOWN.md](./SIGNAL_BREAKDOWN.md)** - Signal calculation per indicator
+
+**Key Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `symbol` | string | Trading symbol |
+| `primary_timeframe` | string | Primary timeframe used |
+| `timestamp` | string | Execution timestamp |
+| `signal` | object | **SignalInfo** - Trading signal dengan plan lengkap |
+| `signal.valid` | boolean | Apakah signal valid (confidence >= threshold) |
+| `signal.signal` | string | BUY/SELL/STRONG_BUY/STRONG_SELL/WAIT |
+| `signal.trading_plan` | object | **TradingPlan** lengkap dengan entry, TP, SL |
+| `signal.trading_plan.summary` | object | **Pre-calculated summary** (risk, profit, leverage) |
+| `scoring` | object | **ScoringBreakdown** - Breakdown score per indicator |
+| `execution_info` | object | Execution details (orders, TP/SL IDs) |
+| `execution_info.executed` | boolean | Whether trade was executed |
+| `execution_info.orders` | array | List of orders placed |
+| `execution_info.tp_order_id` | integer | Take-profit order ID |
+| `execution_info.sl_order_id` | integer | Stop-loss order ID |
+
+**💡 Quick Reference:**
+- `signal.trading_plan.summary.risk_from_capital` = Risk sebenarnya (% dari modal)
+- `signal.trading_plan.summary.profit_from_capital` = Profit yang diharapkan (% dari modal)
+- `signal.trading_plan.summary.effective_leverage` = Leverage aktual yang digunakan
+- `scoring.confidence` = Confidence level (0-100)
+
+---
+
+### **Trade Monitor**
+
+Monitor dan trigger trades secara manual (untuk debugging).
+
+#### **POST /api/trade/monitor/all**
+
+Process all active trades (background monitoring).
+
+**Request:**
+```bash
+POST http://localhost:8000/api/trade/monitor/all
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+    "code": 200,
+    "message": "Trade monitoring completed",
+    "data": {
+        "total_processed": 5,
+        "results": [
+            {
+                "trade_id": 1,
+                "symbol": "BTCUSDT",
+                "status": "ACTIVE",
+                "message": "Trade processed successfully",
+                "entries_sync": 1,
+                "tp_updated": true,
+                "sl_updated": true,
+                "updated_count": 3,
+                "logs": [
+                    "Fetching trade details...",
+                    "Syncing entry orders...",
+                    "Updating TP order...",
+                    "Updating SL order..."
+                ]
+            }
+        ]
+    }
+}
+```
+
+**Response Fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `total_processed` | integer | Total trades processed |
+| `results` | array | List of trade processing results |
+| `results[].trade_id` | integer | Trade ID |
+| `results[].symbol` | string | Trading symbol |
+| `results[].status` | string | Trade status (ACTIVE/COMPLETED/CANCELLED) |
+| `results[].message` | string | Processing message |
+| `results[].entries_sync` | integer | Number of entries synced |
+| `results[].tp_updated` | boolean | Whether TP was updated |
+| `results[].sl_updated` | boolean | Whether SL was updated |
+| `results[].updated_count` | integer | Total updates performed |
+| `results[].logs` | array | Detailed execution logs |
+
+---
+
+#### **POST /api/trade/monitor/:id**
+
+Process single trade by ID (manual trigger untuk debugging).
+
+**Request:**
+```bash
+POST http://localhost:8000/api/trade/monitor/1
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+    "trade_id": 1
+}
+```
+
+**Request Body:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `trade_id` | integer | Yes | Trade ID to process |
+
+**Response:**
+```json
+{
+    "code": 200,
+    "message": "Trade processed successfully",
+    "data": {
+        "trade_id": 1,
+        "symbol": "BTCUSDT",
+        "status": "ACTIVE",
+        "message": "Trade processed successfully",
+        "entries_sync": 1,
+        "tp_updated": true,
+        "sl_updated": true,
+        "updated_count": 3,
+        "logs": [...]
+    }
+}
+```
+
+---
+
+### **Trade Bot Control**
+
+Control automated trading bot.
+
+#### **GET /api/trade/bot/status**
+
+Get bot status (active/inactive, config, etc).
+
+**Request:**
+```bash
+GET http://localhost:8000/api/trade/bot/status
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+    "code": 200,
+    "message": "Trade bot status retrieved successfully",
+    "data": {
+        "id": 1,
+        "is_active": true,
+        "active_since": "2025-03-10T08:00:00Z",
+        "strategy_id": 1,
+        "last_scan": "2025-03-10T12:30:00Z",
+        "trades_executed": 15,
+        "scan_interval": 15
+    }
+}
+```
+
+---
+
+#### **POST /api/trade/bot/activate**
+
+Activate automated trading bot.
+
+**Request:**
+```bash
+POST http://localhost:8000/api/trade/bot/activate
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+    "strategy_id": 1
+}
+```
+
+**Request Body:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `strategy_id` | integer | No | Strategy ID to use. Jika tidak disediakan, akan menggunakan active strategy |
+
+**Response:**
+```json
+{
+    "code": 200,
+    "message": "Trade bot activated successfully",
+    "data": {
+        "id": 1,
+        "is_active": true,
+        "active_since": "2025-03-10T08:00:00Z",
+        "strategy_id": 1
+    }
+}
+```
+
+---
+
+#### **POST /api/trade/bot/deactivate**
+
+Deactivate automated trading bot.
+
+**Request:**
+```bash
+POST http://localhost:8000/api/trade/bot/deactivate
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+    "code": 200,
+    "message": "Trade bot deactivated successfully",
+    "data": {
+        "id": 1,
+        "is_active": false,
+        "deactivated_at": "2025-03-10T12:00:00Z"
+    }
+}
+```
+
+---
+
 ## 📋 Watchlists
 
 Manage watchlist symbols.
@@ -959,133 +1266,6 @@ Authorization: Bearer <token>
     "data": { ... }
 }
 ```
-
----
-
-## 🔍 Watchlist Scanner
-
-Background scanner untuk melakukan automated trading pada watchlist symbols.
-
-### **POST /api/watchlists/activate**
-
-Activate background scanner untuk melakukan scanning dan trading otomatis pada semua active watchlist symbols.
-
-**Request:**
-```bash
-POST http://localhost:8000/api/watchlists/activate
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-    "strategy_id": 1
-}
-```
-
-**Request Body:**
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `strategy_id` | integer | No | Strategy ID untuk digunakan. Jika tidak disediakan, akan menggunakan active strategy |
-
-**Response:**
-```json
-{
-    "code": 200,
-    "message": "Scanner activated successfully",
-    "data": {
-        "is_active": true,
-        "message": "Scanner activated successfully",
-        "scan_interval": 15,
-        "strategy_id": 1
-    }
-}
-```
-
-**Response Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| `is_active` | boolean | Scanner status |
-| `message` | string | Status message |
-| `scan_interval` | integer | Interval scanning dalam menit (mengikuti primary timeframe strategy) |
-| `strategy_id` | integer | Strategy ID yang digunakan |
-
-**Error Responses:**
-```json
-// Scanner sudah aktif
-{
-    "code": 400,
-    "message": "Failed to activate scanner",
-    "error": "scanner is already active. Deactivate first before activating again"
-}
-
-// Strategy tidak ditemukan
-{
-    "code": 400,
-    "message": "Failed to activate scanner",
-    "error": "failed to get strategy: data not found"
-}
-```
-
----
-
-### **POST /api/watchlists/deactivate**
-
-Deactivate background scanner.
-
-**Request:**
-```bash
-POST http://localhost:8000/api/watchlists/deactivate
-Authorization: Bearer <token>
-```
-
-**Response:**
-```json
-{
-    "code": 200,
-    "message": "Scanner deactivated successfully",
-    "data": {
-        "is_active": false,
-        "message": "Scanner deactivated successfully"
-    }
-}
-```
-
-**Error Responses:**
-```json
-// Scanner tidak aktif
-{
-    "code": 400,
-    "message": "Failed to deactivate scanner",
-    "error": "scanner is not active"
-}
-```
-
----
-
-### **GET /api/watchlists/status**
-
-Get current scanner status.
-
-**Request:**
-```bash
-GET http://localhost:8000/api/watchlists/status
-Authorization: Bearer <token>
-```
-
-**Response:**
-```json
-{
-    "code": 200,
-    "message": "Scanner status retrieved successfully",
-    "data": {
-        "is_active": true
-    }
-}
-```
-
-**Response Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| `is_active` | boolean | Scanner status (true = running, false = stopped) |
 
 ---
 

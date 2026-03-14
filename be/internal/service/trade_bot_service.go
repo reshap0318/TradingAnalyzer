@@ -103,10 +103,8 @@ func (s *Services) TradeBotActivate(ctx *gin.Context, strategyID *uint) (res map
 
 	return map[string]interface{}{
 		"is_active":          true,
-		"message":            "Trade bot activated successfully",
 		"execution_interval": executionInterval.Minutes(),
 		"monitor_interval":   1,
-		"strategy_id":        strategy.ID,
 		"log_number":         currentLogNumber,
 	}, nil
 }
@@ -146,7 +144,6 @@ func (s *Services) TradeBotDeactivate(ctx *gin.Context) (res map[string]interfac
 
 	return map[string]interface{}{
 		"is_active": false,
-		"message":   "Trade bot deactivated successfully",
 	}, nil
 }
 
@@ -155,8 +152,27 @@ func (s *Services) TradeBotGetStatus(ctx *gin.Context) (res map[string]interface
 	tradeBotMutex.Lock()
 	defer tradeBotMutex.Unlock()
 
+	// If bot is not active, return simple status
+	if !tradeBotActive {
+		return map[string]interface{}{
+			"is_active": false,
+			"strategy":  nil,
+		}, nil
+	}
+
+	// If bot is active, get strategy details
+	var strategyData *dtos.StrategyData
+	if tradeBotStrategy != nil {
+		strategyData, err = s.StrategyGetByID(ctx, *tradeBotStrategy)
+		if err != nil {
+			// Log error but don't fail the entire request
+			fmt.Printf("Warning: Failed to get strategy %d: %v\n", *tradeBotStrategy, err)
+		}
+	}
+
 	return map[string]interface{}{
 		"is_active": tradeBotActive,
+		"strategy":  strategyData,
 	}, nil
 }
 
