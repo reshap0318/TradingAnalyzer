@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useTradeBotStore } from '@/stores/tradebot.store'
 import { DefaultLayout } from '@/layouts'
 import {
@@ -18,8 +18,13 @@ import Swal from 'sweetalert2'
 const store = useTradeBotStore()
 
 const isActive = computed(() => store.botStatus?.is_active ?? false)
-const botStats = computed(() => store.botStatus)
 const strategy = computed(() => store.strategy)
+
+// Session summary state
+const sessionSummary = ref<any>(null)
+const executedTrades = ref<any[]>([])
+const activeTrades = ref<any[]>([])
+const summaryLoading = ref(false)
 
 // Calculate total indicator weight
 const totalIndicatorWeight = computed(() => {
@@ -28,6 +33,60 @@ const totalIndicatorWeight = computed(() => {
   }
   return strategy.value.indicator_weights.reduce((sum, ind) => sum + ind.weight, 0) * 100
 })
+
+// Calculate active trades count
+const activeTradesCount = computed(() => activeTrades.value.length)
+
+// Calculate total PnL from session
+const totalPnL = computed(() => {
+  if (!sessionSummary.value) return 0
+  return sessionSummary.value.total_pnl || 0
+})
+
+// Fetch session data when bot becomes active
+watch(() => isActive.value, async (newActive) => {
+  if (newActive) {
+    await fetchSessionData()
+  } else {
+    // Clear data when bot becomes inactive
+    sessionSummary.value = null
+    executedTrades.value = []
+    activeTrades.value = []
+  }
+}, { immediate: true })
+
+// Fetch session data (summary, executed trades, active trades)
+const fetchSessionData = async () => {
+  if (!isActive.value) return
+  
+  summaryLoading.value = true
+  try {
+    // Fetch all three endpoints in parallel
+    const [summaryRes, executedRes, activeRes] = await Promise.all([
+      fetch('/api/trade/bot/summary').then(r => r.ok ? r.json() : null),
+      fetch('/api/trade/bot/').then(r => r.ok ? r.json() : null),
+      fetch('/api/trade/bot/active').then(r => r.ok ? r.json() : null)
+    ])
+
+    // Set data if responses are successful (ignore errors)
+    if (summaryRes?.data) {
+      sessionSummary.value = summaryRes.data
+    }
+    
+    if (executedRes?.data) {
+      executedTrades.value = executedRes.data
+    }
+    
+    if (activeRes?.data) {
+      activeTrades.value = activeRes.data
+    }
+  } catch (error) {
+    // Ignore errors - if bot not running, endpoints will fail and that's OK
+    console.warn('Failed to fetch session data (bot may not be running):', error)
+  } finally {
+    summaryLoading.value = false
+  }
+}
 
 // Strategy selection
 const showStrategyModal = ref(false)
@@ -43,15 +102,19 @@ const handleToggle = async () => {
       confirmButtonText: 'Continue',
       cancelButtonText: 'Cancel'
     })
-    
+
     if (!result.isConfirmed) return
   }
-  
+
   await store.toggleBot()
 }
 
-const handleRefresh = () => {
-  store.fetchBotStatus()
+const handleRefresh = async () => {
+  await store.fetchBotStatus()
+  // Also refresh session data if bot is active
+  if (isActive.value) {
+    await fetchSessionData()
+  }
 }
 
 const openStrategySelector = () => {
@@ -233,7 +296,11 @@ onMounted(() => {
               </div>
               <span class="text-sm text-gray-600">Trades Executed</span>
             </div>
-            <p class="text-3xl font-bold text-gray-900">{{ botStats?.trades_executed ?? 0 }}</p>
+            <div v-if="summaryLoading" class="animate-spin rounded-full h-8 w-8 border-4 border-blue-200 border-t-blue-600"></div>
+            <p v-else class="text-3xl font-bold text-gray-900">{{ sessionSummary?.executed ?? 0 }}</p>
+            <p v-if="sessionSummary" class="text-xs text-gray-500 mt-1">
+              Total: {{ sessionSummary.total_trades }} • Skipped: {{ sessionSummary.skipped }}
+            </p>
           </div>
 
           <!-- Active Trades Count -->
@@ -244,19 +311,27 @@ onMounted(() => {
               </div>
               <span class="text-sm text-gray-600">Active Trades</span>
             </div>
-            <p class="text-3xl font-bold text-gray-900">N/A</p>
+            <div v-if="summaryLoading" class="animate-spin rounded-full h-8 w-8 border-4 border-green-200 border-t-green-600"></div>
+            <p v-else class="text-3xl font-bold text-gray-900">{{ activeTradesCount }}</p>
+            <p v-if="isActive && sessionSummary" class="text-xs text-gray-500 mt-1">
+              From session
+            </p>
           </div>
 
-          <!-- Bot Status -->
+          <!-- Total PnL -->
           <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
             <div class="flex items-center gap-3 mb-4">
-              <div class="p-3" :class="isActive ? 'bg-green-50' : 'bg-gray-50'">
-                <PhRobot :size="24" class="text-gray-600" :class="isActive ? 'text-green-600' : ''" weight="fill" />
+              <div class="p-3" :class="totalPnL >= 0 ? 'bg-green-50' : 'bg-red-50'">
+                <PhChartLineUp :size="24" class="text-gray-600" :class="totalPnL >= 0 ? 'text-green-600' : 'text-red-600'" weight="fill" />
               </div>
-              <span class="text-sm text-gray-600">Bot Status</span>
+              <span class="text-sm text-gray-600">Total PnL</span>
             </div>
-            <p class="text-2xl font-bold" :class="isActive ? 'text-green-600' : 'text-gray-600'">
-              {{ isActive ? 'Running' : 'Stopped' }}
+            <div v-if="summaryLoading" class="animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-gray-600"></div>
+            <p v-else class="text-2xl font-bold" :class="totalPnL >= 0 ? 'text-green-600' : 'text-red-600'">
+              {{ totalPnL >= 0 ? '+' : '' }}{{ totalPnL.toFixed(2) }} USDT
+            </p>
+            <p v-if="sessionSummary" class="text-xs text-gray-500 mt-1">
+              Success Rate: {{ sessionSummary.success_rate?.toFixed(1) ?? 0 }}%
             </p>
           </div>
         </div>
