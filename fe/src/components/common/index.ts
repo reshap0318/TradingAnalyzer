@@ -1,3 +1,6 @@
 export { default as UiInput } from './UiInput.vue'
 export { default as UiButton } from './UiButton.vue'
 export { default as UiPassword } from './UiPassword.vue'
+export { default as UiModal } from './UiModal.vue'
+export { default as AppSidebar } from './AppSidebar.vue'
+export { default as AppHeader } from './AppHeader.vue'

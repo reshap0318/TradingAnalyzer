@@ -5,8 +5,7 @@ export function getToken(): string {
 }
 
 export function setToken(token: string): void {
-  const payload = JSON.stringify(token)
-  window.localStorage.setItem(KEY_TOKEN, payload)
+  window.localStorage.setItem(KEY_TOKEN, token)
 }
 
 export function destroySession(): void {

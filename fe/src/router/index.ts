@@ -4,9 +4,15 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'home',
-    component: () => import('@/pages/HomePage.vue'),
+    redirect: '/dashboard'
+  },
+  {
+    path: '/dashboard',
+    name: 'dashboard',
+    component: () => import('@/pages/DashboardPage.vue'),
     meta: {
-      requiresAuth: true
+      requiresAuth: true,
+      title: 'Dashboard'
     }
   },
   {
@@ -14,6 +20,42 @@ const routes: RouteRecordRaw[] = [
     name: 'login',
     component: () => import('@/pages/LoginPage.vue'),
     meta: { guest: true } // Only for non-authenticated users
+  },
+  {
+    path: '/timeframes',
+    name: 'timeframes',
+    component: () => import('@/pages/TimeframeListPage.vue'),
+    meta: {
+      requiresAuth: true,
+      title: 'Timeframes'
+    }
+  },
+  {
+    path: '/thresholds',
+    name: 'thresholds',
+    component: () => import('@/pages/ThresholdListPage.vue'),
+    meta: {
+      requiresAuth: true,
+      title: 'Thresholds'
+    }
+  },
+  {
+    path: '/configs',
+    name: 'configs',
+    component: () => import('@/pages/ConfigListPage.vue'),
+    meta: {
+      requiresAuth: true,
+      title: 'Configs'
+    }
+  },
+  {
+    path: '/indicators',
+    name: 'indicators',
+    component: () => import('@/pages/IndicatorListPage.vue'),
+    meta: {
+      requiresAuth: true,
+      title: 'Indicators'
+    }
   }
   // Add more routes here
 ]

@@ -191,7 +191,7 @@ func seedThreshold(db *gorm.DB) {
 			MinValue:     -70,
 			MaxValue:     -45,
 			Action:       "SELL",
-			Color:        "light-red",
+			Color:        "red",
 			OrderDisplay: 4,
 		},
 		{
@@ -199,7 +199,7 @@ func seedThreshold(db *gorm.DB) {
 			MinValue:     -100,
 			MaxValue:     -70,
 			Action:       "SELL",
-			Color:        "red",
+			Color:        "dark-red",
 			OrderDisplay: 5,
 		},
 	}

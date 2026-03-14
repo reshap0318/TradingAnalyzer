@@ -12,6 +12,9 @@
 8. [Code Style](#code-style)
 9. [Best Practices](#best-practices)
 10. [UI Components](#ui-components)
+    - [Reusable UI Components](#1-reusable-ui-components)
+    - [Component Usage Pattern](#2-component-usage-pattern)
+    - [Icons - Phosphor Icons Vue ⭐](#3-icons---phosphor-icons-vue-)
 11. [Form & Validation](#form--validation)
 
 ---
@@ -74,6 +77,7 @@ fe/
 | **Axios** | HTTP Client | 1.x |
 | **SweetAlert2** | Alerts/Modals | 11.x |
 | **TailwindCSS** | Styling | 4.x |
+| **Phosphor Icons** | Icon Library | 3.x (50,000+ icons) |
 | **ESLint** | Linting | 10.x |
 | **Prettier** | Formatting | 3.x |
 | **Yarn** | Package Manager | 4.x |
@@ -89,7 +93,7 @@ fe/
 | **Interface** | `I` + PascalCase | `IWatchlist`, `IApiResponse` |
 | **Type** | `T` + PascalCase | `TSignalAction`, `TTimestamp` |
 | **Generic Param** | `T` + descriptive | `TData`, `TEntity`, `TSource` |
-| **Class** | PascalCase | `WatchlistService` |
+| **Class** | PascalCase | `WatchlistClass` |
 | **Enum** | PascalCase | `SignalAction` |
 | **Function** | camelCase | `getWatchlists`, `createWatchlist` |
 | **Variable** | camelCase | `watchlistData`, `isLoading` |
@@ -574,6 +578,212 @@ Project menggunakan **minimal props pattern** untuk UI components agar fleksibel
 import { UiInput, UiButton, UiPassword } from '@/components/common'
 ```
 
+### **3. Icons - Phosphor Icons Vue** ⭐
+
+**Library:** `@phosphor-icons/vue`
+
+**Installation:**
+```bash
+yarn add @phosphor-icons/vue
+```
+
+**Description:** Phosphor Icons adalah library icon dengan **50,000+ icons** yang konsisten dan mudah digunakan.
+
+#### **Import Icons**
+
+```typescript
+// Import individual icons
+import { PhPlus, PhTrash, PhPencilSimple } from '@phosphor-icons/vue'
+
+// Import semua (tidak disarankan, meningkatkan bundle size)
+// import * as Icons from '@phosphor-icons/vue'
+```
+
+#### **Usage in Template**
+
+```vue
+<script setup lang="ts">
+import { PhPlus, PhTrash, PhPencilSimple, PhCheckCircle, PhXCircle } from '@phosphor-icons/vue'
+</script>
+
+<template>
+  <!-- Basic usage -->
+  <PhPlus />
+  
+  <!-- With size prop -->
+  <PhPlus :size="16" />
+  <PhPlus :size="24" />
+  <PhPlus :size="32" />
+  
+  <!-- With weight prop -->
+  <PhPlus weight="regular" />
+  <PhPlus weight="bold" />
+  <PhPlus weight="fill" />
+  <PhPlus weight="duotone" />
+  
+  <!-- With class for styling -->
+  <PhPlus :size="20" class="text-blue-500" />
+  <PhPlus :size="20" class="hover:text-blue-600 transition-colors" />
+  
+  <!-- In buttons -->
+  <button class="flex items-center gap-2">
+    <PhPencilSimple :size="16" weight="bold" />
+    Edit
+  </button>
+  
+  <!-- Status icons -->
+  <PhCheckCircle :size="20" class="text-green-500" weight="fill" />
+  <PhXCircle :size="20" class="text-red-500" weight="fill" />
+</template>
+```
+
+#### **Icon Props**
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `size` | `number \| string` | `24` | Icon size (pixels) |
+| `weight` | `'thin' \| 'light' \| 'regular' \| 'bold' \| 'fill' \| 'duotone'` | `'regular'` | Icon weight/style |
+| `color` | `string` | `'currentColor'` | Icon color (use Tailwind classes instead) |
+
+#### **Common Icons by Category**
+
+**Actions:**
+```typescript
+PhPlus          // Add/Create
+PhTrash         // Delete
+PhPencilSimple  // Edit
+PhX             // Close/Cancel
+PhCheck         // Confirm/Success
+PhDotsThree     // More options
+PhDownload      // Download
+PhUpload        // Upload
+```
+
+**Navigation:**
+```typescript
+PhCaretLeft     // Back
+PhCaretRight    // Forward
+PhCaretUp       // Up
+PhCaretDown     // Down
+PhHouse         // Home
+PhGear          // Settings
+PhUser          // Profile
+```
+
+**Status:**
+```typescript
+PhCheckCircle   // Success
+PhXCircle       // Error
+PhWarning       // Warning
+PhInfo          // Info
+PhBell          // Notification
+```
+
+**Arrows:**
+```typescript
+PhArrowRight
+PhArrowLeft
+PhArrowUp
+PhArrowDown
+PhArrowClockwise     // Refresh/Reload
+PhArrowCounterClockwise
+```
+
+**Files & Data:**
+```typescript
+PhFile         // File
+PhFolder       // Folder
+PhDatabase     // Database
+PhChartBar     // Chart/Analytics
+PhTable        // Table
+PhList         // List
+```
+
+**Communication:**
+```typescript
+PhEnvelope     // Email
+PhChat         // Chat
+PhPhone        // Phone
+PhShare        // Share
+```
+
+**Media:**
+```typescript
+PhPlay
+PhPause
+PhStop
+PhRecord
+PhCamera
+PhImage
+PhVideo
+```
+
+#### **Icon Search**
+
+Browse semua icon di: **https://phosphoricons.com/**
+
+**Tips:**
+- Gunakan keyword dalam Bahasa Inggris
+- Filter by weight (regular, bold, fill, dll)
+- Copy component name langsung dari website
+
+#### **Best Practices**
+
+```vue
+<!-- ✅ GOOD: Consistent size dalam satu context -->
+<div class="flex items-center gap-2">
+  <PhPencilSimple :size="16" weight="bold" />
+  <PhTrash :size="16" weight="bold" />
+  <PhCheck :size="16" weight="bold" />
+</div>
+
+<!-- ✅ GOOD: Use Tailwind classes for color -->
+<PhCheckCircle :size="20" class="text-green-500" />
+<PhXCircle :size="20" class="text-red-500" />
+
+<!-- ✅ GOOD: Add weight for emphasis -->
+<PhPlus :size="18" weight="bold" />
+
+<!-- ❌ BAD: Inconsistent sizes -->
+<div>
+  <PhPlus :size="16" />
+  <PhTrash :size="24" />
+  <PhPencilSimple :size="20" />
+</div>
+
+<!-- ❌ BAD: Using color prop instead of Tailwind -->
+<PhCheckCircle color="#22c55e" />
+<!-- Use Tailwind class instead -->
+<PhCheckCircle class="text-green-500" />
+```
+
+#### **Accessibility**
+
+```vue
+<!-- Add aria-label untuk icon-only buttons -->
+<button aria-label="Delete item">
+  <PhTrash :size="20" />
+</button>
+
+<!-- Add title for tooltips -->
+<PhInfo :size="20" title="More information" />
+```
+
+#### **Performance Tips**
+
+- ✅ **Import individual icons** - Hanya import yang digunakan
+- ✅ **Avoid wildcard imports** - `import * as Icons` meningkatkan bundle size
+- ✅ **Reuse icon components** - Define commonly used icons di setup
+- ❌ **Don't import all icons** - Tidak perlu import semua 50,000 icons
+
+```typescript
+// ✅ GOOD: Individual imports
+import { PhPlus, PhTrash, PhPencilSimple } from '@phosphor-icons/vue'
+
+// ❌ BAD: Wildcard import (increases bundle size)
+import * as Icons from '@phosphor-icons/vue'
+```
+
 ---
 
 ## 📝 Form & Validation
@@ -816,7 +1026,116 @@ import AppHeader from '@/components/AppHeader.vue'
 - **Print Width**: `100`
 - **Trailing Comma**: `none`
 
-### **3. Error Handling**
+### **3. Styling Guidelines - TailwindCSS First** ⭐
+
+**Priority Order:**
+1. ✅ **TailwindCSS utility classes** (PRIMARY choice)
+2. ✅ **@apply directive** (for reusable patterns, use sparingly)
+3. ⚠️ **Custom CSS** (ONLY when Tailwind doesn't support)
+
+#### **✅ DO: Use Tailwind Classes**
+
+```vue
+<!-- ✅ GOOD: Full Tailwind -->
+<template>
+  <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-5 
+              transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+    <h3 class="text-lg font-semibold text-gray-900">Title</h3>
+    <button class="px-4 py-2 bg-blue-500 text-white rounded-lg 
+                   hover:bg-blue-600 transition-colors">
+      Click Me
+    </button>
+  </div>
+</template>
+
+<!-- No <style> section needed! -->
+```
+
+#### **✅ DO: Use @apply for Reusable Patterns**
+
+```vue
+<!-- ✅ ACCEPTABLE: @apply for DRY -->
+<template>
+  <button class="btn-primary">Click Me</button>
+</template>
+
+<style scoped>
+.btn-primary {
+  @apply px-4 py-2 bg-blue-500 text-white rounded-lg 
+         hover:bg-blue-600 transition-colors;
+}
+</style>
+```
+
+#### **⚠️ ONLY WHEN NECESSARY: Custom CSS**
+
+```vue
+<!-- ⚠️ ONLY when Tailwind can't do it -->
+<template>
+  <div class="custom-animation">Content</div>
+</template>
+
+<style scoped>
+.custom-animation {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+</style>
+```
+
+#### **❌ DON'T: Mix Tailwind with Unnecessary Custom CSS**
+
+```vue
+<!-- ❌ BAD: Unnecessary custom CSS -->
+<template>
+  <div class="card">...</div>
+</template>
+
+<style scoped>
+.card {
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  /* All of these can be done with Tailwind! */
+}
+</style>
+```
+
+#### **When to Use Custom CSS:**
+
+Use custom CSS **ONLY** for:
+- ✅ Complex animations (@keyframes)
+- ✅ CSS grid templates (complex layouts)
+- ✅ Custom scrollbars (browser-specific)
+- ✅ Print styles
+- ✅ Advanced pseudo-elements with dynamic content
+- ✅ CSS variables for theming (if not in Tailwind config)
+- ✅ Vendor-specific prefixes (if Tailwind doesn't handle)
+
+#### **Benefits of Tailwind-First Approach:**
+
+| Aspect | Tailwind | Custom CSS |
+|--------|----------|------------|
+| **Bundle Size** | Auto-purged | Always included |
+| **Consistency** | Design system | Manual |
+| **Development Speed** | Fast | Slower |
+| **Maintenance** | Easy | Harder |
+| **Responsive** | Built-in | Manual |
+| **Dark Mode** | Built-in | Manual |
+| **Hover States** | Easy | Verbose |
+
+### **4. Error Handling**
 
 ```typescript
 // ✅ GOOD: Specific error handling dengan SweetAlert
@@ -1090,10 +1409,31 @@ const routes: RouteRecordRaw[] = [
 - [ ] Form state disimpan di store (bukan component)
 - [ ] Validation rules di store dengan Vuelidate
 
+### **Styling - TailwindCSS First** ⭐
+- [ ] **TailwindCSS utility classes** sebagai pilihan utama
+- [ ] **No custom CSS** jika bisa dilakukan dengan Tailwind
+- [ ] **@apply directive** untuk reusable patterns (jika diperlukan)
+- [ ] **Custom CSS** HANYA untuk:
+  - Complex animations (@keyframes)
+  - Custom scrollbars
+  - Print styles
+  - Advanced pseudo-elements
+- [ ] Consistent spacing menggunakan Tailwind scale
+- [ ] Responsive design dengan Tailwind breakpoints
+- [ ] Hover/focus states dengan Tailwind variants
+
 ### **UI Components**
 - [ ] Gunakan reusable components (UiInput, UiButton, UiPassword)
 - [ ] Minimal props pattern
 - [ ] Barrel export untuk imports
+
+### **Icons - Phosphor Icons**
+- [ ] Import individual icons (bukan wildcard)
+- [ ] Consistent icon sizes dalam satu context
+- [ ] Gunakan Tailwind classes untuk color (bukan prop `color`)
+- [ ] Gunakan `weight` prop untuk emphasis (regular, bold, fill)
+- [ ] Add aria-label untuk icon-only buttons
+- [ ] Icon library: `@phosphor-icons/vue`
 
 ### **Error Handling**
 - [ ] Error handling dengan try-catch
