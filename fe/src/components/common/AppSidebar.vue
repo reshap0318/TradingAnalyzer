@@ -11,7 +11,6 @@ import {
   PhSlidersHorizontal,
   PhList,
   PhChalkboardTeacher,
-  PhTarget,
   PhCaretDown,
   PhRobot
 } from '@phosphor-icons/vue'
@@ -41,9 +40,8 @@ const menuItems = [
     icon: PhTrendUp,
     children: [
       { name: 'Watchlists', icon: PhList, route: '/watchlists' },
-      { name: 'Bot Control', icon: PhRobot, route: '/bot-control' },
       { name: 'Strategies', icon: PhChalkboardTeacher, route: '/strategies' },
-      { name: 'Scanner', icon: PhTarget, route: '/scanner' }
+      { name: 'Bot Control', icon: PhRobot, route: '/bot-control' }
     ]
   }
 ]
