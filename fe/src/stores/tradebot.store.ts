@@ -124,12 +124,12 @@ export const useTradeBotStore = defineStore('tradebot', () => {
   async function selectStrategy(strategyId: number | null): Promise<boolean> {
     const result = await showConfirm(
       strategyId ? 'Change Strategy?' : 'Remove Strategy?',
-      strategyId 
+      strategyId
         ? 'Are you sure you want to use this strategy for the trading bot?'
         : 'Are you sure you want to run the bot without a specific strategy?'
     )
 
-    if (!result) return false
+    if (!result.isConfirmed) return false
 
     loading.value = true
     try {
@@ -137,7 +137,7 @@ export const useTradeBotStore = defineStore('tradebot', () => {
       if (strategyId !== null) {
         payload.strategy_id = strategyId
       }
-      
+
       await post(`${BASE_URL}/activate`, payload)
       showSuccess('Success', strategyId ? 'Strategy updated successfully' : 'Bot will use default strategy')
       await fetchBotStatus()
