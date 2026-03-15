@@ -3,6 +3,14 @@ import { ref, computed } from 'vue'
 import { UiModal } from '@/components/common'
 import type { ITrade } from '@/stores/tradebot.store'
 import {
+  getSideBgColor,
+  getStatusColor,
+  getTpSlStatusBadge,
+  getTpSlStatusColor,
+  getPnLColor
+} from '@/helpers/trade'
+import { formatPrice, formatPnL } from '@/helpers/formatters'
+import {
   PhTrendUp,
   PhTarget,
   PhStopCircle,
@@ -32,74 +40,6 @@ const winRate = computed(() => {
   const winningTrades = props.trades.filter(t => t.pnl > 0).length
   return (winningTrades / props.trades.length) * 100
 })
-
-// Get side bg color
-const getSideBgColor = (side: string): string => {
-  return side.toUpperCase() === 'BUY' || side.toUpperCase() === 'LONG' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-}
-
-// Get status color
-const getStatusColor = (status: string): string => {
-  switch (status.toUpperCase()) {
-    case 'COMPLETED':
-      return 'text-green-600 bg-green-50'
-    case 'ACTIVE':
-      return 'text-blue-600 bg-blue-50'
-    case 'CANCELLED':
-      return 'text-gray-600 bg-gray-50'
-    default:
-      return 'text-gray-600 bg-gray-50'
-  }
-}
-
-// Get TP/SL status badge
-const getTpSlStatusBadge = (status: string): string => {
-  switch (status?.toUpperCase()) {
-    case 'TP_HIT':
-      return 'Take Profit Hit'
-    case 'SL_HIT':
-      return 'Stop Loss Hit'
-    case 'ACTIVE':
-      return 'Active'
-    default:
-      return status || '-'
-  }
-}
-
-// Get TpSl status color
-const getTpSlStatusColor = (status: string): string => {
-  switch (status?.toUpperCase()) {
-    case 'TP_HIT':
-      return 'text-green-600'
-    case 'SL_HIT':
-      return 'text-red-600'
-    case 'ACTIVE':
-      return 'text-blue-600'
-    default:
-      return 'text-gray-600'
-  }
-}
-
-// Format price with proper decimals
-const formatPrice = (price: number): string => {
-  if (price === 0) return '-'
-  if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  if (price >= 1) return price.toFixed(4)
-  return price.toFixed(6)
-}
-
-// Format PnL
-const formatPnL = (pnl: number): string => {
-  const sign = pnl >= 0 ? '+' : ''
-  return `${sign}${pnl.toFixed(2)} USDT (${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%)`
-}
-
-// Get PnL color
-const getPnLColor = (pnl: number): string => {
-  if (pnl > 0) return 'text-green-600'
-  if (pnl < 0) return 'text-red-600'
-  return 'text-gray-600'
-}
 
 const handleClose = () => {
   showModal.value = false

@@ -22,6 +22,9 @@ func main() {
 	port := helpers.GetEnv("APP_PORT", "9000")
 
 	router := gin.New()
+	router.RedirectTrailingSlash = false
+	router.RedirectFixedPath = false
+
 	router.Use(gin.Logger(), gin.Recovery())
 	router.SetTrustedProxies(nil)
 
@@ -36,7 +39,7 @@ func main() {
 			"http://192.168.31.19:5173",
 		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowHeaders:     []string{"*"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * 3600, // 12 hours
@@ -76,16 +79,18 @@ func main() {
 	}
 
 	// Auto-run Trade Bot on startup
-	go func() {
-		fmt.Println("⏳ Starting auto-run Trade Bot...")
-		ctx := &gin.Context{}
-		_, err := engine.Srvc.TradeBotActivate(ctx, nil)
-		if err != nil {
-			fmt.Printf("⚠️ Failed to auto-start Trade Bot: %v\n", err)
-		} else {
-			fmt.Println("✅ Trade Bot auto-started successfully!")
-		}
-	}()
+	if cfg.APP.BOT_AUTO_RUN {
+		go func() {
+			fmt.Println("⏳ Starting auto-run Trade Bot...")
+			ctx := &gin.Context{}
+			_, err := engine.Srvc.TradeBotActivate(ctx, nil)
+			if err != nil {
+				fmt.Printf("⚠️ Failed to auto-start Trade Bot: %v\n", err)
+			} else {
+				fmt.Println("✅ Trade Bot auto-started successfully!")
+			}
+		}()
+	}
 
 	// Menjalankan HTTP server (BLOCKING)
 	router.Run(fmt.Sprintf("%s:%s", host, port))

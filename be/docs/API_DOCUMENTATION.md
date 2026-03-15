@@ -12,6 +12,14 @@
    - [Thresholds](#thresholds)
    - [Configs](#configs)
    - [Trade (Bot & Execution)](#trade-bot--execution)
+     - [Trade Execute](#post-apitradeexecute)
+     - [Trade Monitor](#trade-monitor)
+     - [Trade Bot Control](#trade-bot-control)
+     - [Trade Bot Get All](#get-apitradebot)
+   - [Trade Response DTOs](#trade-response-dtos)
+     - [TradeData](#tradedata)
+     - [TradeDayStat](#tradedaystat)
+     - [OrderInfo](#orderinfo)
    - [Watchlists](#watchlists)
    - [Strategies](#strategies)
 
@@ -1519,6 +1527,145 @@ Same as **GET /api/trade/bot/** endpoint.
 
 ---
 
+#### **GET /api/trade/bot**
+
+Get all trades with optional filters.
+
+**Request:**
+```bash
+GET http://localhost:8000/api/trade/bot?status=ACTIVE&symbol=BTCUSDT&interval=15m&min_confidence=70&side=BUY&date_start=2025-03-01&date_end=2025-03-15
+Authorization: Bearer <token>
+```
+
+**Query Parameters (All Optional):**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `status[]` | string | No | Filter by status. Can be multiple: `ACTIVE`, `CLOSED`, `CANCELLED`, `COMPLETED`, `REJECTED`. Example: `?status=ACTIVE&status=CLOSED` |
+| `symbol[]` | string | No | Filter by symbol. Can be multiple: `BTCUSDT`, `ETHUSDT`, etc. Example: `?symbol=BTCUSDT&symbol=ETHUSDT` |
+| `interval` | string | No | Filter by timeframe interval: `1m`, `5m`, `15m`, `1h`, `4h`, `1d`, etc. |
+| `min_confidence` | number | No | Filter trades with confidence >= this value (0-100) |
+| `side` | string | No | Filter by side: `BUY` or `SELL` |
+| `date_start` | string | No | Filter trades created on or after this date (format: `YYYY-MM-DD`) |
+| `date_end` | string | No | Filter trades created on or before this date (format: `YYYY-MM-DD`) |
+
+**Response:**
+```json
+{
+    "code": 200,
+    "message": "Trades retrieved successfully",
+    "data": [
+        {
+            "id": 1,
+            "symbol": "BTCUSDT",
+            "interval": "15m",
+            "side": "BUY",
+            "confidence": 85.5,
+            "total_score": 0.92,
+            "is_aggressive": false,
+            "tp_price": 52000.00,
+            "sl_price": 48000.00,
+            "risk_reward_ratio": 1.5,
+            "avg_entry_price": 50000.00,
+            "leverage": 5,
+            "capital_used": 1000.00,
+            "total_qty": 0.02,
+            "status": "ACTIVE",
+            "description": "Strong buy signal with high confidence",
+            "tp_order_id": 12345678,
+            "sl_order_id": 87654321,
+            "tp_sl_status": "ACTIVE",
+            "exit_price": 0,
+            "pnl": 0,
+            "pnl_pct": 0,
+            "created_at": "2025-03-14T10:35:00Z",
+            "updated_at": "2025-03-14T10:35:00Z",
+            "closed_at": null,
+            "orders": [
+                {
+                    "entry_number": 1,
+                    "binance_order_id": 987654321,
+                    "price": 50000.00,
+                    "quantity": 0.02,
+                    "type": "LIMIT",
+                    "status": "FILLED"
+                }
+            ]
+        },
+        {
+            "id": 2,
+            "symbol": "ETHUSDT",
+            "interval": "1h",
+            "side": "SELL",
+            "confidence": 72.3,
+            "total_score": 0.78,
+            "is_aggressive": false,
+            "tp_price": 3000.00,
+            "sl_price": 3200.00,
+            "risk_reward_ratio": 1.8,
+            "avg_entry_price": 3100.00,
+            "leverage": 5,
+            "capital_used": 800.00,
+            "total_qty": 0.25,
+            "status": "CLOSED",
+            "description": "Good sell signal",
+            "tp_order_id": 12345679,
+            "sl_order_id": 87654322,
+            "tp_sl_status": "TP_HIT",
+            "exit_price": 3000.00,
+            "pnl": 62.50,
+            "pnl_pct": 7.81,
+            "created_at": "2025-03-14T10:40:00Z",
+            "updated_at": "2025-03-14T11:15:00Z",
+            "closed_at": "2025-03-14T11:15:00Z",
+            "orders": []
+        }
+    ]
+}
+```
+
+**Response Fields:**
+
+Same as **GET /api/trade/bot/session** endpoint, with additional `orders` array.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `orders` | array | List of entry orders for this trade (optional - only included if trade has entries) |
+| `orders[].entry_number` | integer | Entry number (1, 2, 3, etc.) |
+| `orders[].binance_order_id` | integer | Binance order ID |
+| `orders[].price` | number | Entry price |
+| `orders[].quantity` | number | Entry quantity |
+| `orders[].type` | string | Order type: `MARKET` or `LIMIT` |
+| `orders[].status` | string | Order status: `NEW`, `FILLED`, `CANCELLED`, etc. |
+
+**Example Requests:**
+
+```bash
+# Get all ACTIVE trades
+GET /api/trade/bot?status=ACTIVE
+
+# Get all CLOSED trades for BTCUSDT
+GET /api/trade/bot?status=CLOSED&symbol=BTCUSDT
+
+# Get trades with confidence >= 80
+GET /api/trade/bot?min_confidence=80
+
+# Get BUY trades in last 7 days
+GET /api/trade/bot?side=BUY&date_start=2025-03-08&date_end=2025-03-15
+
+# Get multiple symbols with multiple statuses
+GET /api/trade/bot?symbol=BTCUSDT&symbol=ETHUSDT&status=ACTIVE&status=CLOSED
+```
+
+**Notes:**
+- All query parameters are **optional** - omitting a parameter means no filter is applied for that field
+- Multiple values for `status[]` and `symbol[]` are supported by repeating the parameter
+- Returns **empty array** if no trades match the filters
+- Trades sorted by `created_at DESC` (newest first)
+- Does **NOT** require bot to be running (can query trades anytime)
+
+---
+
 #### **POST /api/trade/bot/activate**
 
 Activate automated trading bot.
@@ -1577,6 +1724,144 @@ Authorization: Bearer <token>
     }
 }
 ```
+
+---
+
+## 🤖 Trade Response DTOs
+
+This section contains detailed response structures used across Trade endpoints.
+
+### **TradeData**
+
+Represents a single trade record in responses.
+
+**Structure:**
+
+```typescript
+interface TradeData {
+  id: number
+  symbol: string
+  interval: string
+  side: string
+  confidence: number
+  total_score: number
+  is_aggressive: boolean
+  tp_price: number
+  sl_price: number
+  risk_reward_ratio: number
+  avg_entry_price: number
+  leverage: number
+  capital_used: number
+  total_qty: number
+  status: string
+  description: string
+  tp_order_id: number
+  sl_order_id: number
+  tp_sl_status: string
+  exit_price: number
+  pnl: number
+  pnl_pct: number
+  created_at: string
+  updated_at: string
+  closed_at: string | null
+  orders?: OrderInfo[]
+}
+```
+
+**Field Descriptions:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Trade ID |
+| `symbol` | string | Trading symbol (e.g., "BTCUSDT") |
+| `interval` | string | Timeframe used (e.g., "15m", "1h") |
+| `side` | string | Trade direction (BUY/SELL) |
+| `confidence` | number | Confidence score (0-100) |
+| `total_score` | number | Total signal score (0-1) |
+| `is_aggressive` | boolean | Whether aggressive mode was used |
+| `tp_price` | number | Take-profit price |
+| `sl_price` | number | Stop-loss price |
+| `risk_reward_ratio` | number | Risk-reward ratio |
+| `avg_entry_price` | number | Average entry price |
+| `leverage` | number | Leverage used |
+| `capital_used` | number | Capital used in USDT |
+| `total_qty` | number | Total quantity purchased |
+| `status` | string | Trade status (ACTIVE/COMPLETED/CANCELLED/CLOSED/REJECTED) |
+| `description` | string | Trade description |
+| `tp_order_id` | number | Take-profit order ID on Binance |
+| `sl_order_id` | number | Stop-loss order ID on Binance |
+| `tp_sl_status` | string | TP/SL status (ACTIVE/TP_HIT/SL_HIT/CANCELLED) |
+| `exit_price` | number | Exit price (if closed) |
+| `pnl` | number | Profit/Loss in USDT |
+| `pnl_pct` | number | Profit/Loss percentage |
+| `created_at` | string | RFC3339 timestamp when trade was created |
+| `updated_at` | string | RFC3339 timestamp when trade was last updated |
+| `closed_at` | string \| null | RFC3339 timestamp when trade was closed (null if active) |
+| `orders` | OrderInfo[] | List of entry orders (optional) |
+
+---
+
+### **TradeDayStat**
+
+Daily trade statistics.
+
+**Structure:**
+
+```typescript
+interface TradeDayStat {
+  active: number
+  count: number
+  tp_hits: number
+  sl_hits: number
+  total_loss: number
+  total_profit: number
+  consecutive_lossess: number
+  pnl: number
+}
+```
+
+**Field Descriptions:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `active` | number | Number of active trades today |
+| `count` | number | Total trades count today |
+| `tp_hits` | number | Number of take-profit hits today |
+| `sl_hits` | number | Number of stop-loss hits today |
+| `total_loss` | number | Total loss in USDT today |
+| `total_profit` | number | Total profit in USDT today |
+| `consecutive_lossess` | number | Consecutive losses count |
+| `pnl` | number | Net PnL for today |
+
+---
+
+### **OrderInfo**
+
+Information about a single order.
+
+**Structure:**
+
+```typescript
+interface OrderInfo {
+  entry_number: number
+  binance_order_id: number
+  price: number
+  quantity: number
+  type: string
+  status: string
+}
+```
+
+**Field Descriptions:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `entry_number` | number | Entry number (1, 2, 3, etc.) |
+| `binance_order_id` | number | Binance order ID |
+| `price` | number | Order price |
+| `quantity` | number | Order quantity |
+| `type` | string | Order type: `MARKET` or `LIMIT` |
+| `status` | string | Order status: `NEW`, `FILLED`, `CANCELED`, `EXPIRED`, etc. |
 
 ---
 

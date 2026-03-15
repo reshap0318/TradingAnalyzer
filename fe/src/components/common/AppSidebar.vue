@@ -12,7 +12,8 @@ import {
   PhList,
   PhChalkboardTeacher,
   PhCaretDown,
-  PhRobot
+  PhRobot,
+  PhCurrencyCircleDollar
 } from '@phosphor-icons/vue'
 
 const route = useRoute()
@@ -41,7 +42,8 @@ const menuItems = [
     children: [
       { name: 'Watchlists', icon: PhList, route: '/watchlists' },
       { name: 'Strategies', icon: PhChalkboardTeacher, route: '/strategies' },
-      { name: 'Bot Control', icon: PhRobot, route: '/bot-control' }
+      { name: 'Bot Control', icon: PhRobot, route: '/bot-control' },
+      { name: 'Trade History', icon: PhCurrencyCircleDollar, route: '/trades' }
     ]
   }
 ]

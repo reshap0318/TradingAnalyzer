@@ -14,9 +14,10 @@ type ConfigService interface {
 
 // AppConfig holds application configuration
 type AppConfig struct {
-	Host      string
-	Port      string
-	JWTSecret []byte
+	Host         string
+	Port         string
+	JWTSecret    []byte
+	BOT_AUTO_RUN bool
 }
 
 // DBConfig holds database configuration
@@ -153,6 +154,7 @@ func LoadConfig() *Config {
 	config.APP.Host = helpers.GetEnv("APP_HOST", "0.0.0.0")
 	config.APP.Port = helpers.GetEnv("APP_PORT", "8080")
 	config.APP.JWTSecret = []byte(helpers.GetEnv("APP_JWT_SECRET", "your-secret-key-change-in-production"))
+	config.APP.BOT_AUTO_RUN = helpers.GetEnv("BOT_AUTO_RUN", "false") == "true"
 
 	// DB config
 	config.DB.Host = helpers.GetEnv("DB_HOST", "127.0.0.1")

@@ -146,7 +146,7 @@ onUnmounted(() => {
   <DefaultLayout>
     <template #header-title>Trading Bot Control</template>
 
-    <div class="mx-auto sm:px-6">
+    <div class="md:mx-auto sm:px-6">
       <!-- Loading State -->
       <div v-if="store.loading" class="flex items-center justify-center py-20">
         <div class="relative">

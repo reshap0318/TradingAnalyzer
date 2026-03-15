@@ -1,9 +1,17 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { UiModal } from '@/components/common'
-import type { ITrade, ITradeOrder } from '@/stores/tradebot.store'
+import type { ITrade } from '@/stores/tradebot.store'
 import { useTradeBotStore } from '@/stores/tradebot.store'
 import { showConfirm } from '@/lib/sweetalert'
+import {
+  calculateAvgEntry,
+  getFilledOrdersCount,
+  formatPrice,
+  getSideColor,
+  getEntryModeBadge,
+  getEntryModeColor
+} from '@/helpers/trade'
 import {
   PhWallet,
   PhTarget,
@@ -29,50 +37,6 @@ const isClosing = ref(false)
 
 // Store
 const tradeBotStore = useTradeBotStore()
-
-// Calculate average entry price from filled orders only
-const calculateAvgEntry = (orders: ITradeOrder[]): number => {
-  const filledOrders = orders.filter(o => o.status === 'FILLED')
-  if (filledOrders.length === 0) return 0
-
-  const totalValue = filledOrders.reduce((sum, order) => sum + (order.price * order.quantity), 0)
-  const totalQty = filledOrders.reduce((sum, order) => sum + order.quantity, 0)
-
-  return totalQty > 0 ? totalValue / totalQty : 0
-}
-
-// Get filled orders count
-const getFilledOrdersCount = (orders: ITradeOrder[]): number => {
-  return orders.filter(o => o.status === 'FILLED').length
-}
-
-// Format price with proper decimals
-const formatPrice = (price: number): string => {
-  if (price === 0) return '-'
-  if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  if (price >= 1) return price.toFixed(4)
-  return price.toFixed(6)
-}
-
-// Get side color
-const getSideColor = (side: string): string => {
-  return side.toUpperCase() === 'BUY' || side.toUpperCase() === 'LONG' ? 'text-green-600' : 'text-red-600'
-}
-
-// Get entry mode badge
-const getEntryModeBadge = (isAggressive: boolean, orders: ITradeOrder[]): string => {
-  const filledCount = getFilledOrdersCount(orders)
-  if (!isAggressive) return 'Conservative (1 Entry)'
-  return filledCount === 1 ? 'Aggressive (1/2 Filled)' : 'Aggressive (2/2 Filled)'
-}
-
-// Get entry mode color
-const getEntryModeColor = (isAggressive: boolean, orders: ITradeOrder[]): string => {
-  const filledCount = getFilledOrdersCount(orders)
-  if (!isAggressive) return 'bg-blue-100 text-blue-700'
-  if (filledCount === 1) return 'bg-orange-100 text-orange-700'
-  return 'bg-purple-100 text-purple-700'
-}
 
 const handleClose = () => {
   showModal.value = false

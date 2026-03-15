@@ -12,6 +12,10 @@ import (
 // AuthMiddleware creates a middleware that validates JWT tokens
 func AuthMiddleware(srvc *service.Services) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
+		if ctx.Request.Method == "OPTIONS" {
+			ctx.Next()
+			return
+		}
 		// Get token from header
 		tokenString := ctx.GetHeader("Authorization")
 		if tokenString == "" {

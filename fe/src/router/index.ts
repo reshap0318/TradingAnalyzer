@@ -76,6 +76,15 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/trades',
+    name: 'trades',
+    component: () => import('@/pages/TradesPage.vue'),
+    meta: {
+      requiresAuth: true,
+      title: 'Trade History'
+    }
+  },
+  {
     path: '/strategies',
     name: 'strategies',
     component: () => import('@/pages/StrategiesPage.vue'),
