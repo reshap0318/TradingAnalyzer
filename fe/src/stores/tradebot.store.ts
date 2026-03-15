@@ -253,8 +253,8 @@ export const useTradeBotStore = defineStore('tradebot', () => {
       // Fetch all three endpoints in parallel
       const [summaryRes, activeRes, executedRes] = await Promise.all([
         get<IApiResponse<ISessionSummary>>(`${BASE_URL}/summary`),
-        get<IApiResponse<ITrade[]>>(`${BASE_URL}/active`),
-        get<IApiResponse<ITrade[]>>(`${BASE_URL}/`)
+        get<IApiResponse<ITrade[]>>(`${BASE_URL}?status=ACTIVE`),
+        get<IApiResponse<ITrade[]>>(`${BASE_URL}/session`)
       ])
 
       // Set data from responses

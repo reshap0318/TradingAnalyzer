@@ -144,13 +144,22 @@ func (c *Controller) TradeBotGetExecutedTrades(ctx *gin.Context) {
 	helpers.ResponsedWithData(ctx, 200, "Executed trades retrieved successfully", trades)
 }
 
-// TradeBotGetActiveTrades gets list of currently active trades
-func (c *Controller) TradeBotGetActiveTrades(ctx *gin.Context) {
-	trades, err := c.srvc.TradeBotGetActiveTrades(ctx)
+// TradeBotGetAll gets trades with optional filters from query params
+// All filter fields are optional — omit to get all trades without that filter
+func (c *Controller) TradeBotGetAll(ctx *gin.Context) {
+	var filter dtos.TradeFilter
+
+	// Bind optional query params (all fields optional — no binding:"required")
+	if err := ctx.ShouldBindQuery(&filter); err != nil {
+		helpers.RespondError(ctx, err)
+		return
+	}
+
+	trades, err := c.srvc.TradeBotGetAll(ctx, filter)
 	if err != nil {
 		helpers.RespondError(ctx, err)
 		return
 	}
 
-	helpers.ResponsedWithData(ctx, 200, "Active trades retrieved successfully", trades)
+	helpers.ResponsedWithData(ctx, 200, "Trades retrieved successfully", trades)
 }

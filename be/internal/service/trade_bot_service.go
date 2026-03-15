@@ -597,15 +597,14 @@ func (s *Services) TradeBotGetExecutedTrades(ctx *gin.Context) (res []dtos.Trade
 	return res, nil
 }
 
-// TradeBotGetActiveTrades gets list of currently active trades
-func (s *Services) TradeBotGetActiveTrades(ctx *gin.Context) (res []dtos.TradeData, err error) {
-	// Get all active trades
-	trades, err := s.repo.Trade.FindAllActiveTrades(nil)
+// TradeBotGetAll gets list of trades with optional filters
+// All filter params are optional — omit to get all trades without that filter
+func (s *Services) TradeBotGetAll(ctx *gin.Context, filter dtos.TradeFilter) (res []dtos.TradeData, err error) {
+	trades, err := s.repo.Trade.FindWithFilter(nil, filter)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get active trades: %w", err)
+		return nil, fmt.Errorf("failed to get trades: %w", err)
 	}
 
-	// Convert to DTOs
 	for _, trade := range trades {
 		dto := s.convertTradeToDTO(trade)
 		res = append(res, dto)

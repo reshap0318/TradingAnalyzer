@@ -3,6 +3,7 @@ package repository
 import (
 	"time"
 
+	"github.com/reshap/trading-bot/internal/dtos"
 	"github.com/reshap/trading-bot/internal/models"
 	"gorm.io/gorm"
 )
@@ -142,5 +143,51 @@ func (r *TradeRepository) FindAllActiveTrades(tx *gorm.DB) ([]models.Trade, erro
 		Where("status = ?", "ACTIVE").
 		Order("id desc").
 		Find(&trades).Error
+	return trades, err
+}
+
+// FindWithFilter finds trades with optional filters applied dynamically
+// All filter fields are optional — zero/empty value means the filter is skipped
+func (r *TradeRepository) FindWithFilter(tx *gorm.DB, filter dtos.TradeFilter) ([]models.Trade, error) {
+	db := r.getDB(tx)
+	query := db.Preload("Entries").Order("id desc")
+
+	// Filter by status (array — IN clause)
+	if len(filter.Status) > 0 {
+		query = query.Where("status IN ?", filter.Status)
+	}
+
+	// Filter by symbol (array — IN clause)
+	if len(filter.Symbol) > 0 {
+		query = query.Where("symbol IN ?", filter.Symbol)
+	}
+
+	// Filter by interval (single value)
+	if filter.Interval != "" {
+		query = query.Where("interval = ?", filter.Interval)
+	}
+
+	// Filter by side (single value: BUY or SELL)
+	if filter.Side != "" {
+		query = query.Where("side = ?", filter.Side)
+	}
+
+	// Filter by minimum confidence threshold
+	if filter.MinConf > 0 {
+		query = query.Where("confidence >= ?", filter.MinConf)
+	}
+
+	// Filter by date range (date_start <= created_at)
+	if filter.DateStart != "" {
+		query = query.Where("DATE(created_at) >= ?", filter.DateStart)
+	}
+
+	// Filter by date range (created_at <= date_end)
+	if filter.DateEnd != "" {
+		query = query.Where("DATE(created_at) <= ?", filter.DateEnd)
+	}
+
+	var trades []models.Trade
+	err := query.Find(&trades).Error
 	return trades, err
 }

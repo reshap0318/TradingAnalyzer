@@ -182,11 +182,6 @@ const handleManualClose = async (trade: ITrade) => {
                 <span v-else>Closing...</span>
               </button>
               
-              <!-- Status -->
-              <div class="text-right min-w-[80px]">
-                <div class="text-sm font-semibold text-gray-600">Status</div>
-                <div class="text-sm font-bold text-green-600">{{ trade.status }}</div>
-              </div>
             </div>
           </div>
         </div>
