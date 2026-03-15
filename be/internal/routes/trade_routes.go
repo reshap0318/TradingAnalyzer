@@ -19,6 +19,8 @@ func RegisterTradeRoutes(router *gin.RouterGroup, ctrl *controller.Controller) {
 			monitorGroup.POST("/all", ctrl.TradeMonitorProcessAllActive)
 			// POST /api/trade/monitor/:id - Process single trade by ID
 			monitorGroup.POST("/:id", ctrl.TradeMonitorProcessSingle)
+			// POST /api/trade/monitor/:id/close - Manual close trade by ID
+			monitorGroup.POST("/:id/close", ctrl.TradeManualClose)
 		}
 
 		// Trade Bot control endpoints

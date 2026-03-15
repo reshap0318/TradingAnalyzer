@@ -2,6 +2,8 @@
 import { ref } from 'vue'
 import { UiModal } from '@/components/common'
 import type { ITrade, ITradeOrder } from '@/stores/tradebot.store'
+import { useTradeBotStore } from '@/stores/tradebot.store'
+import { showConfirm } from '@/lib/sweetalert'
 import {
   PhWallet,
   PhTarget,
@@ -9,7 +11,8 @@ import {
   PhClock,
   PhChartLineUp,
   PhCurrencyBtc,
-  PhInfo
+  PhInfo,
+  PhXCircle
 } from '@phosphor-icons/vue'
 
 interface IActiveTradeCardProps {
@@ -22,6 +25,10 @@ const props = withDefaults(defineProps<IActiveTradeCardProps>(), {
 
 // Modal state
 const showModal = ref(false)
+const isClosing = ref(false)
+
+// Store
+const tradeBotStore = useTradeBotStore()
 
 // Calculate average entry price from filled orders only
 const calculateAvgEntry = (orders: ITradeOrder[]): number => {
@@ -69,6 +76,27 @@ const getEntryModeColor = (isAggressive: boolean, orders: ITradeOrder[]): string
 
 const handleClose = () => {
   showModal.value = false
+}
+
+// Handle manual close trade
+const handleManualClose = async (trade: ITrade) => {
+  const result = await showConfirm(
+    'Close Trade?',
+    `Are you sure you want to close ${trade.symbol} position? This will cancel all pending orders and close the position at market price.`
+  )
+
+  if (!result.isConfirmed) return
+
+  isClosing.value = true
+  try {
+    const success = await tradeBotStore.manualCloseTrade(trade.id)
+    
+    if (success) {
+      showModal.value = false
+    }
+  } finally {
+    isClosing.value = false
+  }
 }
 </script>
 
@@ -139,9 +167,26 @@ const handleClose = () => {
                 <p class="text-xs text-gray-500">{{ trade.interval }} • Opened: {{ new Date(trade.created_at).toLocaleString() }}</p>
               </div>
             </div>
-            <div class="text-right">
-              <div class="text-sm font-semibold text-gray-600">Status</div>
-              <div class="text-sm font-bold text-green-600">{{ trade.status }}</div>
+            <div class="flex items-center gap-3">
+              <!-- Close Button (only for ACTIVE trades) -->
+              <button
+                v-if="trade.status === 'ACTIVE'"
+                type="button"
+                class="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                :disabled="isClosing"
+                @click.stop="handleManualClose(trade)"
+                title="Close trade manually"
+              >
+                <PhXCircle :size="16" weight="fill" />
+                <span v-if="!isClosing">Close</span>
+                <span v-else>Closing...</span>
+              </button>
+              
+              <!-- Status -->
+              <div class="text-right min-w-[80px]">
+                <div class="text-sm font-semibold text-gray-600">Status</div>
+                <div class="text-sm font-bold text-green-600">{{ trade.status }}</div>
+              </div>
             </div>
           </div>
         </div>

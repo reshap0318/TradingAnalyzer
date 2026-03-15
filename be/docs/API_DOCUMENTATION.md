@@ -1019,6 +1019,86 @@ Content-Type: application/json
 
 ---
 
+#### **POST /api/trade/monitor/:id/close**
+
+Close an active trade manually by user request (Manual Close).
+
+**Request:**
+```bash
+POST http://localhost:8000/api/trade/monitor/1/close
+Authorization: Bearer <token>
+```
+
+**Request Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` (URL param) | integer | Yes | Trade ID to close |
+
+**Response:**
+```json
+{
+    "code": 200,
+    "message": "Trade closed manually successfully",
+    "data": {
+        "trade_id": 1,
+        "symbol": "BTCUSDT",
+        "status": "CLOSED",
+        "message": "Trade closed manually by user.",
+        "entries_sync": 1,
+        "tp_updated": false,
+        "sl_updated": false,
+        "updated_count": 0,
+        "logs": [
+            "Starting Manual Close for trade #1 (BTCUSDT)",
+            "Syncing exact filled quantities from Binance open orders...",
+            "Canceling ALL open orders for symbol BTCUSDT...",
+            "All open orders canceled successfully.",
+            "Executing Market SELL for TotalQty: 0.01 to close position...",
+            "SUCCESS Market Close. OrderID: 12345678"
+        ]
+    }
+}
+```
+
+**Response Fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `trade_id` | integer | Trade ID that was closed |
+| `symbol` | string | Trading symbol |
+| `status` | string | Final trade status (CLOSED/SKIPPED) |
+| `message` | string | Closing message |
+| `entries_sync` | integer | Number of entries synced before close |
+| `tp_updated` | boolean | Whether TP was updated (always false for manual close) |
+| `sl_updated` | boolean | Whether SL was updated (always false for manual close) |
+| `updated_count` | integer | Total updates performed during sync |
+| `logs` | array | Detailed execution logs of the close process |
+
+**Process Flow:**
+
+1. **Fetch Trade** - Load trade with entries from database
+2. **Validate Status** - Only ACTIVE trades can be closed manually
+3. **Sync Entries** - Sync filled quantities from Binance open orders (Fase 2)
+4. **Netting Calculation** - Calculate final TotalQty & AvgEntryPrice (Fase 3)
+5. **Cancel Orders** - Cancel ALL pending open orders on Binance
+6. **Market Close** - Execute market order to close position (ReduceOnly)
+7. **Update Database** - Update trade status to CLOSED, record PnL, clear TP/SL order IDs
+
+**Exit Info:**
+- `ExitPrice`: Current market price at close time
+- `ExitReason`: "MANUAL_CLOSE_BY_USER"
+- `PnL`: Calculated profit/loss from close
+- `PnLPct`: PnL percentage
+- `Status`: Updated to "CLOSED"
+- `ClosedAt`: Timestamp of close
+
+**⚠️ Notes:**
+- This endpoint will **cancel all pending orders** before executing market close
+- Uses **ReduceOnly** order to close existing position
+- If trade status is not ACTIVE, returns status "SKIPPED"
+- PnL is calculated and recorded in database
+
+---
+
 ### **Trade Bot Control**
 
 Control automated trading bot.

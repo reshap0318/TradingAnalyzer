@@ -269,6 +269,21 @@ export const useTradeBotStore = defineStore('tradebot', () => {
     }
   }
 
+  async function manualCloseTrade(tradeId: number): Promise<boolean> {
+    loading.value = true
+    try {
+      await post<IApiResponse<any>>(`/trade/monitor/${tradeId}/close`)
+      showSuccess('Success', 'Trade closed manually')
+      await fetchSessionData() // Refresh data after close
+      return true
+    } catch (error: any) {
+      showError('Error', error.response?.data?.message || 'Failed to close trade')
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
   function clearSessionData() {
     sessionSummary.value = null
     activeTrades.value = []
@@ -296,6 +311,7 @@ export const useTradeBotStore = defineStore('tradebot', () => {
     fetchStrategies,
     selectStrategy,
     fetchSessionData,
-    clearSessionData
+    clearSessionData,
+    manualCloseTrade
   }
 })

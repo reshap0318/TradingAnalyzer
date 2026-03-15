@@ -980,3 +980,157 @@ func (s *Services) TradeMonitorProcessSingle(ctx *gin.Context, req *dtos.TradeMo
 	// Call private function to process the trade
 	return s.tradeMonitorProcessTrade(ctx, trade)
 }
+
+// TradeManualClose allows a user to manually close an active trade via the app
+func (s *Services) TradeManualClose(ctx *gin.Context, tradeID uint) (*dtos.ProcessTradeResult, error) {
+	result := &dtos.ProcessTradeResult{
+		TradeID: tradeID,
+	}
+
+	// 1. Fetch trade with entries
+	trade, err := s.repo.Trade.FindWithEntries(nil, tradeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch trade: %w", err)
+	}
+
+	result.Symbol = trade.Symbol
+	result.Logs = append(result.Logs, fmt.Sprintf("Starting Manual Close for trade #%d (%s)", trade.ID, trade.Symbol))
+
+	// 2. Validate status
+	if trade.Status != "ACTIVE" {
+		result.Status = "SKIPPED"
+		result.Message = fmt.Sprintf("Trade status is %s, not ACTIVE", trade.Status)
+		return result, nil
+	}
+
+	// 3. Sync Status to ensure we have the correct Filled Qty
+	result.Logs = append(result.Logs, "Syncing exact filled quantities from Binance open orders...")
+	openOrders, err := s.BinanceClient.GetOpenOrders(trade.Symbol)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch open orders for sync: %w", err)
+	}
+	orderMap := make(map[int64]*binance.OrderResponse, len(openOrders))
+	for i := range openOrders {
+		orderMap[openOrders[i].OrderID] = &openOrders[i]
+	}
+
+	// Run Fase 2 sync to ensure DB accurately reflects Binance
+	syncResult, err := s.tradeMonitorFase2SyncEntries(ctx, trade, orderMap, result)
+	if err != nil {
+		result.Logs = append(result.Logs, fmt.Sprintf("Warning: Failed to sync entries: %v", err))
+		// We can still proceed to market close even if sync failed partially, but let's record the error
+	} else {
+		result.EntriesSync = syncResult.UpdatedCount
+	}
+
+	// Run Fase 3 Netting to get final TotalQty & AvgEntryPrice
+	err = s.tradeMonitorFase3Netting(ctx, trade, result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to calculate netting: %w", err)
+	}
+
+	// Reload trade to get freshly netted qty
+	trade, err = s.repo.Trade.FindWithEntries(nil, tradeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reload netted trade: %w", err)
+	}
+
+	// 4. Cancel Pending Orders on Binance
+	result.Logs = append(result.Logs, fmt.Sprintf("Canceling ALL open orders for symbol %s...", trade.Symbol))
+	if cancelErr := s.BinanceClient.CancelAllOrders(trade.Symbol); cancelErr != nil {
+		result.Logs = append(result.Logs, fmt.Sprintf("Warning: Failed to cancel all open orders: %v", cancelErr))
+	} else {
+		result.Logs = append(result.Logs, "All open orders canceled successfully.")
+	}
+
+	// Fetch current market price
+	curPrice, err := s.BinanceClient.GetPrice(trade.Symbol)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch market price: %w", err)
+	}
+	exitPrice := curPrice.Price
+
+	// 5. Execute Market Close
+	if trade.TotalQty > 0 {
+		closeSide := binance.OrderSideSell
+		if trade.Side == "SELL" || trade.Side == "STRONG_SELL" {
+			closeSide = binance.OrderSideBuy
+		}
+
+		result.Logs = append(result.Logs, fmt.Sprintf("Executing Market %s for TotalQty: %v to close position...", closeSide, trade.TotalQty))
+		
+		symbolInfo, err := s.BinanceClient.GetSymbolInfo(trade.Symbol)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get symbol info: %w", err)
+		}
+		
+		qtyAdjusted := binance.AdjustQuantityPrecision(trade.TotalQty, symbolInfo.StepSize)
+
+		closeReq := &binance.PlaceOrderRequest{
+			Symbol:     trade.Symbol,
+			Side:       closeSide,
+			Type:       binance.OrderTypeMarket,
+			ReduceOnly: true,
+			Quantity:   qtyAdjusted,
+		}
+
+		closeResp, err := s.BinanceClient.PlaceOrder(closeReq)
+		if err != nil {
+			result.Logs = append(result.Logs, fmt.Sprintf("FAILED executing Market Close: %v", err))
+			return nil, fmt.Errorf("failed to place market close order: %w", err)
+		}
+
+		result.Logs = append(result.Logs, fmt.Sprintf("SUCCESS Market Close. OrderID: %d", closeResp.OrderID))
+	} else {
+		result.Logs = append(result.Logs, "Total Qtys is 0, no market close order needed.")
+	}
+
+	// 6. Update Database Record
+	err = s.repo.TxManager.WithinTransaction(func(tx *gorm.DB) error {
+		pnl := calculatePnL(trade, exitPrice)
+		pnlPct := calculatePnLPct(trade, pnl)
+
+		now := time.Now()
+		updateTrade := &models.Trade{
+			Status:     "CLOSED",
+			ClosedAt:   &now,
+			ExitPrice:  exitPrice,
+			ExitReason: "MANUAL_CLOSE_BY_USER",
+			PnL:        pnl,
+			PnLPct:     pnlPct,
+			TPOrderID:  0, // Cleared out
+			SLOrderID:  0, // Cleared out
+		}
+		
+		_, err := s.repo.Trade.Update(tx, &models.Trade{ID: trade.ID}, updateTrade)
+		if err != nil {
+			return fmt.Errorf("failed to update trade status: %w", err)
+		}
+
+		entries, err := s.repo.TradeEntry.FindByTradeID(tx, trade.ID)
+		if err != nil {
+			return fmt.Errorf("failed to fetch entries for update: %w", err)
+		}
+
+		for _, entry := range entries {
+			if entry.Status == "PENDING" || entry.Status == "NEW" {
+				err = s.repo.TradeEntry.UpdateStatus(tx, entry.ID, "CANCELLED", "Manual close via App")
+				if err != nil {
+					return fmt.Errorf("failed to cancel entry status in DB: %w", err)
+				}
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to commit db updates: %w", err)
+	}
+
+	result.Status = "CLOSED"
+	result.Message = "Trade closed manually by user."
+	
+	return result, nil
+}
+

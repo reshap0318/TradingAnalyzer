@@ -1,6 +1,9 @@
 package controller
 
 import (
+	"fmt"
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 	"github.com/reshap/trading-bot/internal/dtos"
 	"github.com/reshap/trading-bot/internal/helpers"
@@ -99,6 +102,24 @@ func (c *Controller) TradeMonitorProcessSingle(ctx *gin.Context) {
 	}
 
 	helpers.ResponsedWithData(ctx, 200, "Trade processed successfully", result)
+}
+
+// TradeManualClose closes an active trade manually by user request
+func (c *Controller) TradeManualClose(ctx *gin.Context) {
+	idStr := ctx.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		helpers.RespondError(ctx, fmt.Errorf("invalid trade ID"))
+		return
+	}
+
+	result, err := c.srvc.TradeManualClose(ctx, uint(id))
+	if err != nil {
+		helpers.RespondError(ctx, err)
+		return
+	}
+
+	helpers.ResponsedWithData(ctx, 200, "Trade closed manually successfully", result)
 }
 
 // TradeBotGetSessionSummary gets summary statistics for current trading session
