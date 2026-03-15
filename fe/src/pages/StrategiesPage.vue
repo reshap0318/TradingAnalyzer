@@ -86,7 +86,7 @@ onMounted(() => {
   <DefaultLayout>
     <template #header-title>Strategies</template>
 
-    <div class="mx-auto px-6">
+    <div class="">
       <!-- Loading State -->
       <div v-if="isPageLoading" class="flex items-center justify-center py-20">
         <div class="relative">
