@@ -649,6 +649,7 @@ func (s *Services) convertTradeToDTO(trade models.Trade) dtos.TradeData {
 		TPOrderID:       trade.TPOrderID,
 		SLOrderID:       trade.SLOrderID,
 		TPSLStatus:      trade.TPSLStatus,
+		ExitReason:      trade.ExitReason,
 		ExitPrice:       trade.ExitPrice,
 		PnL:             trade.PnL,
 		PnLPct:          trade.PnLPct,

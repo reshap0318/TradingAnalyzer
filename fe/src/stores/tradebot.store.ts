@@ -93,6 +93,7 @@ export interface ITrade {
   tp_order_id: number
   sl_order_id: number
   tp_sl_status: string
+  exit_reason: string
   exit_price: number
   pnl: number
   pnl_pct: number

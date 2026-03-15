@@ -48,9 +48,13 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error) => {
+    const authStore = useAuthStore()
+
     // Handle 401 Unauthorized
     if (error.response?.status === 401) {
-      console.error('Unauthorized - Token may be expired')
+      authStore.logoutAction().then(() => {
+        window.location.href = '/'
+      })
     }
 
     // Handle 403 Forbidden

@@ -50,7 +50,8 @@ const totalPnL = computed(() => {
 const winRate = computed(() => {
   if (totalTrades.value === 0) return 0
   const winningTrades = tradeStore.filteredTrades.filter(t => t.pnl > 0).length
-  return (winningTrades / totalTrades.value) * 100
+  const tradeActive = tradeStore.filteredTrades.filter(t => t.pnl != 0).length
+  return tradeActive == 0 ? 100 : (winningTrades / tradeActive) * 100
 })
 
 const winningTradesCount = computed(() => {

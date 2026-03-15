@@ -60,13 +60,13 @@ type TradeDayStat struct {
 // TradeFilter represents optional query filters for TradeBotGet endpoint
 // All fields are optional — omitting a field means no filter is applied for that field
 type TradeFilter struct {
-	Status      []string `form:"status"`        // Filter by status (e.g. ACTIVE, CLOSED, CANCELLED) - accepts multiple
-	Symbol      []string `form:"symbol"`        // Filter by symbol (e.g. BTCUSDT, ETHUSDT) - accepts multiple
-	Interval    string   `form:"interval"`      // Filter by timeframe interval (e.g. 15m, 1h, 4h)
-	MinConf     float64  `form:"min_confidence"` // Filter trades with confidence >= this value
-	Side        string   `form:"side"`          // Filter by side: BUY or SELL
-	DateStart   string   `form:"date_start"`    // Filter trades created on or after this date (YYYY-MM-DD)
-	DateEnd     string   `form:"date_end"`      // Filter trades created on or before this date (YYYY-MM-DD)
+	Status    []string `form:"status"`         // Filter by status (e.g. ACTIVE, CLOSED, CANCELLED) - accepts multiple
+	Symbol    []string `form:"symbol"`         // Filter by symbol (e.g. BTCUSDT, ETHUSDT) - accepts multiple
+	Interval  string   `form:"interval"`       // Filter by timeframe interval (e.g. 15m, 1h, 4h)
+	MinConf   float64  `form:"min_confidence"` // Filter trades with confidence >= this value
+	Side      string   `form:"side"`           // Filter by side: BUY or SELL
+	DateStart string   `form:"date_start"`     // Filter trades created on or after this date (YYYY-MM-DD)
+	DateEnd   string   `form:"date_end"`       // Filter trades created on or before this date (YYYY-MM-DD)
 }
 
 // ============== TRADE MONITOR DTOs ==============
@@ -112,6 +112,7 @@ type TradeData struct {
 	TPOrderID       int64       `json:"tp_order_id"`
 	SLOrderID       int64       `json:"sl_order_id"`
 	TPSLStatus      string      `json:"tp_sl_status"`
+	ExitReason      string      `json:"exit_reason"`
 	ExitPrice       float64     `json:"exit_price"`
 	PnL             float64     `json:"pnl"`
 	PnLPct          float64     `json:"pnl_pct"`

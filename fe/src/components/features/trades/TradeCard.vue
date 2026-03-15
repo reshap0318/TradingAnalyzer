@@ -197,12 +197,12 @@ defineProps<ITradeCardProps>()
       <div class="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
         <div class="flex items-center gap-2 text-xs">
           <PhInfo :size="14" class="text-gray-400" />
-          <span class="text-gray-600">TP/SL Status:</span>
+          <span class="text-gray-600">Exit Reason:</span>
           <span
             class="font-semibold px-2 py-1 rounded bg-gray-100"
             :class="getTpSlStatusColor(trade.tp_sl_status)"
           >
-            {{ getTpSlStatusBadge(trade.tp_sl_status) }}
+            {{ trade.exit_reason || '-' }}
           </span>
         </div>
         <div class="flex items-center gap-4 text-xs text-gray-500">

@@ -61,7 +61,7 @@ export const getStatusColor = (status: string): string => {
     case 'CANCELLED':
       return 'text-gray-600 bg-gray-50'
     default:
-      return 'text-gray-600 bg-gray-50'
+      return 'text-orange-600 bg-orange-50'
   }
 }
 
@@ -85,6 +85,10 @@ export const getTpSlStatusBadge = (status: string): string => {
  * Get TP/SL status color class
  */
 export const getTpSlStatusColor = (status: string): string => {
+  status = status?.toUpperCase();
+  if (status.includes("TP_HIT")) return 'text-green-600';
+  else if (status.includes("TP_HIT")) return 'text-red-600';
+  else return 'text-gray-600'
   switch (status?.toUpperCase()) {
     case 'TP_HIT':
       return 'text-green-600'
