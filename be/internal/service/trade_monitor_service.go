@@ -341,6 +341,24 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 						return fmt.Errorf("failed to update trade: %w", err)
 					}
 
+					// 🚨 CRITICAL: Close actual Binance position first (market order opposite direction)
+					// This is the REAL close - without this, position stays open on Binance!
+					closeSide := binance.OrderSideSell // BUY position => close with SELL
+					if trade.Side == "SELL" {
+						closeSide = binance.OrderSideBuy // SELL position => close with BUY
+					}
+					processResult.Logs = append(processResult.Logs,
+						fmt.Sprintf("Closing Binance position for %s (Qty: %v, Side: %s)...", trade.Symbol, totalFilledQty, closeSide))
+
+					_, closeErr := s.BinanceClient.ClosePosition(trade.Symbol, totalFilledQty, closeSide)
+					if closeErr != nil {
+						processResult.Logs = append(processResult.Logs,
+							fmt.Sprintf("⚠️ Warning: Failed to close Binance position for %s: %v", trade.Symbol, closeErr))
+					} else {
+						processResult.Logs = append(processResult.Logs,
+							fmt.Sprintf("✅ Binance position for %s closed successfully.", trade.Symbol))
+					}
+
 					// Cancel semua pending entry orders untuk symbol ini (1 API call untuk semua orders)
 					processResult.Logs = append(processResult.Logs,
 						fmt.Sprintf("Canceling ALL open orders for symbol %s...", trade.Symbol))
@@ -1035,22 +1053,14 @@ func (s *Services) TradeManualClose(ctx *gin.Context, tradeID uint) (*dtos.Proce
 		return nil, fmt.Errorf("failed to reload netted trade: %w", err)
 	}
 
-	// 4. Cancel Pending Orders on Binance
-	result.Logs = append(result.Logs, fmt.Sprintf("Canceling ALL open orders for symbol %s...", trade.Symbol))
-	if cancelErr := s.BinanceClient.CancelAllOrders(trade.Symbol); cancelErr != nil {
-		result.Logs = append(result.Logs, fmt.Sprintf("Warning: Failed to cancel all open orders: %v", cancelErr))
-	} else {
-		result.Logs = append(result.Logs, "All open orders canceled successfully.")
-	}
-
-	// Fetch current market price
+	// Fetch current market price (needed for exitPrice calculation)
 	curPrice, err := s.BinanceClient.GetPrice(trade.Symbol)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch market price: %w", err)
 	}
 	exitPrice := curPrice.Price
 
-	// 5. Execute Market Close
+	// 4. Execute Market Close FIRST (close physical position before cancelling orders)
 	if trade.TotalQty > 0 {
 		closeSide := binance.OrderSideSell
 		if trade.Side == "SELL" || trade.Side == "STRONG_SELL" {
@@ -1058,12 +1068,12 @@ func (s *Services) TradeManualClose(ctx *gin.Context, tradeID uint) (*dtos.Proce
 		}
 
 		result.Logs = append(result.Logs, fmt.Sprintf("Executing Market %s for TotalQty: %v to close position...", closeSide, trade.TotalQty))
-		
+
 		symbolInfo, err := s.BinanceClient.GetSymbolInfo(trade.Symbol)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get symbol info: %w", err)
 		}
-		
+
 		qtyAdjusted := binance.AdjustQuantityPrecision(trade.TotalQty, symbolInfo.StepSize)
 
 		closeReq := &binance.PlaceOrderRequest{
@@ -1082,7 +1092,15 @@ func (s *Services) TradeManualClose(ctx *gin.Context, tradeID uint) (*dtos.Proce
 
 		result.Logs = append(result.Logs, fmt.Sprintf("SUCCESS Market Close. OrderID: %d", closeResp.OrderID))
 	} else {
-		result.Logs = append(result.Logs, "Total Qtys is 0, no market close order needed.")
+		result.Logs = append(result.Logs, "Total Qty is 0, no market close order needed.")
+	}
+
+	// 5. Cancel remaining pending orders (after position is already closed)
+	result.Logs = append(result.Logs, fmt.Sprintf("Canceling ALL open orders for symbol %s...", trade.Symbol))
+	if cancelErr := s.BinanceClient.CancelAllOrders(trade.Symbol); cancelErr != nil {
+		result.Logs = append(result.Logs, fmt.Sprintf("Warning: Failed to cancel all open orders: %v", cancelErr))
+	} else {
+		result.Logs = append(result.Logs, "All open orders canceled successfully.")
 	}
 
 	// 6. Update Database Record
