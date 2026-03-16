@@ -616,12 +616,6 @@ func (s *Services) convertTradeToDTO(trade models.Trade) dtos.TradeData {
 		orders = append(orders, o)
 	}
 
-	// CapitalUsed = Position Value, bagi leverage untuk dapat actual capital
-	capitalUsed := trade.CapitalUsed
-	if trade.Leverage > 0 {
-		capitalUsed = trade.CapitalUsed / float64(trade.Leverage)
-	}
-
 	return dtos.TradeData{
 		ID:              trade.ID,
 		Symbol:          trade.Symbol,
@@ -635,7 +629,7 @@ func (s *Services) convertTradeToDTO(trade models.Trade) dtos.TradeData {
 		RiskRewardRatio: trade.RiskRewardRatio,
 		AvgEntryPrice:   trade.AvgEntryPrice,
 		Leverage:        trade.Leverage,
-		CapitalUsed:     capitalUsed,    // ✅ Position Value / Leverage
+		CapitalUsed:     trade.CapitalUsed,
 		TotalQty:        trade.TotalQty,
 		Status:          trade.Status,
 		Description:     trade.Description,
@@ -645,7 +639,7 @@ func (s *Services) convertTradeToDTO(trade models.Trade) dtos.TradeData {
 		ExitReason:      trade.ExitReason,
 		ExitPrice:       trade.ExitPrice,
 		PnL:             trade.PnL,
-		PnLPct:          trade.PnLPct,   // ✅ Already correct from calculatePnLPct
+		PnLPct:          trade.PnLPct,
 		CreatedAt:       trade.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:       trade.UpdatedAt.Format(time.RFC3339),
 		ClosedAt:        trade.ClosedAt,

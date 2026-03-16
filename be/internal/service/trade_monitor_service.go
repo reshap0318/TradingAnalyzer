@@ -868,7 +868,7 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 					TPOrderID:   tpOrderID,
 					SLOrderID:   slOrderID,
 					TotalQty:    totalFilledQty,
-					CapitalUsed: totalFilledQty * entry.FilledPrice, // Approximate
+					CapitalUsed: (totalFilledQty * entry.FilledPrice) / float64(trade.Leverage), // ✅ Actual capital
 				}
 				_, err = s.repo.Trade.Update(nil, &models.Trade{ID: trade.ID}, updateTrade)
 				if err != nil {
@@ -1039,7 +1039,7 @@ func (s *Services) tradeMonitorFase3Netting(ctx *gin.Context, trade *models.Trad
 	for _, entry := range entries {
 		if entry.Status == "FILLED" || entry.Status == "PARTIALLY_FILLED" {
 			totalQty += entry.FilledQty
-			capitalUsed += entry.FilledQty * entry.FilledPrice
+			capitalUsed += (entry.FilledQty * entry.FilledPrice) / float64(trade.Leverage) // ✅ Actual capital
 		}
 	}
 
@@ -1052,7 +1052,7 @@ func (s *Services) tradeMonitorFase3Netting(ctx *gin.Context, trade *models.Trad
 	// Update Trade dengan kalkulasi
 	updateTrade := &models.Trade{
 		TotalQty:      totalQty,
-		CapitalUsed:   capitalUsed,
+		CapitalUsed:   capitalUsed, // ✅ Already actual capital
 		AvgEntryPrice: avgEntryPrice,
 	}
 	_, err = s.repo.Trade.Update(nil, &models.Trade{ID: trade.ID}, updateTrade)
@@ -1129,18 +1129,10 @@ func calculatePnL(trade *models.Trade, currentPrice float64) float64 {
 
 // Helper function untuk menghitung PnL percentage
 func calculatePnLPct(trade *models.Trade, pnl float64) float64 {
-	if trade.CapitalUsed == 0 || trade.Leverage == 0 {
+	if trade.CapitalUsed == 0 {
 		return 0
 	}
-	
-	// CapitalUsed = Position Value, bagi leverage untuk dapat actual capital
-	actualCapital := trade.CapitalUsed / float64(trade.Leverage)
-	
-	if actualCapital == 0 {
-		return 0
-	}
-	
-	return (pnl / actualCapital) * 100
+	return (pnl / trade.CapitalUsed) * 100
 }
 
 // Helper function untuk rounding float dengan presisi

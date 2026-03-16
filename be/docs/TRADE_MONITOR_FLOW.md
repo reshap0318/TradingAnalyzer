@@ -212,7 +212,7 @@ SUCCESS setting Stop Loss (OrderID: 99004)
 
 2. Calculate totals:
    - totalQty = Σ(filled_qty)
-   - capitalUsed = Σ(filled_qty × filled_price)
+   - capitalUsed = Σ((filled_qty × filled_price) / leverage)  ✅ Actual capital
    - avgEntryPrice = capitalUsed / totalQty
 
 3. Fetch current price
@@ -481,6 +481,8 @@ if actualQty > dbTotalQty {
     // 4. Exit reason: SL_HIT_MISMATCH
 }
 ```
+
+**Note:** `capital_used` calculation juga sudah di-fix untuk menyimpan **actual capital** (position value / leverage), membuat PnL% lebih akurat.
 
 **Result:** ✅ Ghost position prevented!
 
