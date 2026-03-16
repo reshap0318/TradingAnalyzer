@@ -22,7 +22,7 @@ export const calculateAvgEntry = (orders: ITradeOrder[]): number => {
  * Get filled orders count
  */
 export const getFilledOrdersCount = (orders: ITradeOrder[]): number => {
-  return orders.filter(o => o.status === 'FILLED').length
+  return orders?.filter(o => o.status === 'FILLED').length || 0
 }
 
 /**
