@@ -170,8 +170,7 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 	}
 
 	// Get actual capital used from pre-calculated summary (no need to recalculate)
-	// Note: TotalPositionValue is position value, divide by leverage for actual capital
-	actualCapitalUsed := analyzeRes.Signal.TradingPlan.Summary.TotalPositionValue / float64(mmConfig.LEVERAGE)
+	actualCapitalUsed := analyzeRes.Signal.TradingPlan.Summary.TotalPositionValue
 
 	// FINAL VALIDATION: Safeguard before execution
 	if analyzeRes.Signal.TradingPlan.Summary == nil {
