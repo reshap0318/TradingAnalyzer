@@ -4,35 +4,41 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 )
 
 // WorkerLogger provides structured logging for background workers.
-// Supports multiple worker types (SCANNER, TPSL, etc.) with shared session counter.
+// Supports multiple worker types (SCANNER, TPSL, etc.) with timestamp-based file naming.
 // Logs go to file by default; only start/stop banners and cycle summaries print to console.
 type WorkerLogger struct {
 	WorkerName string   // Display name: "SCANNER", "TPSL"
 	filePrefix string   // File prefix: "watcher", "tpsl"
-	LogNumber  int      // Session counter (shared across workers)
+	StartedAt  time.Time // Session start timestamp
 	file       *os.File // Persistent file handle
 	mu         sync.Mutex
 }
 
 const (
-	logTimeFormat = "2006-01-02 15:04:05"
-	logsDir       = "./logs"
+	logTimeFormat    = "2006-01-02 15:04:05"
+	logsDir          = "./logs"
+	logRetentionDays = 30 // Auto-delete logs older than this
 )
 
 // NewWorkerLogger creates a new logger instance and opens the log file.
-// File naming: ./logs/{filePrefix}_{logNumber:03d}.log
-func NewWorkerLogger(workerName, filePrefix string, logNumber int) (*WorkerLogger, error) {
+// File naming: ./logs/{filePrefix}_{YYYY-MM-DD_HH-MM-SS}.log
+// Example: ./logs/executor_2026-03-16_01-15-00.log
+func NewWorkerLogger(workerName, filePrefix string) (*WorkerLogger, error) {
 	// Ensure logs directory exists
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create logs directory: %w", err)
 	}
 
-	logFile := filepath.Join(logsDir, fmt.Sprintf("%s_%03d.log", filePrefix, logNumber))
+	// Use timestamp for unique session file
+	now := time.Now()
+	timestamp := now.Format("2006-01-02_15-04-05")
+	logFile := filepath.Join(logsDir, fmt.Sprintf("%s_%s.log", filePrefix, timestamp))
 
 	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -42,9 +48,71 @@ func NewWorkerLogger(workerName, filePrefix string, logNumber int) (*WorkerLogge
 	return &WorkerLogger{
 		WorkerName: workerName,
 		filePrefix: filePrefix,
-		LogNumber:  logNumber,
+		StartedAt:  now,
 		file:       f,
 	}, nil
+}
+
+// CleanupOldLogs removes log files older than logRetentionDays.
+// Called once on application startup or bot activation.
+func CleanupOldLogs() {
+	cutoff := time.Now().AddDate(0, 0, -logRetentionDays)
+	
+	// Pattern: {prefix}_{YYYY-MM-DD_HH-MM-SS}.log
+	pattern := regexp.MustCompile(`^[a-z]+_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.log$`)
+	
+	deletedCount := 0
+	
+	filepath.Walk(logsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		
+		// Skip directories
+		if info.IsDir() {
+			return nil
+		}
+		
+		// Only process files matching our pattern
+		filename := info.Name()
+		if !pattern.MatchString(filename) {
+			return nil
+		}
+		
+		// Delete if older than cutoff
+		if info.ModTime().Before(cutoff) {
+			if err := os.Remove(path); err != nil {
+				fmt.Printf("Warning: Failed to delete old log %s: %v\n", path, err)
+				return nil
+			}
+			deletedCount++
+		}
+		
+		return nil
+	})
+	
+	if deletedCount > 0 {
+		fmt.Printf("🧹 Cleaned up %d old log files (older than %d days)\n", deletedCount, logRetentionDays)
+	}
+}
+
+// getLogDiskUsage returns total size of log files in MB.
+func getLogDiskUsage() float64 {
+	var totalSize int64
+	
+	filepath.Walk(logsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		
+		if !info.IsDir() {
+			totalSize += info.Size()
+		}
+		
+		return nil
+	})
+	
+	return float64(totalSize) / (1024 * 1024) // Convert to MB
 }
 
 // Close closes the underlying log file handle.

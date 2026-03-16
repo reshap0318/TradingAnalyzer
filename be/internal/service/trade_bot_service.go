@@ -22,20 +22,7 @@ var (
 	tradeMonitorRunning  bool                  // Track if trade monitor cycle is currently running
 	tradeExecutorLogger  *helpers.WorkerLogger // Logger for trade executor
 	tradeMonitorLogger   *helpers.WorkerLogger // Logger for trade monitor
-
-	// Shared log counter across all workers (trade bot, monitor, etc.)
-	// Reset when service restarts
-	workerLogCounter      int
-	workerLogCounterMutex sync.Mutex
 )
-
-// getNextLogNumber returns the next shared session counter for all workers
-func getNextLogNumber() int {
-	workerLogCounterMutex.Lock()
-	defer workerLogCounterMutex.Unlock()
-	workerLogCounter++
-	return workerLogCounter
-}
 
 // TradeBotActivate activates the automated trade bot
 // Starts 2 background workers:
@@ -49,8 +36,8 @@ func (s *Services) TradeBotActivate(ctx *gin.Context, strategyID *uint) (res map
 		return nil, fmt.Errorf("trade bot is already active. Deactivate first before activating again")
 	}
 
-	// Get shared session counter
-	currentLogNumber := getNextLogNumber()
+	// 🧹 Clean up old logs (older than 30 days)
+	helpers.CleanupOldLogs()
 
 	// Get strategy - optimize query: use provided ID or fallback to active strategy
 	var strategy *dtos.StrategyData
@@ -77,13 +64,13 @@ func (s *Services) TradeBotActivate(ctx *gin.Context, strategyID *uint) (res map
 	executionInterval := time.Duration(timeframe.InMinutes) * time.Minute
 
 	// Create logger for trade executor session (Executor)
-	tradeExecutorLogger, err = helpers.NewWorkerLogger("EXECUTOR", "executor", currentLogNumber)
+	tradeExecutorLogger, err = helpers.NewWorkerLogger("EXECUTOR", "executor")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create trade executor logger: %w", err)
 	}
 
 	// Create logger for trade monitor session (Monitor)
-	tradeMonitorLogger, err = helpers.NewWorkerLogger("MONITOR", "monitor", currentLogNumber)
+	tradeMonitorLogger, err = helpers.NewWorkerLogger("MONITOR", "monitor")
 	if err != nil {
 		tradeExecutorLogger.Close() // Cleanup previous logger
 		return nil, fmt.Errorf("failed to create trade monitor logger: %w", err)
@@ -108,7 +95,7 @@ func (s *Services) TradeBotActivate(ctx *gin.Context, strategyID *uint) (res map
 		"is_active":          true,
 		"execution_interval": executionInterval.Minutes(),
 		"monitor_interval":   1,
-		"log_number":         currentLogNumber,
+		"started_at":         tradeBotTime.Format(time.RFC3339),
 	}, nil
 }
 
@@ -210,7 +197,7 @@ func (s *Services) runBackgroundTradeExecutor(ctx context.Context, executionInte
 
 	// Print start banner (console + file)
 	logger.Banner(
-		fmt.Sprintf("🟢 TRADE EXECUTOR STARTED — Session #%03d", logger.LogNumber),
+		fmt.Sprintf("🟢 TRADE EXECUTOR STARTED — %s", logger.StartedAt.Format("2006-01-02 15:04:05")),
 		fmt.Sprintf("⏱  Interval: %.0fm | Strategy: %d", executionInterval.Minutes(), *tradeBotStrategy),
 	)
 
@@ -265,7 +252,7 @@ func (s *Services) runBackgroundTradeMonitor(ctx context.Context, monitorInterva
 
 	// Print start banner (console + file)
 	logger.Banner(
-		fmt.Sprintf("🟢 TRADE MONITOR STARTED — Session #%03d", logger.LogNumber),
+		fmt.Sprintf("🟢 TRADE MONITOR STARTED — %s", logger.StartedAt.Format("2006-01-02 15:04:05")),
 		fmt.Sprintf("⏱  Interval: %.0fm", monitorInterval.Minutes()),
 	)
 
