@@ -92,6 +92,15 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: true,
       title: 'Strategies'
     }
+  },
+  {
+    path: '/signal-analyze',
+    name: 'signal-analyze',
+    component: () => import('@/pages/SignalAnalyzePage.vue'),
+    meta: {
+      requiresAuth: true,
+      title: 'Signal Analyze'
+    }
   }
   // Add more routes here
 ]

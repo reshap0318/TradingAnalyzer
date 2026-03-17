@@ -59,7 +59,7 @@ export const getStatusColor = (status: string): string => {
     case 'ACTIVE':
       return 'text-blue-600 bg-blue-50'
     case 'CANCELLED':
-      return 'text-gray-600 bg-gray-50'
+      return 'text-gray-100 bg-gray-800'
     default:
       return 'text-orange-600 bg-orange-50'
   }
