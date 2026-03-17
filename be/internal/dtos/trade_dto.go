@@ -67,6 +67,7 @@ type TradeFilter struct {
 	Side      string   `form:"side"`           // Filter by side: BUY or SELL
 	DateStart string   `form:"date_start"`     // Filter trades created on or after this date (YYYY-MM-DD)
 	DateEnd   string   `form:"date_end"`       // Filter trades created on or before this date (YYYY-MM-DD)
+	Limit     int      `form:"limit"`          // Limit number of results returned (0 = no limit)
 }
 
 // ============== TRADE MONITOR DTOs ==============

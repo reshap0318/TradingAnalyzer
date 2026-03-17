@@ -3,11 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useWatchlistStore } from '@/stores/watchlist.store'
 import { useTimeframeStore } from '@/stores/timeframe.store'
 import { UiModal } from '@/components/common'
-import {
-  PhFunnel,
-  PhCalendar,
-  PhArrowCounterClockwise
-} from '@phosphor-icons/vue'
+import { PhFunnel, PhCalendar, PhArrowCounterClockwise } from '@phosphor-icons/vue'
 
 // Filter state interface
 export interface ITradeFilterState {
@@ -18,6 +14,7 @@ export interface ITradeFilterState {
   min_confidence: number
   date_start: string
   date_end: string
+  limit: number
 }
 
 // Props
@@ -33,8 +30,8 @@ const props = withDefaults(defineProps<ITradeFilterProps>(), {
 // Emits
 const emit = defineEmits<{
   'update:modelValue': [filter: ITradeFilterState]
-  'apply': [filter: ITradeFilterState]
-  'reset': []
+  apply: [filter: ITradeFilterState]
+  reset: []
 }>()
 
 // Local filter state
@@ -42,9 +39,13 @@ const localFilter = ref<ITradeFilterState>({ ...props.modelValue })
 const showModal = ref(false)
 
 // Watch for prop changes
-watch(() => props.modelValue, (newValue) => {
-  localFilter.value = { ...newValue }
-}, { deep: true })
+watch(
+  () => props.modelValue,
+  (newValue) => {
+    localFilter.value = { ...newValue }
+  },
+  { deep: true }
+)
 
 // Sync local state to parent
 const updateFilter = (updates: Partial<ITradeFilterState>) => {
@@ -71,14 +72,12 @@ const timeframeStore = useTimeframeStore()
 
 // Get unique symbols from watchlist (using existing store)
 const availableSymbols = computed(() => {
-  return watchlistStore.activeWatchlists
-    .map(w => w.symbol)
-    .sort()
+  return watchlistStore.activeWatchlists.map((w) => w.symbol).sort()
 })
 
 // Get timeframes from store (using existing store)
 const availableTimeframes = computed(() => {
-  return timeframeStore.sortedItems.map(tf => ({
+  return timeframeStore.sortedItems.map((tf) => ({
     value: tf.name,
     label: tf.name
   }))
@@ -88,7 +87,7 @@ const availableTimeframes = computed(() => {
 const toggleStatus = (status: string) => {
   const current = localFilter.value.status
   const updated = current.includes(status)
-    ? current.filter(s => s !== status)
+    ? current.filter((s) => s !== status)
     : [...current, status]
   updateFilter({ status: updated })
 }
@@ -97,7 +96,7 @@ const toggleStatus = (status: string) => {
 const toggleSymbol = (symbol: string) => {
   const current = localFilter.value.symbol
   const updated = current.includes(symbol)
-    ? current.filter(s => s !== symbol)
+    ? current.filter((s) => s !== symbol)
     : [...current, symbol]
   updateFilter({ symbol: updated })
 }
@@ -111,7 +110,8 @@ const clearAllFilters = () => {
     side: '',
     min_confidence: 0,
     date_start: '',
-    date_end: ''
+    date_end: '',
+    limit: 100
   }
   emit('update:modelValue', localFilter.value)
   emit('reset')
@@ -180,11 +180,7 @@ const activeFiltersCount = computed(() => {
     </button>
 
     <!-- Filter Modal -->
-    <UiModal
-      v-model="showModal"
-      title="Filter Trades"
-      size="xl"
-    >
+    <UiModal v-model="showModal" title="Filter Trades" size="full">
       <div class="space-y-4">
         <!-- Status Filter -->
         <div>
@@ -195,9 +191,11 @@ const activeFiltersCount = computed(() => {
               :key="opt.value"
               @click="toggleStatus(opt.value)"
               class="px-3 py-1.5 text-sm rounded-lg border transition-all"
-              :class="localFilter.status.includes(opt.value)
-                ? 'bg-blue-500 text-white border-blue-500'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'"
+              :class="
+                localFilter.status.includes(opt.value)
+                  ? 'bg-blue-500 text-white border-blue-500'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              "
             >
               {{ opt.label }}
             </button>
@@ -213,9 +211,11 @@ const activeFiltersCount = computed(() => {
               :key="symbol"
               @click="toggleSymbol(symbol)"
               class="px-3 py-1.5 text-sm rounded-lg border transition-all"
-              :class="localFilter.symbol.includes(symbol)
-                ? 'bg-purple-500 text-white border-purple-500'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'"
+              :class="
+                localFilter.symbol.includes(symbol)
+                  ? 'bg-purple-500 text-white border-purple-500'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              "
             >
               {{ symbol }}
             </button>
@@ -234,9 +234,11 @@ const activeFiltersCount = computed(() => {
               :key="tf.value"
               @click="updateFilter({ interval: tf.value === localFilter.interval ? '' : tf.value })"
               class="px-3 py-1.5 text-sm rounded-lg border transition-all"
-              :class="localFilter.interval === tf.value
-                ? 'bg-green-500 text-white border-green-500'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'"
+              :class="
+                localFilter.interval === tf.value
+                  ? 'bg-green-500 text-white border-green-500'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              "
             >
               {{ tf.label }}
             </button>
@@ -255,9 +257,11 @@ const activeFiltersCount = computed(() => {
               :key="opt.value"
               @click="updateFilter({ side: opt.value === localFilter.side ? '' : opt.value })"
               class="px-4 py-2 text-sm rounded-lg border transition-all"
-              :class="localFilter.side === opt.value
-                ? 'bg-orange-500 text-white border-orange-500'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'"
+              :class="
+                localFilter.side === opt.value
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              "
             >
               {{ opt.label }}
             </button>
@@ -310,6 +314,20 @@ const activeFiltersCount = computed(() => {
           </div>
         </div>
 
+        <!-- Limit -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-2"> Limit Results </label>
+          <input
+            v-model.number="localFilter.limit"
+            type="number"
+            min="1"
+            max="1000"
+            placeholder="100"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+          <p class="text-xs text-gray-400 mt-1">Max number of trades to display (default: 100)</p>
+        </div>
+
         <!-- Actions -->
         <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
           <button
@@ -330,5 +348,4 @@ const activeFiltersCount = computed(() => {
   </div>
 </template>
 
-<style scoped>
-</style>
+<style scoped></style>

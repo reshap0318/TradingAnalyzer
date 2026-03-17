@@ -26,7 +26,7 @@ func RegisterTradeRoutes(router *gin.RouterGroup, ctrl *controller.Controller) {
 		// Trade Bot control endpoints
 		botGroup := tradeGroup.Group("/bot")
 		{
-			// GET /api/trade/bot - Get all trades with optional filters (?status=&symbol=&interval=&side=&min_confidence=&date_start=&date_end=)
+			// GET /api/trade/bot - Get all trades with optional filters (?status=&symbol=&interval=&side=&min_confidence=&date_start=&date_end=&limit=)
 			botGroup.GET("", ctrl.TradeBotGetAll)
 			// GET /api/trade/bot/status - Get bot status
 			botGroup.GET("/status", ctrl.TradeBotGetStatus)

@@ -3,7 +3,6 @@ import type { ITrade } from '@/stores/tradebot.store'
 import {
   getSideBgColor,
   getStatusColor,
-  getTpSlStatusBadge,
   getTpSlStatusColor,
   getPnLColor,
   getEntryModeBadge,

@@ -592,6 +592,8 @@ func (s *Services) TradeBotGetAll(ctx *gin.Context, filter dtos.TradeFilter) (re
 		return nil, fmt.Errorf("failed to get trades: %w", err)
 	}
 
+	// Pre-allocate slice: ensures JSON returns [] instead of null when empty
+	res = make([]dtos.TradeData, 0, len(trades))
 	for _, trade := range trades {
 		dto := s.convertTradeToDTO(trade)
 		res = append(res, dto)

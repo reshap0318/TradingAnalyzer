@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useTradeStore } from '@/stores/trade.store'
 import { useWatchlistStore } from '@/stores/watchlist.store'
 import { useTimeframeStore } from '@/stores/timeframe.store'
@@ -22,7 +22,7 @@ const tradeStore = useTradeStore()
 const watchlistStore = useWatchlistStore()
 const timeframeStore = useTimeframeStore()
 
-// Filter state
+// Filter state — single source of truth for both chips and form
 const filter = ref<ITradeFilterState>({
   status: [],
   symbol: [],
@@ -30,8 +30,15 @@ const filter = ref<ITradeFilterState>({
   side: '',
   min_confidence: 0,
   date_start: '',
-  date_end: ''
+  date_end: '',
+  limit: 100
 })
+
+// Sync filter to store and re-fetch from backend
+const applyAndFetch = () => {
+  tradeStore.updateFilter(filter.value)
+  tradeStore.fetchTrades()
+}
 
 // Load data on mount
 onMounted(() => {
@@ -41,56 +48,60 @@ onMounted(() => {
 })
 
 // Calculate stats
-const totalTrades = computed(() => tradeStore.filteredTrades.length)
+const totalTrades = computed(() => tradeStore.trades.length)
 
 const totalPnL = computed(() => {
-  return tradeStore.filteredTrades.reduce((sum, trade) => sum + (trade.pnl || 0), 0)
+  return tradeStore.trades.reduce((sum, trade) => sum + (trade.pnl || 0), 0)
 })
 
 const winRate = computed(() => {
-  if (totalTrades.value === 0) return 0
-  const winningTrades = tradeStore.filteredTrades.filter(t => t.pnl > 0).length
-  const tradeActive = tradeStore.filteredTrades.filter(t => t.pnl != 0).length
-  return tradeActive == 0 ? 100 : (winningTrades / tradeActive) * 100
+  const trades = tradeStore.trades || []
+  const closedTrades = trades.filter(t => t.pnl != 0).length
+  if (closedTrades === 0) return 0
+  const winningTrades = trades.filter(t => t.pnl > 0).length
+  return (winningTrades / closedTrades) * 100
 })
 
 const winningTradesCount = computed(() => {
-  return tradeStore.filteredTrades.filter(t => t.pnl > 0).length
+  return tradeStore.trades.filter(t => t.pnl > 0).length
 })
 
 const losingTradesCount = computed(() => {
-  return tradeStore.filteredTrades.filter(t => t.pnl < 0).length
+  return tradeStore.trades.filter(t => t.pnl < 0).length
 })
 
-// Apply filters when filter state changes
-watch(() => filter.value, () => {
-  // Update trade store filter
-  tradeStore.updateFilter(filter.value)
-  tradeStore.applyFilters()
-}, { deep: true })
-
-// Remove single filter
+// Remove single filter — syncs local ref + re-fetches from backend
 const removeFilter = (type: 'status' | 'symbol' | 'interval' | 'side' | 'min_confidence', value: any) => {
   if (type === 'status' || type === 'symbol') {
-    const current = tradeStore.filter[type]
-    const updated = current.filter(v => v !== value)
-    tradeStore.updateFilter({ [type]: updated })
+    filter.value[type] = filter.value[type].filter(v => v !== value)
+  } else if (type === 'min_confidence') {
+    filter.value.min_confidence = 0
   } else {
-    tradeStore.updateFilter({ [type]: type === 'min_confidence' ? 0 : '' })
+    filter.value[type] = ''
   }
-  tradeStore.applyFilters()
+  applyAndFetch()
 }
 
 // Reset filters handler
 const handleResetFilters = () => {
+  filter.value = {
+    status: [],
+    symbol: [],
+    interval: '',
+    side: '',
+    min_confidence: 0,
+    date_start: '',
+    date_end: '',
+    limit: 100
+  }
   tradeStore.resetFilter()
-  tradeStore.applyFilters()
+  tradeStore.fetchTrades()
 }
 
-// Apply filters handler
+// Apply filters handler (from TradeFilter modal)
 const handleApplyFilters = (newFilter: ITradeFilterState) => {
-  tradeStore.updateFilter(newFilter)
-  tradeStore.applyFilters()
+  filter.value = { ...newFilter }
+  applyAndFetch()
 }
 </script>
 
@@ -177,7 +188,7 @@ const handleApplyFilters = (newFilter: ITradeFilterState) => {
               <!-- Active Filter Chips -->
               <div class="flex items-center gap-2 flex-wrap">
                 <span
-                  v-for="status in tradeStore.filter.status"
+                  v-for="status in filter.status"
                   :key="status"
                   class="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full flex items-center gap-1"
                 >
@@ -188,7 +199,7 @@ const handleApplyFilters = (newFilter: ITradeFilterState) => {
                 </span>
 
                 <span
-                  v-for="symbol in tradeStore.filter.symbol"
+                  v-for="symbol in filter.symbol"
                   :key="symbol"
                   class="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full flex items-center gap-1"
                 >
@@ -199,31 +210,31 @@ const handleApplyFilters = (newFilter: ITradeFilterState) => {
                 </span>
 
                 <span
-                  v-if="tradeStore.filter.interval"
+                  v-if="filter.interval"
                   class="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex items-center gap-1"
                 >
-                  {{ tradeStore.filter.interval }}
-                  <button @click="tradeStore.updateFilter({ interval: '' })" class="hover:text-green-900">
+                  {{ filter.interval }}
+                  <button @click="removeFilter('interval', null)" class="hover:text-green-900">
                     <PhX :size="12" />
                   </button>
                 </span>
 
                 <span
-                  v-if="tradeStore.filter.side"
+                  v-if="filter.side"
                   class="px-2 py-1 bg-orange-100 text-orange-700 text-xs font-medium rounded-full flex items-center gap-1"
                 >
-                  {{ tradeStore.filter.side }}
-                  <button @click="tradeStore.updateFilter({ side: '' })" class="hover:text-orange-900">
+                  {{ filter.side }}
+                  <button @click="removeFilter('side', null)" class="hover:text-orange-900">
                     <PhX :size="12" />
                   </button>
                 </span>
 
                 <span
-                  v-if="tradeStore.filter.min_confidence > 0"
+                  v-if="filter.min_confidence > 0"
                   class="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-full flex items-center gap-1"
                 >
-                  ≥{{ tradeStore.filter.min_confidence }}% conf
-                  <button @click="tradeStore.updateFilter({ min_confidence: 0 })" class="hover:text-yellow-900">
+                  ≥{{ filter.min_confidence }}% conf
+                  <button @click="removeFilter('min_confidence', null)" class="hover:text-yellow-900">
                     <PhX :size="12" />
                   </button>
                 </span>
@@ -241,18 +252,18 @@ const handleApplyFilters = (newFilter: ITradeFilterState) => {
         </div>
 
         <!-- Trades List -->
-        <div v-if="tradeStore.filteredTrades.length === 0" class="text-center py-12 bg-white rounded-2xl shadow-lg border border-gray-100">
+        <div v-if="tradeStore.trades.length === 0" class="text-center py-12 bg-white rounded-2xl shadow-lg border border-gray-100">
           <PhCurrencyBtc :size="64" class="mx-auto text-gray-300 mb-4" />
           <p class="text-gray-500 text-lg font-medium">No trades found</p>
           <p class="text-gray-400 text-sm mt-1">
-            {{ tradeStore.trades.length === 0 ? 'Trades will appear here when they are executed' : 'Try adjusting your filters' }}
+            Try adjusting your filters or wait for trades to be executed
           </p>
         </div>
 
         <div v-else class="space-y-4 grid grid-cols-2 gap-2">
           <!-- Trade Cards -->
           <TradeCard
-            v-for="trade in tradeStore.filteredTrades"
+            v-for="trade in tradeStore.trades"
             :key="trade.id"
             :trade="trade"
           />

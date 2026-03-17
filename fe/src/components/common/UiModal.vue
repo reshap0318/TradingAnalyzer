@@ -16,7 +16,7 @@ const sizeClasses = {
   sm: 'max-w-sm',
   md: 'max-w-md',
   lg: 'max-w-lg',
-  xl: 'max-w-xl',
+  xl: 'max-w-2xl',
   full: 'max-w-4xl'
 }
 </script>
@@ -31,10 +31,7 @@ const sizeClasses = {
       >
         <div
           :class="sizeClasses[size || 'md']"
-          class="bg-white rounded-2xl shadow-2xl w-full max-h-[90vh] overflow-hidden flex flex-col
-                 transform transition-all duration-300
-                 modal-enter-from:opacity-0 modal-enter-from:scale-95 modal-enter-from:-translate-y-2
-                 modal-leave-to:opacity-0 modal-leave-to:scale-95 modal-leave-to:-translate-y-2"
+          class="bg-white rounded-2xl shadow-2xl w-full max-h-[90vh] overflow-hidden flex flex-col transform transition-all duration-300 modal-enter-from:opacity-0 modal-enter-from:scale-95 modal-enter-from:-translate-y-2 modal-leave-to:opacity-0 modal-leave-to:scale-95 modal-leave-to:-translate-y-2"
         >
           <!-- Header -->
           <header

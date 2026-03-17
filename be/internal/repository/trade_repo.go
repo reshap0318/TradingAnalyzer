@@ -187,6 +187,13 @@ func (r *TradeRepository) FindWithFilter(tx *gorm.DB, filter dtos.TradeFilter) (
 		query = query.Where("DATE(created_at) <= ?", filter.DateEnd)
 	}
 
+	// Apply limit if specified
+	if filter.Limit > 0 {
+		query = query.Limit(filter.Limit)
+	} else {
+		query = query.Limit(100)
+	}
+
 	var trades []models.Trade
 	err := query.Find(&trades).Error
 	return trades, err
