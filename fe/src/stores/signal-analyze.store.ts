@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { type IApiResponse, post } from '@/lib/axios'
-import { showSuccess, showError } from '@/lib/sweetalert'
+import { showSuccess, showError, showWarning } from '@/lib/sweetalert'
 import useVuelidate from '@vuelidate/core'
 import { required, minValue } from '@vuelidate/validators'
 
@@ -174,11 +174,17 @@ export const useSignalAnalyzeStore = defineStore('signalAnalyze', () => {
         signal_data: signalResult
       }
 
-      await post<IApiResponse<any>>(
-        `${BASE_URL}/execute`,
+      const { data } = await post<IApiResponse<any>>(
+        `/trade/execute`,
         payload
       )
-
+      
+      if (data.data.execution_info?.executed) {
+        showSuccess('Trade Executed', `Trade for ${payload.symbol} has been executed successfully`)
+      }
+      else {
+        showWarning('Trade Executed', `Trade for ${payload.symbol} has can't exucuted because signal not valid`)
+      }
       return true
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || 'Failed to execute trade'

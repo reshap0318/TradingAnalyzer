@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useSignalAnalyzeStore, type ITimeframeRawData } from '@/stores/signal-analyze.store'
 import { useStrategiesStore } from '@/stores/strategies.store'
 import { getValidationErrors } from '@/helpers/validation'
-import { showSuccess, showError } from '@/lib/sweetalert'
+import { showError } from '@/lib/sweetalert'
 import { DefaultLayout } from '@/layouts'
 import { PhFlask, PhCurrencyBtc, PhPlay } from '@phosphor-icons/vue'
 import { UiButton } from '@/components/common'
@@ -85,7 +85,6 @@ const handleExecute = async () => {
         <div style="background: #f3f4f6; padding: 15px; border-radius: 8px;">
           <p style="margin: 5px 0;"><strong>📊 Symbol:</strong> ${symbol}</p>
           <p style="margin: 5px 0;"><strong>🎯 Strategy:</strong> ${strategyName}</p>
-          <p style="margin: 5px 0;"><strong>💰 Capital:</strong> $${signalStore.analyzeReq.capital}</p>
         </div>
         <p style="margin-top: 15px; color: #f59e0b;">⚠️ This action will create a real trade in the database.</p>
       </div>
@@ -104,10 +103,7 @@ const handleExecute = async () => {
   // Execute trade
   isExecuting.value = true
   try {
-    const success = await signalStore.executeTrade(result.value)
-    if (success) {
-      showSuccess('Trade Executed', `Trade for ${symbol} has been executed successfully`)
-    }
+    await signalStore.executeTrade(result.value)
   } catch (error: any) {
     showError('Execution Failed', error.message || 'Failed to execute trade')
   } finally {
@@ -265,7 +261,7 @@ onUnmounted(() => {
                       full-width
                       @click="handleExecute"
                     >
-                      <PhPlay :size="20" weight="fill" />
+                      <PhPlay :size="25" weight="fill" />
                     </UiButton>
                   </div>
                 </div>
