@@ -163,6 +163,29 @@ export const useSignalAnalyzeStore = defineStore('signalAnalyze', () => {
     // Reset validation state
     analyzeReqValid.value.$reset()
   }
+
+  // Execute Trade
+  async function executeTrade(signalResult: ISignalAnalyzeResponse): Promise<boolean> {
+    try {
+      const payload = {
+        symbol: analyzeReq.value.symbol.toUpperCase(),
+        strategy_id: analyzeReq.value.strategy_id,
+        capital: analyzeReq.value.capital,
+        signal_data: signalResult
+      }
+
+      await post<IApiResponse<any>>(
+        `${BASE_URL}/execute`,
+        payload
+      )
+
+      return true
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.message || 'Failed to execute trade'
+      showError('Execution Error', errorMsg)
+      return false
+    }
+  }
   const isSignalValid = computed(() => result.value?.signal.valid || false)
   const confidence = computed(() => result.value?.scoring.confidence || 0)
 
@@ -272,6 +295,7 @@ export const useSignalAnalyzeStore = defineStore('signalAnalyze', () => {
     fetchRawData,
     resetResult,
     resetForm,
-    resetState
+    resetState,
+    executeTrade
   }
 })

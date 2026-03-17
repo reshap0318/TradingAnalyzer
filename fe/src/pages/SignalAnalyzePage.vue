@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useSignalAnalyzeStore, type ITimeframeRawData } from '@/stores/signal-analyze.store'
 import { useStrategiesStore } from '@/stores/strategies.store'
 import { getValidationErrors } from '@/helpers/validation'
+import { showSuccess, showError } from '@/lib/sweetalert'
 import { DefaultLayout } from '@/layouts'
-import { PhFlask, PhCurrencyBtc } from '@phosphor-icons/vue'
+import { PhFlask, PhCurrencyBtc, PhPlay } from '@phosphor-icons/vue'
 import { UiButton } from '@/components/common'
+import Swal from 'sweetalert2'
 
 // Components
 import SignalInfoCard from '@/components/features/signal-analyze/SignalInfoCard.vue'
@@ -16,9 +18,17 @@ import SignalChart from '@/components/features/signal-analyze/SignalChart.vue'
 const signalStore = useSignalAnalyzeStore()
 const strategiesStore = useStrategiesStore()
 
+// Execute loading state
+const isExecuting = ref(false)
+
 // Access form state dan validation dari store
 const v$ = signalStore.analyzeReqValid
 const isLoading = computed(() => signalStore.loading)
+
+// Check if can execute (must have analyzed data first)
+const canExecute = computed(() => {
+  return !!result.value && !!tradingPlan.value
+})
 
 // Get strategies untuk dropdown (tampilkan semua)
 const strategies = computed(() => strategiesStore.strategies)
@@ -53,6 +63,55 @@ const handleSubmit = async () => {
   const success = await signalStore.analyzeSignal()
   if (success) {
     // Form sudah di-reset otomatis oleh store
+  }
+}
+
+// Execute handler
+const handleExecute = async () => {
+  if (!canExecute.value || !result.value) return
+
+  // Get strategy info for confirmation
+  const strategyId = signalStore.analyzeReq.strategy_id
+  const strategy = strategiesStore.strategies.find(s => s.id === strategyId)
+  const strategyName = strategy?.strategy_name || 'Unknown'
+  const symbol = signalStore.analyzeReq.symbol.toUpperCase()
+
+  // Show confirmation dialog
+  const confirmResult = await Swal.fire({
+    title: 'Execute Trade?',
+    html: `
+      <div style="text-align: left; padding: 20px 0;">
+        <p style="margin-bottom: 10px;">You are about to execute a trade with:</p>
+        <div style="background: #f3f4f6; padding: 15px; border-radius: 8px;">
+          <p style="margin: 5px 0;"><strong>📊 Symbol:</strong> ${symbol}</p>
+          <p style="margin: 5px 0;"><strong>🎯 Strategy:</strong> ${strategyName}</p>
+          <p style="margin: 5px 0;"><strong>💰 Capital:</strong> $${signalStore.analyzeReq.capital}</p>
+        </div>
+        <p style="margin-top: 15px; color: #f59e0b;">⚠️ This action will create a real trade in the database.</p>
+      </div>
+    `,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Yes, Execute!',
+    cancelButtonText: 'Cancel',
+    confirmButtonColor: '#10b981',
+    cancelButtonColor: '#6b7280',
+    reverseButtons: true
+  })
+
+  if (!confirmResult.isConfirmed) return
+
+  // Execute trade
+  isExecuting.value = true
+  try {
+    const success = await signalStore.executeTrade(result.value)
+    if (success) {
+      showSuccess('Trade Executed', `Trade for ${symbol} has been executed successfully`)
+    }
+  } catch (error: any) {
+    showError('Execution Failed', error.message || 'Failed to execute trade')
+  } finally {
+    isExecuting.value = false
   }
 }
 
@@ -182,15 +241,34 @@ onUnmounted(() => {
                   </p>
                 </div>
 
-                <!-- Submit Button -->
-                <UiButton
-                  type="submit"
-                  variant="primary"
-                  :loading="isLoading"
-                  full-width
-                >
-                  {{ isLoading ? 'Analyzing...' : 'Analyze Signal' }}
-                </UiButton>
+                <!-- Submit Button + Execute Button (8:2 ratio) -->
+                <div class="grid grid-cols-10 gap-3">
+                  <!-- Analyze Button (8/10 = 80%) -->
+                  <div class="col-span-8">
+                    <UiButton
+                      type="submit"
+                      variant="primary"
+                      :loading="isLoading"
+                      full-width
+                    >
+                      {{ isLoading ? 'Analyzing...' : 'Analyze Signal' }}
+                    </UiButton>
+                  </div>
+
+                  <!-- Execute Button (2/10 = 20%) -->
+                  <div class="col-span-2">
+                    <UiButton
+                      type="button"
+                      variant="success"
+                      :loading="isExecuting"
+                      :disabled="!canExecute || isLoading"
+                      full-width
+                      @click="handleExecute"
+                    >
+                      <PhPlay :size="20" weight="fill" />
+                    </UiButton>
+                  </div>
+                </div>
               </form>
             </div>
 

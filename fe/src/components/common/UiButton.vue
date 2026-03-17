@@ -1,7 +1,7 @@
 <script setup lang="ts">
 interface IUiButtonProps {
   type?: 'button' | 'submit' | 'reset'
-  variant?: 'primary' | 'danger' | 'outline'
+  variant?: 'primary' | 'success' | 'danger' | 'outline'
   loading?: boolean
   disabled?: boolean
   fullWidth?: boolean
@@ -21,6 +21,7 @@ const emit = defineEmits<{
 
 const variantClasses = {
   primary: 'bg-primary hover:bg-primary-dark text-white',
+  success: 'bg-green-600 hover:bg-green-700 text-white',
   danger: 'bg-danger hover:bg-danger-dark text-white',
   outline: 'border-2 border-primary text-primary hover:bg-primary hover:text-white'
 }
