@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"time"
@@ -51,10 +52,19 @@ func (s *Services) tradeMonitorProcessTrade(ctx *gin.Context, trade *models.Trad
 	}
 
 	// ========================================================================
-	// FASE 0: PERSIAPAN DATA
+	// FASE 0: PERSIAPAN DATA (Tarik semua data dari Binance di awal)
 	// ========================================================================
 
 	result.Logs = append(result.Logs, fmt.Sprintf("Starting evaluation for trade #%d (%s)", trade.ID, trade.Symbol))
+
+	// 0. Tarik Harga Market Terkini (Global GetPrice Optimization)
+	// Ini menghemat pemanggilan API berkali-kali di Fase 1 (Fallback/Manual Close) dan Fase 3 (PnL)
+	curPrice, err := s.BinanceClient.GetPrice(trade.Symbol)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch current market price: %w", err)
+	}
+	currentMarketPrice := curPrice.Price
+	result.Logs = append(result.Logs, fmt.Sprintf("Current Market Price: %v", currentMarketPrice))
 
 	// 1. Validasi: Jika status Trade bukan "ACTIVE", langsung RETURN
 	if trade.Status != "ACTIVE" {
@@ -64,7 +74,7 @@ func (s *Services) tradeMonitorProcessTrade(ctx *gin.Context, trade *models.Trad
 		return result, nil
 	}
 
-	// 2. Tarik Binance: GET All Open Orders untuk symbol ini (cache untuk cek di bawah)
+	// 2.a Tarik Binance: GET All Open Orders untuk symbol ini (cache untuk cek di bawah)
 	result.Logs = append(result.Logs, "Fetching open orders from Binance...")
 	openOrders, err := s.BinanceClient.GetOpenOrders(trade.Symbol)
 	if err != nil {
@@ -78,11 +88,25 @@ func (s *Services) tradeMonitorProcessTrade(ctx *gin.Context, trade *models.Trad
 		orderMap[openOrders[i].OrderID] = &openOrders[i]
 	}
 
+	// 2.b Tarik Binance: GET All Open Algo Orders untuk symbol ini (cache untuk cek di bawah)
+	result.Logs = append(result.Logs, "Fetching open algo orders from Binance...")
+	openAlgoOrders, err := s.BinanceClient.GetOpenAlgoOrders(ctx, trade.Symbol)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch open algo orders: %w", err)
+	}
+
+	// Build map for quick lookup: algo_id -> algo order
+	result.Logs = append(result.Logs, fmt.Sprintf("Found %d open algo orders on Binance", len(openAlgoOrders)))
+	algoOrderMap := make(map[int64]*binance.AlgoOrderResponse, len(openAlgoOrders))
+	for i := range openAlgoOrders {
+		algoOrderMap[openAlgoOrders[i].AlgoID] = &openAlgoOrders[i]
+	}
+
 	// ========================================================================
 	// FASE 1: CEK TP / SL (Prioritas Utama Pencegah Ghost Order)
 	// ========================================================================
 	result.Logs = append(result.Logs, "Phase 1: Checking TP/SL status...")
-	fase1Result, shouldReturn, err := s.tradeMonitorFase1CheckTPSL(ctx, trade, orderMap, result)
+	fase1Result, shouldReturn, err := s.tradeMonitorFase1CheckTPSL(ctx, trade, orderMap, algoOrderMap, currentMarketPrice, result)
 	if err != nil {
 		result.Logs = append(result.Logs, fmt.Sprintf("ERROR in Phase 1: %v", err))
 		return nil, fmt.Errorf("fase 1 failed: %w", err)
@@ -125,7 +149,7 @@ func (s *Services) tradeMonitorProcessTrade(ctx *gin.Context, trade *models.Trad
 	// FASE 3: NETTING & FINALISASI
 	// ========================================================================
 	result.Logs = append(result.Logs, "Phase 3: Performing netting and finalizing metrics...")
-	err = s.tradeMonitorFase3Netting(ctx, trade, result)
+	err = s.tradeMonitorFase3Netting(ctx, trade, currentMarketPrice, result)
 	if err != nil {
 		result.Logs = append(result.Logs, fmt.Sprintf("ERROR in Phase 3: %v", err))
 		return nil, fmt.Errorf("fase 3 failed: %w", err)
@@ -144,11 +168,13 @@ func (s *Services) tradeMonitorProcessTrade(ctx *gin.Context, trade *models.Trad
 	return result, nil
 }
 
-// tradeMonitorFase1CheckTPSL handles Fase 1: Cek TP/SL
+// tradeMonitorFase1CheckTPSL handles Fase 1: Pengecekan TP & SL
 func (s *Services) tradeMonitorFase1CheckTPSL(
 	ctx *gin.Context,
 	trade *models.Trade,
 	orderMap map[int64]*binance.OrderResponse,
+	algoOrderMap map[int64]*binance.AlgoOrderResponse,
+	currentMarketPrice float64,
 	processResult *dtos.ProcessTradeResult,
 ) (*dtos.ProcessTradeResult, bool, error) {
 	result := &dtos.ProcessTradeResult{}
@@ -162,368 +188,52 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 		}
 	}
 
-	// ========================================================================
-	// CEK POSISI: Validasi apakah user melakukan Manual Close di Binance
-	// ========================================================================
-	if totalFilledQtyDB > 0 {
-		processResult.Logs = append(processResult.Logs, fmt.Sprintf("Checking actual Binance position size. DB thinks we have %v coins.", totalFilledQtyDB))
-		position, err := s.BinanceClient.GetPosition(trade.Symbol)
-		if err != nil {
-			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Failed to fetch position from Binance: %v", err))
-		} else {
-			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Actual Binance PositionAmt is %v", position.PositionAmt))
-
-			// Jika di DB kita punya barang, tapi di Binance PositionAmt == 0,
-			// artinya user telah MENUTUP posisi ini secara manual lewat aplikasi!
-			if position.PositionAmt == 0 {
-				processResult.Logs = append(processResult.Logs, "🚨 EMERGENCY: Binance position is 0 but DB has coins! User must have closed manually.")
-				curPrice, _ := s.BinanceClient.GetPrice(trade.Symbol)
-				err := s.repo.TxManager.WithinTransaction(func(tx *gorm.DB) error {
-					// Hitung PnL untuk dicatat di DB
-					pnl := calculatePnL(trade, curPrice.Price)
-					pnlPct := calculatePnLPct(trade, pnl)
-					processResult.Logs = append(processResult.Logs, fmt.Sprintf("Close Position With Market Price %.2f, pnl %.3f", curPrice.Price, pnl))
-					// 1. Update trade status
-					now := time.Now()
-					updateTrade := &models.Trade{
-						Status:     "CLOSED",
-						ClosedAt:   &now,
-						ExitPrice:  curPrice.Price, // Approximate closing price
-						ExitReason: "MANUAL_CLOSE",
-						PnL:        pnl,
-						PnLPct:     pnlPct,
-					}
-					_, err := s.repo.Trade.Update(tx, &models.Trade{ID: trade.ID}, updateTrade)
-					if err != nil {
-						return fmt.Errorf("failed to update trade status to CLOSED (Manual): %w", err)
-					}
-
-					// 2. Cancel semua order jaring (Entry) yang masih ngantre ("NEW")
-					entries, err := s.repo.TradeEntry.FindByTradeID(tx, trade.ID)
-					if err != nil {
-						return fmt.Errorf("failed to fetch entries: %w", err)
-					}
-
-					for _, entry := range entries {
-						if entry.Status == "PENDING" || entry.Status == "NEW" {
-							processResult.Logs = append(processResult.Logs, fmt.Sprintf("Canceling pending Entry Order %d...", entry.BinanceOrderID))
-							_, err := s.BinanceClient.CancelOrder(&binance.CancelOrderRequest{
-								Symbol:  trade.Symbol,
-								OrderID: entry.BinanceOrderID,
-							})
-
-							if err != nil {
-								processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Cancel entry order %d failed: %v", entry.BinanceOrderID, err))
-							} else {
-								processResult.Logs = append(processResult.Logs, fmt.Sprintf("Entry Order %d canceled on Binance successfully.", entry.BinanceOrderID))
-							}
-
-							err = s.repo.TradeEntry.UpdateStatus(tx, entry.ID, "CANCELLED", "Manual close")
-							if err != nil {
-								return fmt.Errorf("failed to update entry status: %w", err)
-							}
-						}
-					}
-
-					// 3. Cancel TP/SL if they still exist (often closed automatically by Binance, but just to be sure)
-					if trade.TPOrderID > 0 {
-						s.BinanceClient.CancelOrder(&binance.CancelOrderRequest{Symbol: trade.Symbol, OrderID: trade.TPOrderID})
-					}
-					if trade.SLOrderID > 0 {
-						s.BinanceClient.CancelOrder(&binance.CancelOrderRequest{Symbol: trade.Symbol, OrderID: trade.SLOrderID})
-					}
-
-					return nil
-				})
-
-				if err != nil {
-					return result, false, err
-				}
-
-				processResult.Logs = append(processResult.Logs, "Trade closed manually by user. Halting further checks.")
-				trade.Status = "MANUAL_CLOSE"
-				result.TPUpdated = false
-				result.SLUpdated = false
-				return result, true, nil
-			}
-		}
-	}
-
-	// Cek DB: Apakah tp_order_id sudah ada isinya?
-	if trade.TPOrderID == 0 {
-		processResult.Logs = append(processResult.Logs, "No TP order ID found in DB.")
-		
-		// 🆕 FALLBACK: Cek apakah ada entry yang sudah filled tapi tidak punya TP/SL
-		hasFilledEntry := false
-		totalFilledQty := 0.0
-		
-		for _, e := range trade.Entries {
-			if e.Status == "FILLED" || e.Status == "PARTIALLY_FILLED" {
-				hasFilledEntry = true
-				totalFilledQty += e.FilledQty
-			}
-		}
-		
-		if hasFilledEntry && totalFilledQty > 0 {
-			processResult.Logs = append(processResult.Logs, 
-				fmt.Sprintf("⚠️ WARNING: Trade has %.8f filled qty but NO TP/SL! Checking price manually...", totalFilledQty))
-			
-			// 🆕 Cek harga sekarang vs TP/SL price di DB
-			curPrice, err := s.BinanceClient.GetPrice(trade.Symbol)
-			if err != nil {
-				return result, false, fmt.Errorf("failed to get price: %w", err)
-			}
-			
-			// Cek apakah harga sudah hit TP atau SL
-			hitTP := false
-			hitSL := false
-			
-			// Note: trade.Side menggunakan "BUY" untuk LONG dan "SELL" untuk SHORT
-			if trade.Side == "BUY" {
-				// LONG: TP di atas, SL di bawah
-				if curPrice.Price >= trade.TPPrice {
-					hitTP = true
-					processResult.Logs = append(processResult.Logs,
-						fmt.Sprintf("🚨 TP HIT SYSTEM! Price: %.8f >= TP: %.8f", curPrice.Price, trade.TPPrice))
-				}
-				if curPrice.Price <= trade.SLPrice {
-					hitSL = true
-					processResult.Logs = append(processResult.Logs,
-						fmt.Sprintf("🚨 SL HIT SYSTEM! Price: %.8f <= SL: %.8f", curPrice.Price, trade.SLPrice))
-				}
-			} else if trade.Side == "SELL" {
-				// SHORT: TP di bawah, SL di atas
-				if curPrice.Price <= trade.TPPrice {
-					hitTP = true
-					processResult.Logs = append(processResult.Logs,
-						fmt.Sprintf("🚨 TP HIT SYSTEM! Price: %.8f <= TP: %.8f", curPrice.Price, trade.TPPrice))
-				}
-				if curPrice.Price >= trade.SLPrice {
-					hitSL = true
-					processResult.Logs = append(processResult.Logs,
-						fmt.Sprintf("🚨 SL HIT SYSTEM! Price: %.8f >= SL: %.8f", curPrice.Price, trade.SLPrice))
-				}
-			}
-			
-			// Jika TP/SL hit, langsung close trade
-			if hitTP || hitSL {
-				processResult.Logs = append(processResult.Logs, "Executing manual TP/SL close...")
-
-				exitReason := "TP_HIT_SYSTEM"
-				if hitSL {
-					exitReason = "SL_HIT_SYSTEM"
-				}
-
-				err := s.repo.TxManager.WithinTransaction(func(tx *gorm.DB) error {
-					// Gunakan current price sebagai exit price (real market price saat close)
-					// Ini konsisten dengan manual close behavior di Binance
-					exitPrice := curPrice.Price
-
-					// Hitung PnL
-					pnl := calculatePnL(trade, exitPrice)
-					pnlPct := calculatePnLPct(trade, pnl)
-
-					processResult.Logs = append(processResult.Logs,
-						fmt.Sprintf("Close Position With Price %.8f, PnL: %.8f (%.2f%%)", exitPrice, pnl, pnlPct))
-
-					// Update trade status
-					now := time.Now()
-					updateTrade := &models.Trade{
-						Status:     "CLOSED",
-						ClosedAt:   &now,
-						ExitPrice:  exitPrice,
-						ExitReason: exitReason,
-						PnL:        pnl,
-						PnLPct:     pnlPct,
-					}
-					_, err := s.repo.Trade.Update(tx, &models.Trade{ID: trade.ID}, updateTrade)
-					if err != nil {
-						return fmt.Errorf("failed to update trade: %w", err)
-					}
-
-					// 🚨 CRITICAL: Close actual Binance position first (market order opposite direction)
-					// This is the REAL close - without this, position stays open on Binance!
-					closeSide := binance.OrderSideSell // BUY position => close with SELL
-					if trade.Side == "SELL" {
-						closeSide = binance.OrderSideBuy // SELL position => close with BUY
-					}
-					processResult.Logs = append(processResult.Logs,
-						fmt.Sprintf("Closing Binance position for %s (Qty: %v, Side: %s)...", trade.Symbol, totalFilledQty, closeSide))
-
-					_, closeErr := s.BinanceClient.ClosePosition(trade.Symbol, totalFilledQty, closeSide)
-					if closeErr != nil {
-						processResult.Logs = append(processResult.Logs,
-							fmt.Sprintf("⚠️ Warning: Failed to close Binance position for %s: %v", trade.Symbol, closeErr))
-					} else {
-						processResult.Logs = append(processResult.Logs,
-							fmt.Sprintf("✅ Binance position for %s closed successfully.", trade.Symbol))
-					}
-
-					// Cancel semua pending entry orders untuk symbol ini (1 API call untuk semua orders)
-					processResult.Logs = append(processResult.Logs,
-						fmt.Sprintf("Canceling ALL open orders for symbol %s...", trade.Symbol))
-
-					if cancelErr := s.BinanceClient.CancelAllOrders(trade.Symbol); cancelErr != nil {
-						processResult.Logs = append(processResult.Logs,
-							fmt.Sprintf("Warning: Failed to cancel all orders for %s: %v", trade.Symbol, cancelErr))
-					} else {
-						processResult.Logs = append(processResult.Logs,
-							fmt.Sprintf("ALL orders for %s canceled on Binance successfully.", trade.Symbol))
-					}
-
-					// Update semua entry status jadi CANCELLED di DB
-					entries, err := s.repo.TradeEntry.FindByTradeID(tx, trade.ID)
-					if err != nil {
-						return fmt.Errorf("failed to fetch entries: %w", err)
-					}
-
-					for _, entry := range entries {
-						if entry.Status == "PENDING" || entry.Status == "NEW" {
-							err = s.repo.TradeEntry.UpdateStatus(tx, entry.ID, "CANCELLED", "Manual TP/SL hit")
-							if err != nil {
-								return fmt.Errorf("failed to update entry: %w", err)
-							}
-						}
-					}
-
-					return nil
-				})
-
-				if err != nil {
-					return result, false, err
-				}
-
-				trade.Status = "CLOSED"
-				result.TPUpdated = hitTP
-				result.SLUpdated = hitSL
-				shouldReturn = true
-				processResult.Logs = append(processResult.Logs,
-					fmt.Sprintf("Trade closed by system due to TP/SL hit without orders. Exit Reason: %s", exitReason))
-				return result, true, nil
-			}
-			
-			// Jika belum hit, log warning dan lanjutkan (akan retry create TP/SL di Fase 2 jika ada entry baru)
-			processResult.Logs = append(processResult.Logs, 
-				fmt.Sprintf("⚠️ TP/SL not hit yet. Current: %.8f, TP: %.8f, SL: %.8f. Will retry creating orders if new entry filled.", 
-					curPrice.Price, trade.TPPrice, trade.SLPrice))
-		} else {
-			processResult.Logs = append(processResult.Logs, "No filled entries yet, skipping TP/SL check.")
-		}
-		
+	// 1. GERBANG AWAL: Jika DB belum ada entry terisi, skip cek TP/SL
+	if totalFilledQtyDB == 0 {
+		processResult.Logs = append(processResult.Logs, "No filled entries yet, skipping TP/SL check.")
 		return result, false, nil
 	}
 
-	// Cocokkan ID TP/SL tersebut dengan data cache Binance
-	tpOrder, tpExists := orderMap[trade.TPOrderID]
-	slOrder, slExists := orderMap[trade.SLOrderID]
+	// 2. KONDISI FALLBACK: DB punya koin, tapi TP/SL gagal terbuat (ID 0)
+	if trade.TPOrderID == 0 {
+		processResult.Logs = append(processResult.Logs, "⚠️ FALLBACK CHECK: No TP order ID found in DB. Checking price manually...")
 
-	// 🚨 PENTING: GetOpenOrders HANYA mengembalikan order yang NEW/PARTIALLY_FILLED.
-	// Jika status TP atau SL sudah "FILLED", order akan hilang dari orderMap!
-	// Oleh karena itu, jika tidak ada di orderMap, kita wajib hit GET Order Detail.
-	if !tpExists && trade.TPOrderID > 0 {
-		processResult.Logs = append(processResult.Logs, fmt.Sprintf("TP Order %d not found in open orders. Fetching manually...", trade.TPOrderID))
-		tpOrderDetail, err := s.BinanceClient.GetOrder(&binance.GetOrdersRequest{
-			Symbol:  trade.Symbol,
-			OrderID: trade.TPOrderID,
-		})
-		if err == nil {
-			tpOrder = tpOrderDetail
-			tpExists = true
-			processResult.Logs = append(processResult.Logs, fmt.Sprintf("TP Order %d retrieved, status: %s", trade.TPOrderID, tpOrder.Status))
-		} else {
-			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Failed to fetch TP Order %d: %v", trade.TPOrderID, err))
-		}
-	} else if tpExists {
-		processResult.Logs = append(processResult.Logs, fmt.Sprintf("TP Order %d is in open orders, status: %s", trade.TPOrderID, tpOrder.Status))
-	}
+		// Kita hemat API getPrice dengan menggunakan currentMarketPrice dari Fase 0
+		hitTP := false
+		hitSL := false
 
-	if !slExists && trade.SLOrderID > 0 {
-		processResult.Logs = append(processResult.Logs, fmt.Sprintf("SL Order %d not found in open orders. Fetching manually...", trade.SLOrderID))
-		slOrderDetail, err := s.BinanceClient.GetOrder(&binance.GetOrdersRequest{
-			Symbol:  trade.Symbol,
-			OrderID: trade.SLOrderID,
-		})
-		if err == nil {
-			slOrder = slOrderDetail
-			slExists = true
-			processResult.Logs = append(processResult.Logs, fmt.Sprintf("SL Order %d retrieved, status: %s", trade.SLOrderID, slOrder.Status))
-		} else {
-			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Failed to fetch SL Order %d: %v", trade.SLOrderID, err))
-		}
-	} else if slExists {
-		processResult.Logs = append(processResult.Logs, fmt.Sprintf("SL Order %d is in open orders, status: %s", trade.SLOrderID, slOrder.Status))
-	}
-
-	tpFilled := tpExists && tpOrder.Status == "FILLED"
-	slFilled := slExists && slOrder.Status == "FILLED"
-
-	// Jika Status Binance = "FILLED"
-	if tpFilled || slFilled {
-		// 🆕 STEP 1: Validate actual position di Binance (detect ghost position)
-		position, posErr := s.BinanceClient.GetPosition(trade.Symbol)
-		if posErr != nil {
-			processResult.Logs = append(processResult.Logs, 
-				fmt.Sprintf("Warning: Failed to fetch position: %v", posErr))
-		}
-		
-		actualQty := 0.0
-		if position != nil {
-			actualQty = math.Abs(position.PositionAmt)
-		}
-		
-		// Calculate DB total filled qty
-		dbTotalQty := 0.0
-		for _, e := range trade.Entries {
-			if e.Status == "FILLED" || e.Status == "PARTIALLY_FILLED" {
-				dbTotalQty += e.FilledQty
+		if trade.Side == "BUY" || trade.Side == "STRONG_BUY" {
+			if currentMarketPrice >= trade.TPPrice {
+				hitTP = true
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("🚨 TP HIT SYSTEM (Dead Algo Status)! Price: %.8f >= TP: %.8f", currentMarketPrice, trade.TPPrice))
+			}
+			if currentMarketPrice <= trade.SLPrice {
+				hitSL = true
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("🚨 SL HIT SYSTEM (Dead Algo Status)! Price: %.8f <= SL: %.8f", currentMarketPrice, trade.SLPrice))
+			}
+		} else if trade.Side == "SELL" || trade.Side == "STRONG_SELL" {
+			if currentMarketPrice <= trade.TPPrice {
+				hitTP = true
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("🚨 TP HIT SYSTEM (Dead Algo Status)! Price: %.8f <= TP: %.8f", currentMarketPrice, trade.TPPrice))
+			}
+			if currentMarketPrice >= trade.SLPrice {
+				hitSL = true
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("🚨 SL HIT SYSTEM (Dead Algo Status)! Price: %.8f >= SL: %.8f", currentMarketPrice, trade.SLPrice))
 			}
 		}
-		
-		// 🆕 Mismatch detected → Use FULL close to prevent ghost position
-		if actualQty > dbTotalQty && actualQty > 0 {
-			processResult.Logs = append(processResult.Logs,
-				fmt.Sprintf("⚠️ POSITION MISMATCH DETECTED! DB: %.8f, Binance: %.8f",
-					dbTotalQty, actualQty))
-			processResult.Logs = append(processResult.Logs,
-				"🚨 Using SL_HIT_MISMATCH/TP_HIT_MISMATCH flow to close ALL position...")
-			
-			// 🆕 STEP 2: Sync entries first to get latest data
-			processResult.Logs = append(processResult.Logs,
-				"Syncing entries before close to prevent ghost position...")
-			_, syncErr := s.tradeMonitorFase2SyncEntries(ctx, trade, orderMap, processResult)
-			if syncErr != nil {
-				processResult.Logs = append(processResult.Logs,
-					fmt.Sprintf("⚠️ Warning: Entry sync failed: %v. Continuing with actualQty...", syncErr))
+
+		if hitTP || hitSL {
+			processResult.Logs = append(processResult.Logs, "Executing manual FORCE close due to dead Algo ID...")
+			exitReason := "TP_HIT_SYSTEM"
+			if hitSL {
+				exitReason = "SL_HIT_SYSTEM"
 			}
-			
-			// Recalculate DB total after sync
-			dbTotalQty = 0.0
-			for _, e := range trade.Entries {
-				if e.Status == "FILLED" || e.Status == "PARTIALLY_FILLED" {
-					dbTotalQty += e.FilledQty
-				}
-			}
-			
-			// Determine exit reason
-			exitReason := "TP_HIT_MISMATCH"
-			exitPrice := trade.TPPrice
-			if slFilled {
-				exitReason = "SL_HIT_MISMATCH"
-				exitPrice = trade.SLPrice
-			}
-			
-			processResult.Logs = append(processResult.Logs,
-				fmt.Sprintf("Exit condition met: %s. Closing with ACTUAL qty: %.8f", exitReason, actualQty))
-			
+
 			err := s.repo.TxManager.WithinTransaction(func(tx *gorm.DB) error {
-				// Hitung PnL dengan actual qty
-				// Note: calculatePnL uses trade.TotalQty, jadi kita update dulu
-				tempTrade := *trade
-				tempTrade.TotalQty = actualQty
-				pnl := calculatePnL(&tempTrade, exitPrice)
-				pnlPct := calculatePnLPct(&tempTrade, pnl)
-				
-				// Update trade status dengan FULL close info
+				exitPrice := currentMarketPrice
+				pnl := calculatePnL(trade, exitPrice)
+				pnlPct := calculatePnLPct(trade, pnl)
+
 				now := time.Now()
 				updateTrade := &models.Trade{
 					Status:     "CLOSED",
@@ -532,35 +242,152 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 					ExitReason: exitReason,
 					PnL:        pnl,
 					PnLPct:     pnlPct,
-					TotalQty:   actualQty, // Update dengan actual qty
 				}
 				_, err := s.repo.Trade.Update(tx, &models.Trade{ID: trade.ID}, updateTrade)
 				if err != nil {
-					return fmt.Errorf("failed to update trade status to CLOSED (%s): %w", exitReason, err)
+					return fmt.Errorf("failed to update trade: %w", err)
 				}
-				
-				// 🚨 CRITICAL: Close ACTUAL position di Binance (dengan actual qty)
-				closeSide := binance.OrderSideSell // BUY position => close with SELL
-				if trade.Side == "SELL" || trade.Side == "STRONG_SELL" {
-					closeSide = binance.OrderSideBuy // SELL position => close with BUY
+
+				closeSide := binance.OrderSideSell
+				if trade.Side == "SELL" {
+					closeSide = binance.OrderSideBuy
 				}
-				
-				processResult.Logs = append(processResult.Logs,
-					fmt.Sprintf("🚨 Closing Binance position for %s (Actual Qty: %.8f, Side: %s)...", 
-						trade.Symbol, actualQty, closeSide))
-				
-				_, closeErr := s.BinanceClient.ClosePosition(trade.Symbol, actualQty, closeSide)
+
+				_, closeErr := s.BinanceClient.ClosePosition(trade.Symbol, totalFilledQtyDB, closeSide)
 				if closeErr != nil {
-					processResult.Logs = append(processResult.Logs,
-						fmt.Sprintf("⚠️ Warning: Failed to close Binance position: %v", closeErr))
-					return fmt.Errorf("failed to close position: %w", closeErr)
+					processResult.Logs = append(processResult.Logs, fmt.Sprintf("⚠️ Warning: Failed to close Binance position: %v", closeErr))
 				} else {
-					processResult.Logs = append(processResult.Logs,
-						fmt.Sprintf("✅ Binance position for %s closed successfully with qty %.8f", 
-							trade.Symbol, actualQty))
+					processResult.Logs = append(processResult.Logs, "✅ Binance position closed successfully.")
 				}
-				
-				// Cancel semua pending entries
+
+				if cancelErr := s.BinanceClient.CancelAllOrders(trade.Symbol); cancelErr != nil {
+					processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Failed to cancel all orders: %v", cancelErr))
+				}
+
+				entries, err := s.repo.TradeEntry.FindByTradeID(tx, trade.ID)
+				for _, entry := range entries {
+					if entry.Status == "PENDING" || entry.Status == "NEW" {
+						_ = s.repo.TradeEntry.UpdateStatus(tx, entry.ID, "CANCELLED", "Manual TP/SL hit")
+					}
+				}
+				return nil
+			})
+			if err != nil {
+				return result, false, err
+			}
+			trade.Status = "CLOSED"
+			result.TPUpdated = hitTP
+			result.SLUpdated = hitSL
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Trade closed by system due to TP/SL hit without orders. Exit Reason: %s", exitReason))
+			return result, true, nil
+		}
+
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("⚠️ TP/SL not hit yet. Current: %.8f, TP: %.8f, SL: %.8f. Will retry creating orders if new entry filled.", currentMarketPrice, trade.TPPrice, trade.SLPrice))
+		return result, false, nil
+	}
+
+	// 3. FOKUS UTAMA ALGO: Validasi Status TP/SL yang tertaut ID sah (>0)
+	tpAlgoOrder, tpExists := algoOrderMap[trade.TPOrderID]
+	slAlgoOrder, slExists := algoOrderMap[trade.SLOrderID]
+
+	if !tpExists {
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("TP Algo %d not found in open orders. Fetching manually...", trade.TPOrderID))
+		tpOrderDetail, err := s.BinanceClient.GetAlgoOrder(ctx, &binance.GetAlgoOrdersRequest{
+			Symbol:  trade.Symbol,
+			AlgoID:  trade.TPOrderID,
+		})
+		if err == nil {
+			tpAlgoOrder = tpOrderDetail
+			tpExists = true
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("TP Algo %d retrieved, status: %s", trade.TPOrderID, tpAlgoOrder.AlgoStatus))
+		}
+	} else {
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("TP Algo %d is in open orders, status: %s", trade.TPOrderID, tpAlgoOrder.AlgoStatus))
+	}
+
+	if !slExists {
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("SL Algo %d not found in open orders. Fetching manually...", trade.SLOrderID))
+		slOrderDetail, err := s.BinanceClient.GetAlgoOrder(ctx, &binance.GetAlgoOrdersRequest{
+			Symbol:  trade.Symbol,
+			AlgoID:  trade.SLOrderID,
+		})
+		if err == nil {
+			slAlgoOrder = slOrderDetail
+			slExists = true
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("SL Algo %d retrieved, status: %s", trade.SLOrderID, slAlgoOrder.AlgoStatus))
+		}
+	} else {
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("SL Algo %d is in open orders, status: %s", trade.SLOrderID, slAlgoOrder.AlgoStatus))
+	}
+
+	tpFilled := tpExists && tpAlgoOrder.AlgoStatus == "FILLED"
+	slFilled := slExists && slAlgoOrder.AlgoStatus == "FILLED"
+
+	// Jika Sistem API TP/SL mendeteksi FILLED - Murni Action dari System Close
+	if tpFilled || slFilled {
+		// Validasi Actual Posisi untuk Mismatch Handling
+		position, posErr := s.BinanceClient.GetPosition(trade.Symbol)
+		actualQty := 0.0
+		if posErr == nil && position != nil {
+			actualQty = math.Abs(position.PositionAmt)
+		}
+
+		if actualQty > totalFilledQtyDB && actualQty > 0 {
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("⚠️ GHOST POSITION DETECTED (System Hit)! DB: %.8f, Binance: %.8f", totalFilledQtyDB, actualQty))
+
+			// Auto sync entries untuk last effort update DB
+			_, _ = s.tradeMonitorFase2SyncEntries(ctx, trade, orderMap, processResult)
+
+			dbTotalQty := 0.0
+			for _, e := range trade.Entries {
+				if e.Status == "FILLED" || e.Status == "PARTIALLY_FILLED" {
+					dbTotalQty += e.FilledQty
+				}
+			}
+
+			exitReason := "TP_HIT_MISMATCH"
+			exitPrice := trade.TPPrice
+			if slFilled {
+				exitReason = "SL_HIT_MISMATCH"
+				exitPrice = trade.SLPrice
+			}
+
+			err := s.repo.TxManager.WithinTransaction(func(tx *gorm.DB) error {
+				tempTrade := *trade
+				tempTrade.TotalQty = actualQty
+				pnl := calculatePnL(&tempTrade, exitPrice)
+				pnlPct := calculatePnLPct(&tempTrade, pnl)
+
+				now := time.Now()
+				updateTrade := &models.Trade{
+					Status:     "CLOSED",
+					ClosedAt:   &now,
+					ExitPrice:  exitPrice,
+					ExitReason: exitReason,
+					PnL:        pnl,
+					PnLPct:     pnlPct,
+					TotalQty:   actualQty,
+				}
+				_, err := s.repo.Trade.Update(tx, &models.Trade{ID: trade.ID}, updateTrade)
+				if err != nil {
+					return err
+				}
+
+				closeSide := binance.OrderSideSell
+				if trade.Side == "SELL" || trade.Side == "STRONG_SELL" {
+					closeSide = binance.OrderSideBuy
+				}
+
+				_, _ = s.BinanceClient.ClosePosition(trade.Symbol, actualQty, closeSide)
+
+				// Cancel semua pending entries di Binance dengan 1 API call
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("Canceling ALL open orders for symbol %s...", trade.Symbol))
+				if cancelErr := s.BinanceClient.CancelAllOrders(trade.Symbol); cancelErr != nil {
+					processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Failed to cancel all orders for %s: %v", trade.Symbol, cancelErr))
+				} else {
+					processResult.Logs = append(processResult.Logs, fmt.Sprintf("ALL orders for %s canceled on Binance successfully.", trade.Symbol))
+				}
+
 				entries, err := s.repo.TradeEntry.FindByTradeID(tx, trade.ID)
 				if err != nil {
 					return fmt.Errorf("failed to fetch entries: %w", err)
@@ -568,71 +395,38 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 				
 				for _, entry := range entries {
 					if entry.Status == "PENDING" || entry.Status == "NEW" {
-						processResult.Logs = append(processResult.Logs, 
-							fmt.Sprintf("Canceling pending Entry Order %d...", entry.BinanceOrderID))
-						
-						_, err := s.BinanceClient.CancelOrder(&binance.CancelOrderRequest{
-							Symbol:  trade.Symbol,
-							OrderID: entry.BinanceOrderID,
-						})
-						
-						if err != nil {
-							processResult.Logs = append(processResult.Logs, 
-								fmt.Sprintf("Warning: Cancel entry order %d failed: %v", entry.BinanceOrderID, err))
-						} else {
-							processResult.Logs = append(processResult.Logs, 
-								fmt.Sprintf("Entry Order %d canceled on Binance successfully.", entry.BinanceOrderID))
-						}
-						
 						err = s.repo.TradeEntry.UpdateStatus(tx, entry.ID, "CANCELLED", exitReason)
 						if err != nil {
 							return fmt.Errorf("failed to update entry status: %w", err)
 						}
 					}
 				}
-				
 				return nil
 			})
-			
 			if err != nil {
 				return result, false, err
 			}
-			
-			// Update trade status in memory
 			trade.Status = "CLOSED"
 			trade.TotalQty = actualQty
-			
 			result.TPUpdated = tpFilled
 			result.SLUpdated = slFilled
-			shouldReturn = true
-
-			processResult.Logs = append(processResult.Logs,
-				fmt.Sprintf("✅ Trade closed with %s. DB Qty: %.8f, Actual Qty: %.8f",
-					exitReason, dbTotalQty, actualQty))
-
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("✅ Trade closed with %s. Actual Qty Hit: %.8f", exitReason, actualQty))
 			return result, true, nil
 		}
 
-		// Normal flow (no mismatch) - close dengan DB qty
-		processResult.Logs = append(processResult.Logs,
-			fmt.Sprintf("Position match: DB %.8f, Binance %.8f. Using normal close...",
-				dbTotalQty, actualQty))
-
+		// Alur Normal: Posisi cocok (sudah 0) = Valid TP/SL Hit
+		processResult.Logs = append(processResult.Logs, "Valid TP/SL Hit. Executing Normal System Close...")
 		err := s.repo.TxManager.WithinTransaction(func(tx *gorm.DB) error {
-			// Determine exit reason and status
 			exitReason := "TP_HIT"
 			exitPrice := trade.TPPrice
 			if slFilled {
 				exitReason = "SL_HIT"
 				exitPrice = trade.SLPrice
 			}
-			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Exit condition met: %s. Updating trade status in DB...", exitReason))
 
-			// Hitung PnL
 			pnl := calculatePnL(trade, exitPrice)
 			pnlPct := calculatePnLPct(trade, pnl)
 
-			// Update trade status to CLOSED
 			now := time.Now()
 			updateTrade := &models.Trade{
 				Status:     "CLOSED",
@@ -644,43 +438,93 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 			}
 			_, err := s.repo.Trade.Update(tx, &models.Trade{ID: trade.ID}, updateTrade)
 			if err != nil {
-				return fmt.Errorf("failed to update trade status to CLOSED (%s): %w", exitReason, err)
+				return err
 			}
 
-			// 🚨 CRITICAL: Cancel semua order jaring (Entry) yang masih ngantre ("NEW")
-			// Get all entries for this trade
+			// 🚨 CRITICAL: Cancel semua order di Binance dengan 1 API call
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Canceling ALL open orders for symbol %s...", trade.Symbol))
+			if cancelErr := s.BinanceClient.CancelAllOrders(trade.Symbol); cancelErr != nil {
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Failed to cancel all orders for %s: %v", trade.Symbol, cancelErr))
+			} else {
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("ALL orders for %s canceled on Binance successfully.", trade.Symbol))
+			}
+
+			// Get all entries for this trade to update DB
 			entries, err := s.repo.TradeEntry.FindByTradeID(tx, trade.ID)
 			if err != nil {
 				return fmt.Errorf("failed to fetch entries: %w", err)
 			}
 
-			// Cancel pending entries
+			// Update DB Status
 			for _, entry := range entries {
 				if entry.Status == "PENDING" || entry.Status == "NEW" {
-					processResult.Logs = append(processResult.Logs, fmt.Sprintf("Canceling pending Entry Order %d...", entry.BinanceOrderID))
-
-					// Cancel order on Binance
-					_, err := s.BinanceClient.CancelOrder(&binance.CancelOrderRequest{
-						Symbol:  trade.Symbol,
-						OrderID: entry.BinanceOrderID,
-					})
-
-					// Ignore error if order already filled/cancelled
-					if err != nil {
-						fmt.Printf("Warning: Failed to cancel entry order %d: %v\n", entry.BinanceOrderID, err)
-						processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Cancel entry order %d failed: %v", entry.BinanceOrderID, err))
-					} else {
-						processResult.Logs = append(processResult.Logs, fmt.Sprintf("Entry Order %d canceled on Binance successfully.", entry.BinanceOrderID))
-					}
-
-					// Update DB status Entry jadi "CANCELLED"
 					err = s.repo.TradeEntry.UpdateStatus(tx, entry.ID, "CANCELLED", "TP/SL hit")
 					if err != nil {
 						return fmt.Errorf("failed to update entry status: %w", err)
 					}
 				}
 			}
+			return nil
+		})
+		if err != nil {
+			return result, false, err
+		}
+		trade.Status = "CLOSED"
+		if slFilled {
+			trade.Status = "SL_HIT"
+		} else {
+			trade.Status = "TP_HIT"
+		}
+		result.TPUpdated = tpFilled
+		result.SLUpdated = slFilled
+		return result, true, nil
+	}
 
+	// 4. BENTENG TERAKHIR (MANUAL CLOSE USER): System belum Hit (Algo Status msh NEW), tapi fisik koin di Binance tiba-tiba Lenyap (0)!
+	position, err := s.BinanceClient.GetPosition(trade.Symbol)
+	if err == nil && position.PositionAmt == 0 {
+		processResult.Logs = append(processResult.Logs, "🚨 EMERGENCY: Binance TP/SL Algo is NOT filled yet, but actual Binance position is 0! User must have closed manually.")
+		// Kita gunakan currentMarketPrice dari Fase 0 sebagai harga exit perkiraan terbaik
+
+		err := s.repo.TxManager.WithinTransaction(func(tx *gorm.DB) error {
+			pnl := calculatePnL(trade, currentMarketPrice)
+			pnlPct := calculatePnLPct(trade, pnl)
+
+			now := time.Now()
+			updateTrade := &models.Trade{
+				Status:     "CLOSED",
+				ClosedAt:   &now,
+				ExitPrice:  currentMarketPrice,
+				ExitReason: "MANUAL_CLOSE",
+				PnL:        pnl,
+				PnLPct:     pnlPct,
+			}
+			_, err := s.repo.Trade.Update(tx, &models.Trade{ID: trade.ID}, updateTrade)
+			if err != nil {
+				return err
+			}
+
+			// Cancel semua order di Binance dengan 1 API call
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Canceling ALL open orders for symbol %s...", trade.Symbol))
+			if cancelErr := s.BinanceClient.CancelAllOrders(trade.Symbol); cancelErr != nil {
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Failed to cancel all orders for %s: %v", trade.Symbol, cancelErr))
+			} else {
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("ALL orders for %s canceled on Binance successfully.", trade.Symbol))
+			}
+
+			entries, _ := s.repo.TradeEntry.FindByTradeID(tx, trade.ID)
+			for _, entry := range entries {
+				if entry.Status == "PENDING" || entry.Status == "NEW" {
+					_ = s.repo.TradeEntry.UpdateStatus(tx, entry.ID, "CANCELLED", "Manual close")
+				}
+			}
+
+			if trade.TPOrderID > 0 {
+				_, _ = s.BinanceClient.CancelAlgoOrder(ctx, &binance.CancelAlgoOrderRequest{Symbol: trade.Symbol, AlgoID: trade.TPOrderID})
+			}
+			if trade.SLOrderID > 0 {
+				_, _ = s.BinanceClient.CancelAlgoOrder(ctx, &binance.CancelAlgoOrderRequest{Symbol: trade.Symbol, AlgoID: trade.SLOrderID})
+			}
 			return nil
 		})
 
@@ -688,19 +532,12 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 			return result, false, err
 		}
 
-		// Update trade status in memory
-		trade.Status = "CLOSED"
-		if slFilled {
-			trade.Status = "SL_HIT"
-		} else {
-			trade.Status = "TP_HIT"
-		}
-
-		result.TPUpdated = tpFilled
-		result.SLUpdated = slFilled
-		shouldReturn = true
+		processResult.Logs = append(processResult.Logs, "Trade closed manually by user. Halting further checks.")
+		trade.Status = "MANUAL_CLOSE"
+		result.TPUpdated = false
+		result.SLUpdated = false
+		return result, true, nil
 	}
-
 	return result, shouldReturn, nil
 }
 
@@ -843,7 +680,7 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 			updatedCount++
 
 			// ================================================================
-			// [Logic Pasang/Update TP & SL]
+			// [Logic Pasang TP & SL Algo]
 			// ================================================================
 
 			// Hitung total qty dari semua entry yang filled/partially filled
@@ -854,25 +691,40 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 				}
 			}
 
-			// Skenario 1: Jika DB belum punya tp_order_id (Ini Entry Pertama)
+			// Karena Algo Order memakai closePosition=true, kita TIDAK PERLU 
+			// melakukan "Cancel & Replace" setiap kali averaging hit!
+			// Kita hanya perlu membuatnya SEKALI: saat entry pertama kena, 
+			// atau saat Fallback (ID = 0 karena gagal dibuat sebelumnya).
 			if trade.TPOrderID == 0 && totalFilledQty > 0 {
-				processResult.Logs = append(processResult.Logs, fmt.Sprintf("First entry filled (Total Qty: %v). Creating original TP/SL...", totalFilledQty))
-				// Hit API Binance CREATE order TP & SL sesuai qty yang didapat
-				tpOrderID, slOrderID, err := s.tradeMonitorCreateTPOrder(trade, totalFilledQty, processResult)
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("Entries filled but TP/SL Algo missing (ID: 0). Creating Algo TP/SL..."))
+				
+				tpOrderID, slOrderID, err := s.tradeMonitorCreateAlgoTPOrder(ctx, trade, processResult)
 				if err != nil {
-					return result, fmt.Errorf("failed to create TP/SL orders: %w", err)
+					// 🚨 JIKA GAGAL CREATE, TRADE TIDAK PUNYA TP/SL DI BINANCE SAMA SEKALI
+					// Kita mengosongkan TPOrderID & SLOrderID di Database agar
+					// di putaran cron berikutnya bot ini men-trigger fallback kembali.
+					fallbackUpdate := &models.Trade{
+						TPOrderID: 0,
+						SLOrderID: 0,
+					}
+					s.repo.Trade.Update(nil, &models.Trade{ID: trade.ID}, fallbackUpdate)
+
+					trade.TPOrderID = 0
+					trade.SLOrderID = 0
+
+					return result, fmt.Errorf("failed to create TP/SL Algo orders: %w", err)
 				}
 
-				// Simpan ID TP/SL barunya ke DB
+				// Simpan ID TP/SL Algo barunya ke DB
 				updateTrade := &models.Trade{
 					TPOrderID:   tpOrderID,
 					SLOrderID:   slOrderID,
-					TotalQty:    totalFilledQty,
-					CapitalUsed: totalFilledQty * entry.FilledPrice, // Approximate
+					TotalQty:    totalFilledQty, // Approximate total qty for visual reference
+					CapitalUsed: totalFilledQty * entry.FilledPrice,
 				}
 				_, err = s.repo.Trade.Update(nil, &models.Trade{ID: trade.ID}, updateTrade)
 				if err != nil {
-					return result, fmt.Errorf("failed to update trade with TP/SL IDs: %w", err)
+					return result, fmt.Errorf("failed to update trade with TP/SL Algo IDs: %w", err)
 				}
 
 				trade.TPOrderID = tpOrderID
@@ -880,75 +732,9 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 				tpUpdated = true
 				slUpdated = true
 			} else if totalFilledQty > 0 {
-				// Skenario 2: Ini Entry Averaging (DB sudah punya tp_order_id)
-				// 1. Hitung TotalQtyBaru (Jumlah semua koin dari entry yang Filled/Partially)
-				// 2. Hit API Binance CANCEL order TP/SL lama (Gratis)
-				// 3. Hit API Binance CREATE order TP/SL baru dengan TotalQtyBaru (Harga target TP/SL tetap)
-				// 4. Update DB timpa ID TP/SL lama dengan ID yang baru
-
-				processResult.Logs = append(processResult.Logs, fmt.Sprintf("Averaging entry filled. Canceling old TP/SL to replace with Total Qty: %v", totalFilledQty))
-
-				// Cancel TP/SL lama
-				if trade.TPOrderID > 0 {
-					_, err := s.BinanceClient.CancelOrder(&binance.CancelOrderRequest{
-						Symbol:  trade.Symbol,
-						OrderID: trade.TPOrderID,
-					})
-					if err != nil {
-						fmt.Printf("Warning: Failed to cancel old TP order %d: %v\n", trade.TPOrderID, err)
-						processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Failed to cancel old TP Order %d: %v", trade.TPOrderID, err))
-					} else {
-						processResult.Logs = append(processResult.Logs, fmt.Sprintf("Old TP Order %d canceled successfully.", trade.TPOrderID))
-					}
-				}
-
-				if trade.SLOrderID > 0 {
-					_, err := s.BinanceClient.CancelOrder(&binance.CancelOrderRequest{
-						Symbol:  trade.Symbol,
-						OrderID: trade.SLOrderID,
-					})
-					if err != nil {
-						fmt.Printf("Warning: Failed to cancel old SL order %d: %v\n", trade.SLOrderID, err)
-						processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Failed to cancel old SL Order %d: %v", trade.SLOrderID, err))
-					} else {
-						processResult.Logs = append(processResult.Logs, fmt.Sprintf("Old SL Order %d canceled successfully.", trade.SLOrderID))
-					}
-				}
-
-				// Create TP/SL baru
-				tpOrderID, slOrderID, err := s.tradeMonitorCreateTPOrder(trade, totalFilledQty, processResult)
-				if err != nil {
-					// 🚨 JIKA GAGAL CREATE, TRADE TIDAK PUNYA TP/SL DI BINANCE SAMA SEKALI
-					// Kita harus mengosongkan TPOrderID & SLOrderID di Database agar
-					// di putaran cron berikutnya bot ini men-trigger "Skenario 1" dan mencoba membuat TP/SL ulang.
-					fallbackUpdate := &models.Trade{
-						TPOrderID: 0,
-						SLOrderID: 0,
-					}
-					// Update DB dengan error handling yang aman
-					s.repo.Trade.Update(nil, &models.Trade{ID: trade.ID}, fallbackUpdate)
-
-					trade.TPOrderID = 0
-					trade.SLOrderID = 0
-
-					return result, fmt.Errorf("failed to create new TP/SL orders (IDs cleared in DB for safety): %w", err)
-				}
-
-				// Update DB timpa ID TP/SL lama dengan ID yang baru
-				updateTrade := &models.Trade{
-					TPOrderID: tpOrderID,
-					SLOrderID: slOrderID,
-					TotalQty:  totalFilledQty,
-				}
-				_, err = s.repo.Trade.Update(nil, &models.Trade{ID: trade.ID}, updateTrade)
-				if err != nil {
-					return result, fmt.Errorf("failed to update trade with new TP/SL IDs: %w", err)
-				}
-
-				trade.TPOrderID = tpOrderID
-				trade.SLOrderID = slOrderID
-				tpUpdated = true
-				slUpdated = true
+				// Averaging hit, TP/SL sudah ada (> 0). 
+				// Biarkan saja, `closePosition=true` akan mengatur semuanya!
+				processResult.Logs = append(processResult.Logs, fmt.Sprintf("Averaging entry filled. Existing TP/SL Algo (%d, %d) will automatically adapt using closePosition=true.", trade.TPOrderID, trade.SLOrderID))
 			}
 		}
 	}
@@ -960,8 +746,8 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 	return result, nil
 }
 
-// tradeMonitorCreateTPOrder creates TP and SL orders for a trade
-func (s *Services) tradeMonitorCreateTPOrder(trade *models.Trade, totalQty float64, processResult *dtos.ProcessTradeResult) (int64, int64, error) {
+// tradeMonitorCreateAlgoTPOrder creates conditional Algo TP and SL orders for a trade
+func (s *Services) tradeMonitorCreateAlgoTPOrder(ctx context.Context, trade *models.Trade, processResult *dtos.ProcessTradeResult) (int64, int64, error) {
 	// Get symbol info for precision adjustment
 	symbolInfo, err := s.BinanceClient.GetSymbolInfo(trade.Symbol)
 	if err != nil {
@@ -977,51 +763,53 @@ func (s *Services) tradeMonitorCreateTPOrder(trade *models.Trade, totalQty float
 	// Adjust prices to precision
 	tpAdjusted := binance.AdjustPricePrecision(trade.TPPrice, symbolInfo.TickSize)
 	slAdjusted := binance.AdjustPricePrecision(trade.SLPrice, symbolInfo.TickSize)
-	qtyAdjusted := binance.AdjustQuantityPrecision(totalQty, symbolInfo.StepSize)
 
-	// Place Take Profit Market
-	processResult.Logs = append(processResult.Logs, fmt.Sprintf("Requesting new TP Order (Price: %v, Qty: %v, Side: %s)...", tpAdjusted, qtyAdjusted, closeSide))
-	tpReq := &binance.PlaceOrderRequest{
-		Symbol:     trade.Symbol,
-		Side:       closeSide,
-		Type:       binance.OrderTypeTakeProfitMarket,
-		StopPrice:  tpAdjusted,
-		ReduceOnly: true,
-		Quantity:   qtyAdjusted,
+	// Place Take Profit Market (Algo Order)
+	processResult.Logs = append(processResult.Logs, fmt.Sprintf("Requesting new Algo TP Order (TriggerPrice: %v, Side: %s, ClosePosition: true)...", tpAdjusted, closeSide))
+	
+	tpReq := &binance.PlaceAlgoOrderRequest{
+		Symbol:        trade.Symbol,
+		Side:          closeSide,
+		Type:          binance.OrderTypeTakeProfitMarket,
+		TriggerPrice:  tpAdjusted,
+		ClosePosition: true,
 	}
 
-	tpResp, err := s.BinanceClient.PlaceOrder(tpReq)
+	tpResp, err := s.BinanceClient.PlaceAlgoOrder(ctx, tpReq)
 	if err != nil {
-		processResult.Logs = append(processResult.Logs, fmt.Sprintf("FAILED setting Take Profit: %v", err))
-		return 0, 0, fmt.Errorf("failed to place TP order: %w", err)
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("FAILED setting Algo Take Profit: %v", err))
+		return 0, 0, fmt.Errorf("failed to place Algo TP order: %w", err)
 	}
-	processResult.Logs = append(processResult.Logs, fmt.Sprintf("SUCCESS setting Take Profit (OrderID: %d)", tpResp.OrderID))
+	processResult.Logs = append(processResult.Logs, fmt.Sprintf("SUCCESS setting Algo Take Profit (AlgoID: %d)", tpResp.AlgoID))
 
-	// Place Stop Loss Market
-	processResult.Logs = append(processResult.Logs, fmt.Sprintf("Requesting new SL Order (Price: %v, Qty: %v, Side: %s)...", slAdjusted, qtyAdjusted, closeSide))
-	slReq := &binance.PlaceOrderRequest{
-		Symbol:     trade.Symbol,
-		Side:       closeSide,
-		Type:       binance.OrderTypeStopMarket,
-		StopPrice:  slAdjusted,
-		ReduceOnly: true,
-		Quantity:   qtyAdjusted,
+	// Place Stop Loss Market (Algo Order)
+	processResult.Logs = append(processResult.Logs, fmt.Sprintf("Requesting new Algo SL Order (TriggerPrice: %v, Side: %s, ClosePosition: true)...", slAdjusted, closeSide))
+	
+	slReq := &binance.PlaceAlgoOrderRequest{
+		Symbol:        trade.Symbol,
+		Side:          closeSide,
+		Type:          binance.OrderTypeStopMarket,
+		TriggerPrice:  slAdjusted,
+		ClosePosition: true,
 	}
 
-	slResp, err := s.BinanceClient.PlaceOrder(slReq)
+	slResp, err := s.BinanceClient.PlaceAlgoOrder(ctx, slReq)
 	if err != nil {
-		processResult.Logs = append(processResult.Logs, fmt.Sprintf("FAILED setting Stop Loss: %v", err))
-		// TP sudah dibuat, tapi SL gagal - kita tetap return TP
-		fmt.Printf("Warning: SL order failed but TP created: %v\n", err)
-		return tpResp.OrderID, 0, nil
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("FAILED setting Algo Stop Loss: %v", err))
+		
+		// Rollback TP if SL fails to keep state consistent
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("Rolling back orphaned Algo TP %d...", tpResp.AlgoID))
+		s.BinanceClient.CancelAlgoOrder(ctx, &binance.CancelAlgoOrderRequest{Symbol: trade.Symbol, AlgoID: tpResp.AlgoID})
+		
+		return 0, 0, fmt.Errorf("failed to place Algo SL order: %w", err)
 	}
-	processResult.Logs = append(processResult.Logs, fmt.Sprintf("SUCCESS setting Stop Loss (OrderID: %d)", slResp.OrderID))
+	processResult.Logs = append(processResult.Logs, fmt.Sprintf("SUCCESS setting Algo Stop Loss (AlgoID: %d)", slResp.AlgoID))
 
-	return tpResp.OrderID, slResp.OrderID, nil
+	return tpResp.AlgoID, slResp.AlgoID, nil
 }
 
 // tradeMonitorFase3Netting handles Fase 3: Netting & Finalisasi
-func (s *Services) tradeMonitorFase3Netting(ctx *gin.Context, trade *models.Trade, processResult *dtos.ProcessTradeResult) error {
+func (s *Services) tradeMonitorFase3Netting(ctx *gin.Context, trade *models.Trade, currentMarketPrice float64, processResult *dtos.ProcessTradeResult) error {
 	// ========================================================================
 	// FASE 3: NETTING & FINALISASI
 	// ========================================================================
@@ -1035,18 +823,22 @@ func (s *Services) tradeMonitorFase3Netting(ctx *gin.Context, trade *models.Trad
 	// 2. Kalkulasi Induk (Update ke tabel Trade)
 	var totalQty float64
 	var capitalUsed float64
+	var totalValue float64 // Used for Volume Weighted Average Price
 
 	for _, entry := range entries {
 		if entry.Status == "FILLED" || entry.Status == "PARTIALLY_FILLED" {
 			totalQty += entry.FilledQty
-			capitalUsed += entry.FilledQty * entry.FilledPrice
+			totalValue += entry.FilledQty * entry.FilledPrice
+
+			// Capital Used is real margin amount: Position Value (Price * Qty) / Leverage
+			capitalUsed += (entry.FilledQty * entry.FilledPrice) / float64(trade.Leverage)
 		}
 	}
 
-	// Calculate average entry price
+	// Calculate Average Entry Price based on Volume Weighted Average
 	avgEntryPrice := 0.0
 	if totalQty > 0 {
-		avgEntryPrice = capitalUsed / totalQty
+		avgEntryPrice = totalValue / totalQty
 	}
 
 	// Update Trade dengan kalkulasi
@@ -1077,6 +869,16 @@ func (s *Services) tradeMonitorFase3Netting(ctx *gin.Context, trade *models.Trad
 	// Jika YA (semua cancelled/rejected) dan tidak ada yang filled: Update DB Trade.status = "CANCELLED"
 	if allCancelledOrRejected && !hasAnyFilled {
 		processResult.Logs = append(processResult.Logs, "Zero entries filled and all entries cancelled/rejected. Marking trade as DEAD_SIGNAL (CANCELLED).")
+		
+		// 🚨 SAPU JAGAT BACKUP PLAN (Pencegah Zombie Limit Order 🧟)
+		// Jika Fase 2 gagal cancel akibat network down, paksa sapu bersih di sini sebelum menutup Trade DB.
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("Executing CancelAllOrders for symbol %s as DEAD_SIGNAL precaution...", trade.Symbol))
+		if cancelErr := s.BinanceClient.CancelAllOrders(trade.Symbol); cancelErr != nil {
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: CancelAllOrders failed during DEAD_SIGNAL execution: %v", cancelErr))
+		} else {
+			processResult.Logs = append(processResult.Logs, "All remaining orders wiped clean from Binance.")
+		}
+
 		now := time.Now()
 		updateTrade := &models.Trade{
 			Status:     "CANCELLED",
@@ -1132,14 +934,15 @@ func calculatePnLPct(trade *models.Trade, pnl float64) float64 {
 	if trade.CapitalUsed == 0 || trade.Leverage == 0 {
 		return 0
 	}
-	
-	// CapitalUsed = Position Value, bagi leverage untuk dapat actual capital
-	actualCapital := trade.CapitalUsed / float64(trade.Leverage)
-	
+
+	// CapitalUsed in DB now correctly represents the actual margin amount
+	// (not the leveraged total position value)
+	actualCapital := trade.CapitalUsed
+
 	if actualCapital == 0 {
 		return 0
 	}
-	
+
 	return (pnl / actualCapital) * 100
 }
 
@@ -1204,8 +1007,15 @@ func (s *Services) TradeManualClose(ctx *gin.Context, tradeID uint) (*dtos.Proce
 		result.EntriesSync = syncResult.UpdatedCount
 	}
 
+	// Fetch current market price (needed for exitPrice calculation and Fase 3 parameter)
+	curPrice, err := s.BinanceClient.GetPrice(trade.Symbol)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch market price: %w", err)
+	}
+	exitPrice := curPrice.Price
+
 	// Run Fase 3 Netting to get final TotalQty & AvgEntryPrice
-	err = s.tradeMonitorFase3Netting(ctx, trade, result)
+	err = s.tradeMonitorFase3Netting(ctx, trade, exitPrice, result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate netting: %w", err)
 	}
@@ -1215,13 +1025,6 @@ func (s *Services) TradeManualClose(ctx *gin.Context, tradeID uint) (*dtos.Proce
 	if err != nil {
 		return nil, fmt.Errorf("failed to reload netted trade: %w", err)
 	}
-
-	// Fetch current market price (needed for exitPrice calculation)
-	curPrice, err := s.BinanceClient.GetPrice(trade.Symbol)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch market price: %w", err)
-	}
-	exitPrice := curPrice.Price
 
 	// 4. Execute Market Close FIRST (close physical position before cancelling orders)
 	if trade.TotalQty > 0 {
@@ -1282,7 +1085,7 @@ func (s *Services) TradeManualClose(ctx *gin.Context, tradeID uint) (*dtos.Proce
 			TPOrderID:  0, // Cleared out
 			SLOrderID:  0, // Cleared out
 		}
-		
+
 		_, err := s.repo.Trade.Update(tx, &models.Trade{ID: trade.ID}, updateTrade)
 		if err != nil {
 			return fmt.Errorf("failed to update trade status: %w", err)
@@ -1311,7 +1114,6 @@ func (s *Services) TradeManualClose(ctx *gin.Context, tradeID uint) (*dtos.Proce
 
 	result.Status = "CLOSED"
 	result.Message = "Trade closed manually by user."
-	
+
 	return result, nil
 }
-

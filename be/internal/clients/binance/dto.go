@@ -317,6 +317,18 @@ type AlgoOrderResponse struct {
 	Msg          string  `json:"msg,omitempty"`  // Present on errors
 }
 
+// GetAlgoOrdersRequest represents request to get algo orders
+type GetAlgoOrdersRequest struct {
+	Symbol string `json:"symbol" binding:"required"`
+	AlgoID int64  `json:"algoId"`
+}
+
+// CancelAlgoOrderRequest represents request to cancel an algo order
+type CancelAlgoOrderRequest struct {
+	Symbol string `json:"symbol" binding:"required"`
+	AlgoID int64  `json:"algoId" binding:"required"`
+}
+
 type MultiKlineRequest struct {
 	Interval string
 	Limit    int
