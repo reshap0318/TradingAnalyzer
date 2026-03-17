@@ -530,6 +530,7 @@ func (s *Services) buildTradingPlan(
 				MaxRiskPercent:      0,
 				TargetProfitUSDT:    0,
 				TargetProfitPercent: 0,
+				CapitalUsed:         0,
 			},
 		}
 	}
@@ -601,6 +602,7 @@ func (s *Services) buildTradingPlan(
 			TargetProfitPercent: helpers.RoundFloat(targetProfitPercent, 2),
 			ProfitFromCapital:   helpers.RoundFloat(profitFromCapital, 2),
 			EffectiveLeverage:   helpers.RoundFloat(effectiveLeverage, 2),
+			CapitalUsed:         helpers.RoundFloat(tradingCapital, 2),
 		},
 	}
 }

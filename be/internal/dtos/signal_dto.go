@@ -47,6 +47,7 @@ type TradingPlan struct {
 // TradingPlanSummary contains pre-calculated summary data for the trading plan
 type TradingPlanSummary struct {
 	// Position Info
+	CapitalUsed        float64 `json:"capital_used"`         // Capital used for this trade
 	TotalEntries       int     `json:"total_entries"`        // Number of entries
 	TotalPositionValue float64 `json:"total_position_value"` // Total USDT to be used (from capital)
 	TotalPositionQty   float64 `json:"total_position_qty"`   // Total coin quantity

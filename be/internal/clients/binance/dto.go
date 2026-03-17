@@ -278,6 +278,45 @@ type PositionSideResponse struct {
 	DualSidePosition bool `json:"dual_side_position"`
 }
 
+// PlaceAlgoOrderRequest represents request to place conditional algo order
+type PlaceAlgoOrderRequest struct {
+	Symbol        string    `json:"symbol" binding:"required"`
+	Side          OrderSide `json:"side" binding:"required,oneof=BUY SELL"`
+	Type          OrderType `json:"type" binding:"required"`
+	Quantity      float64   `json:"quantity"` // Not required if ClosePosition is true
+	TriggerPrice  float64   `json:"trigger_price" binding:"required,gt=0"`
+	ClosePosition bool      `json:"close_position"`
+}
+
+// Validate validates the algo order request
+func (r *PlaceAlgoOrderRequest) Validate() error {
+	if r.Symbol == "" {
+		return fmt.Errorf("symbol is required")
+	}
+	if r.TriggerPrice <= 0 {
+		return fmt.Errorf("trigger_price must be greater than 0")
+	}
+	if !r.ClosePosition && r.Quantity <= 0 {
+		return fmt.Errorf("quantity must be greater than 0 if not closing position")
+	}
+	return nil
+}
+
+// AlgoOrderResponse represents conditional algo order response
+type AlgoOrderResponse struct {
+	AlgoID       int64   `json:"algoId"`
+	ClientAlgoID string  `json:"clientAlgoId"`
+	AlgoType     string  `json:"algoType"`
+	OrderType    string  `json:"orderType"`
+	Symbol       string  `json:"symbol"`
+	Side         string  `json:"side"`
+	Quantity     string  `json:"quantity"`
+	AlgoStatus   string  `json:"algoStatus"`
+	TriggerPrice string  `json:"triggerPrice"`
+	Code         int64   `json:"code,omitempty"` // Present on errors
+	Msg          string  `json:"msg,omitempty"`  // Present on errors
+}
+
 type MultiKlineRequest struct {
 	Interval string
 	Limit    int

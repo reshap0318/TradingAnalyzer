@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -170,7 +171,7 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 	}
 
 	// Get actual capital used from pre-calculated summary (no need to recalculate)
-	actualCapitalUsed := analyzeRes.Signal.TradingPlan.Summary.TotalPositionValue
+	actualCapitalUsed := analyzeRes.Signal.TradingPlan.Summary.CapitalUsed
 
 	// FINAL VALIDATION: Safeguard before execution
 	if analyzeRes.Signal.TradingPlan.Summary == nil {
@@ -181,7 +182,7 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 	}
 
 	// If valid, Proceed to Execution Preparation
-	return s.tradeExecuteBinance(req.Symbol, mmConfig, analyzeRes, actualCapitalUsed)
+	return s.tradeExecuteBinance(ctx, req.Symbol, mmConfig, analyzeRes, actualCapitalUsed)
 }
 
 // tradeExecuteTodayStat calculates trading statistics for today
@@ -233,6 +234,7 @@ func (s *Services) tradeExecuteTodayStat(symbol string) dtos.TradeDayStat {
 
 // tradeExecuteBinance handles the actual external API calling for order execution
 func (s *Services) tradeExecuteBinance(
+	ctx *gin.Context,
 	symbol string,
 	config *config.MMConfig,
 	analyzeRes *dtos.SignalAnalyzeResponse,
@@ -279,8 +281,7 @@ func (s *Services) tradeExecuteBinance(
 	// 5. Execute Order Entry Loop
 	var executedOrders []dtos.OrderInfo
 	var totalFilledQty float64
-	var avgEntryPriceSum float64       // Will need accurate sum based on order quantities
-	var filledEntries []dtos.OrderInfo // Track only filled entries for TP/SL placement
+	var avgEntryPriceSum float64 // Will need accurate sum based on order quantities
 
 	for _, entry := range tpPlan.Entries {
 		adjustedPrice := binance.AdjustPricePrecision(entry.EntryPrice, symbolInfo.TickSize)
@@ -341,22 +342,12 @@ func (s *Services) tradeExecuteBinance(
 
 			totalFilledQty += filledQty
 			avgEntryPriceSum += (filledPrice * filledQty)
-
-			// Add to filled entries for TP/SL placement
-			filledEntries = append(filledEntries, dtos.OrderInfo{
-				EntryNumber:    entry.EntryNumber,
-				BinanceOrderID: orderResponse.OrderID,
-				Price:          filledPrice,
-				Quantity:       filledQty,
-				Type:           orderResponse.Type,
-				Status:         orderResponse.Status,
-			})
 		}
 	}
 
 	// 6. Execute TP/SL Orders ONLY if there are FILLED entries
 	var tpOrderID, slOrderID int64
-	if totalFilledQty > 0 && len(filledEntries) > 0 {
+	if totalFilledQty > 0 {
 		var closeSide binance.OrderSide
 		if side == binance.OrderSideBuy {
 			closeSide = binance.OrderSideSell
@@ -367,32 +358,34 @@ func (s *Services) tradeExecuteBinance(
 		tpAdjusted := binance.AdjustPricePrecision(tpPlan.TakeProfit, symbolInfo.TickSize)
 		slAdjusted := binance.AdjustPricePrecision(tpPlan.StopLoss, symbolInfo.TickSize)
 
-		// Place Take Profit Market
-		tpReq := &binance.PlaceOrderRequest{
-			Symbol:    symbol,
-			Side:      closeSide,
-			Type:      binance.OrderTypeTakeProfitMarket,
-			StopPrice: tpAdjusted,
-			// ClosePosition in go-binance uses ReduceOnly or TimeInForce
-			// Since PlaceOrderRequest struct doesn't have ClosePosition field right now, we use ReduceOnly
-			ReduceOnly: true,
+		// Place Take Profit Market via Algo API
+		tpReq := &binance.PlaceAlgoOrderRequest{
+			Symbol:        symbol,
+			Side:          closeSide,
+			Type:          binance.OrderTypeTakeProfitMarket,
+			TriggerPrice:  tpAdjusted,
+			ClosePosition: true,
 		}
-		tpResp, err := s.BinanceClient.PlaceOrder(tpReq)
-		if err == nil {
-			tpOrderID = tpResp.OrderID
+		tpResp, err := s.BinanceClient.PlaceAlgoOrder(ctx, tpReq)
+		if err == nil && tpResp.AlgoID > 0 {
+			tpOrderID = tpResp.AlgoID // Capture actual AlgoID from response
+		} else if err != nil {
+			fmt.Printf("Warning: Failed to place TP for %s: %v\n", symbol, err)
 		}
 
-		// Place Stop Loss Market
-		slReq := &binance.PlaceOrderRequest{
-			Symbol:     symbol,
-			Side:       closeSide,
-			Type:       binance.OrderTypeStopMarket,
-			StopPrice:  slAdjusted,
-			ReduceOnly: true,
+		// Place Stop Loss Market via Algo API
+		slReq := &binance.PlaceAlgoOrderRequest{
+			Symbol:        symbol,
+			Side:          closeSide,
+			Type:          binance.OrderTypeStopMarket,
+			TriggerPrice:  slAdjusted,
+			ClosePosition: true,
 		}
-		slResp, err := s.BinanceClient.PlaceOrder(slReq)
-		if err == nil {
-			slOrderID = slResp.OrderID
+		slResp, err := s.BinanceClient.PlaceAlgoOrder(ctx, slReq)
+		if err == nil && slResp.AlgoID > 0 {
+			slOrderID = slResp.AlgoID // Capture actual AlgoID from response
+		} else if err != nil {
+			fmt.Printf("Warning: Failed to place SL for %s: %v\n", symbol, err)
 		}
 	} else {
 		// No entries filled yet - TP/SL will be placed later by background job or manual check
@@ -454,8 +447,8 @@ func (s *Services) tradeExecuteSaveRecord(
 			}
 		}
 
-		// Convert ScoringBreakdown to JSONMap for RawSignal
-		rawSignal := s.convertScoringToJSONMap(analyzeRes.Scoring)
+		// Convert SignalAnalyzeResponse to JSONMap for RawSignal
+		rawSignal := s.convertAnalyzeResToJSONMap(analyzeRes)
 
 		// Save Parent Trade
 		parentTrade := &models.Trade{
@@ -532,40 +525,21 @@ func (s *Services) tradeExecuteSaveRecord(
 	return err
 }
 
-// convertScoringToJSONMap converts ScoringBreakdown to JSONMap for database storage
-func (s *Services) convertScoringToJSONMap(scoring dtos.ScoringBreakdown) models.JSONMap {
-	// Convert TimeframeSignalData breakdown to JSON array
-	breakdownJSON := make([]map[string]interface{}, len(scoring.Breakdown))
-	for i, tf := range scoring.Breakdown {
-		// Convert IndicatorBreakdown array to JSON array
-		indicatorsJSON := make([]map[string]interface{}, len(tf.Indicator))
-		for j, ind := range tf.Indicator {
-			indicatorsJSON[j] = map[string]interface{}{
-				"name":         ind.Name,
-				"raw_signal":   ind.RawSignal,
-				"weight":       ind.Weight,
-				"contribution": ind.Contribution,
-				"details":      ind.Details,
-				"value":        ind.Value,
-				"zone":         ind.Zone,
-			}
-		}
-
-		breakdownJSON[i] = map[string]interface{}{
-			"timeframe":    tf.Timeframe,
-			"trend":        tf.Trend,
-			"raw_signal":   tf.RawSignal,
-			"weight":       tf.Weight,
-			"contribution": tf.Contribution,
-			"indicator":    indicatorsJSON,
-		}
+// convertAnalyzeResToJSONMap converts SignalAnalyzeResponse to JSONMap for database storage
+func (s *Services) convertAnalyzeResToJSONMap(analyzeRes *dtos.SignalAnalyzeResponse) models.JSONMap {
+	// Build final JSON map containing the whole analysis result
+	// The struct is marshaled then unmarshaled to generic map type
+	b, err := json.Marshal(analyzeRes)
+	if err != nil {
+		fmt.Printf("Warning: failed to marshal analyze result: %v\n", err)
+		return models.JSONMap{}
 	}
 
-	// Build final JSON map
-	return models.JSONMap{
-		"total_score": scoring.TotalScore,
-		"confidence":  scoring.Confidence,
-		"breakdown":   breakdownJSON,
-		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+	var jsonMap models.JSONMap
+	if err := json.Unmarshal(b, &jsonMap); err != nil {
+		fmt.Printf("Warning: failed to unmarshal analyze result to JSONMap: %v\n", err)
+		return models.JSONMap{}
 	}
+
+	return jsonMap
 }
