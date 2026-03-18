@@ -11,6 +11,12 @@
    - [Indicators](#indicators)
    - [Thresholds](#thresholds)
    - [Configs](#configs)
+   - [Backtest](#backtest)
+     - [Overview](#backtest-overview)
+     - [Create Backtest](#post-apibacktest)
+     - [Get All Backtests](#get-apibacktest)
+     - [Get Backtest by ID](#get-apibacktestid)
+     - [Delete Backtest](#delete-apibacktestid)
    - [Trade (Bot & Execution)](#trade-bot--execution)
      - [Trade Execute](#post-apitradeexecute)
      - [Trade Monitor](#trade-monitor)
@@ -811,6 +817,164 @@ Authorization: Bearer <token>
     "data": { ... }
 }
 ```
+
+---
+
+## 📊 Backtest
+
+Backtest API untuk menguji strategy trading pada data historis.
+
+### **Backtest Overview**
+
+Backtest memungkinkan Anda untuk:
+- ✅ Menguji strategy pada data historis (max 30 hari)
+- ✅ Melihat performa detail (win rate, profit factor, drawdown)
+- ✅ Tracking equity curve (balance progression)
+- ✅ Mendapatkan OHLCV data untuk charting
+- ✅ Lihat detail trade dengan multi-entry support
+- ✅ Strategy snapshot untuk reproducibility
+
+**Status Flow:**
+```
+PENDING → RUNNING → COMPLETED / FAILED
+```
+
+**📝 Note:** Backtest runs asynchronously. Create returns immediately with `PENDING` status, then poll until `COMPLETED`.
+
+**For complete documentation, see:** [BACKTEST_API.md](./BACKTEST_API.md)
+
+---
+
+### **POST /api/backtest**
+
+Create and run a new backtest.
+
+**Request:**
+```bash
+POST http://localhost:8000/api/backtest
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "BTC Backtest January 2024",
+  "symbol": "BTCUSDT",
+  "strategy_id": 1,
+  "days": 30,
+  "capital": 1000
+}
+```
+
+**Request Fields:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Backtest name |
+| `symbol` | string | Yes | Trading pair (e.g., BTCUSDT) |
+| `strategy_id` | uint | Yes | Strategy ID to test |
+| `days` | int | Yes | Period in days (1-30) |
+| `capital` | float64 | Yes | Initial capital (min: 10) |
+
+**Response (Simple - Status: PENDING):**
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 1,
+    "name": "BTC Backtest January 2024",
+    "symbol": "BTCUSDT",
+    "strategy_id": 1,
+    "start_time": "2024-01-01T00:00:00Z",
+    "end_time": "2024-01-31T23:59:59Z",
+    "capital": 1000,
+    "status": "PENDING",
+    "created_at": "2024-03-19T10:30:00Z"
+  }
+}
+```
+
+**📖 Full Response:** See [BACKTEST_API.md](./BACKTEST_API.md#get-apibacktestid)
+
+---
+
+### **GET /api/backtest**
+
+Get list of all backtests (summary view).
+
+**Request:**
+```bash
+GET http://localhost:8000/api/backtest
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    {
+      "id": 1,
+      "name": "BTC Backtest January 2024",
+      "symbol": "BTCUSDT",
+      "strategy_name": "Day Trading Pro",
+      "total_pnl": 150.50,
+      "total_pnl_percent": 15.05,
+      "win_rate": 65.5,
+      "total_trades": 20,
+      "status": "COMPLETED",
+      "created_at": "2024-03-19T10:30:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### **GET /api/backtest/:id**
+
+Get detailed backtest result (with OHLCV, equity curve, and trades).
+
+**Request:**
+```bash
+GET http://localhost:8000/api/backtest/1
+Authorization: Bearer <token>
+```
+
+**Response:**
+
+Returns full backtest data including:
+- `summary` - Performance metrics
+- `equity_curve` - Balance progression
+- `ohlcv` - Candle data for charting
+- `trades` - Detailed trade history
+- `strategy` - Strategy snapshot
+
+**📖 Full Response Structure:** See [BACKTEST_API.md](./BACKTEST_API.md#get-apibacktestid)
+
+---
+
+### **DELETE /api/backtest/:id**
+
+Delete a backtest and its trades.
+
+**Request:**
+```bash
+DELETE http://localhost:8000/api/backtest/1
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": { ... }
+}
+```
+
+---
+
+**📚 Complete Documentation:** For detailed response DTOs, examples, and flow diagrams, see [BACKTEST_API.md](./BACKTEST_API.md)
 
 ---
 
