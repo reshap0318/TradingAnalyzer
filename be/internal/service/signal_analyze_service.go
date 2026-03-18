@@ -384,15 +384,16 @@ func (s *Services) buildTradingPlan(
 		}
 
 		// Calculate dynamic buffer using ATR
-		buf := atrValue * atrMultiplier
+		entryBuf := atrValue * (atrMultiplier * 1.5)
+		tpBuf := atrValue * atrMultiplier
 		slBuf := atrValue * (atrMultiplier * 2.0)
 
 		// TP just below resistance, SL just below support with ATR volatility buffer
-		tp = resistance - buf
+		tp = resistance - tpBuf
 		sl = support - slBuf
-		entryBase := support + buf
+		entryBase := support + entryBuf
 		if entryBase >= currentPrice {
-			entryBase = currentPrice - buf
+			entryBase = currentPrice - tpBuf
 		}
 
 		if isAggressive {
@@ -460,15 +461,16 @@ func (s *Services) buildTradingPlan(
 		}
 
 		// Calculate dynamic buffer using ATR
-		buf := atrValue * atrMultiplier
+		entryBuf := atrValue * (atrMultiplier * 1.5)
+		tpBuf := atrValue * atrMultiplier
 		slBuf := atrValue * (atrMultiplier * 2.0)
 
 		// TP just above support, SL just above resistance with ATR volatility buffer
-		tp = support + buf
+		tp = support + tpBuf
 		sl = resistance + slBuf
-		entryBase := resistance - buf
+		entryBase := resistance - entryBuf
 		if entryBase <= currentPrice {
-			entryBase = currentPrice + buf
+			entryBase = currentPrice + tpBuf
 		}
 
 		if isAggressive {

@@ -240,7 +240,7 @@ func LoadConfig() *Config {
 
 	config.INDICATORS.SUPPORT_RESIST = SRConfig{
 		LOOKBACK_PERIODS: 200,
-		TOLERANCE:        0.005,
+		TOLERANCE:        0.006,
 		MIN_TOUCHES:      2,
 	}
 

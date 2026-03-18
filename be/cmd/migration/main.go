@@ -172,7 +172,7 @@ func seedThreshold(db *gorm.DB) {
 		},
 		{
 			Category:     "BUY",
-			MinValue:     45,
+			MinValue:     25,
 			MaxValue:     70,
 			Action:       "BUY",
 			Color:        "light-green",
@@ -180,8 +180,8 @@ func seedThreshold(db *gorm.DB) {
 		},
 		{
 			Category:     "WAIT",
-			MinValue:     -45,
-			MaxValue:     45,
+			MinValue:     -25,
+			MaxValue:     25,
 			Action:       "WAIT",
 			Color:        "gray",
 			OrderDisplay: 3,
@@ -189,7 +189,7 @@ func seedThreshold(db *gorm.DB) {
 		{
 			Category:     "SELL",
 			MinValue:     -70,
-			MaxValue:     -45,
+			MaxValue:     -25,
 			Action:       "SELL",
 			Color:        "red",
 			OrderDisplay: 4,
@@ -876,7 +876,7 @@ func seedStrategy(db *gorm.DB) {
 			strategy := models.Strategy{
 				Name:      s.Name,
 				PrimaryTF: s.PrimaryTF,
-				IsActive:  s.PrimaryTF == "15m",
+				IsActive:  false,
 			}
 			if err := db.Create(&strategy).Error; err != nil {
 				log.Printf("Failed to create strategy '%s': %v", s.Name, err)
@@ -920,6 +920,11 @@ func seedStrategy(db *gorm.DB) {
 			fmt.Printf("⊘ Strategy already exists: %s\n", s.Name)
 		}
 	}
+
+	// db.Model(&models.Strategy{}).Where("strategy_name != ?", "Day Trading Pro").Update("is_active", false)
+	db.Model(&models.Strategy{}).Where("strategy_name = ?", "Day Trading Pro").Update("is_active", true)
+
+	fmt.Println("✓ Updated strategy IsActive (Day Trading Pro = true, others = false)")
 }
 
 func seedWatchlist(db *gorm.DB) {

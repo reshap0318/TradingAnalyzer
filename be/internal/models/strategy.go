@@ -9,7 +9,7 @@ type Strategy struct {
 	ID        uint      `gorm:"primaryKey;autoIncrement;column:id" json:"id"`
 	Name      string    `gorm:"column:strategy_name;type:varchar(100);uniqueIndex;not null" json:"strategy_name"`
 	PrimaryTF string    `gorm:"column:primary_tf;type:char(5);not null" json:"primary_tf"` // Reference to m_timeframe(name)
-	IsActive  bool      `gorm:"column:is_active;default:true" json:"is_active"`
+	IsActive  bool      `gorm:"column:is_active;default:false" json:"is_active"`
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 
