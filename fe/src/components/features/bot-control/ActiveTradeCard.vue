@@ -5,7 +5,6 @@ import type { ITrade } from '@/stores/tradebot.store'
 import { useTradeBotStore } from '@/stores/tradebot.store'
 import { showConfirm } from '@/lib/sweetalert'
 import {
-  calculateAvgEntry,
   getFilledOrdersCount,
   formatPrice,
   getSideColor,
@@ -174,7 +173,7 @@ const handleManualClose = async (trade: ITrade) => {
                 <PhChartLineUp :size="14" class="text-blue-600" />
                 <span class="text-xs text-gray-600">Avg Entry</span>
               </div>
-              <p class="text-sm font-bold text-gray-900">{{ formatPrice(calculateAvgEntry(trade.orders) || trade.avg_entry_price) }}</p>
+              <p class="text-sm font-bold text-gray-900">{{ trade.avg_entry_price || '-' }}</p>
               <p class="text-xs text-gray-500 mt-1">{{ getFilledOrdersCount(trade.orders) }}/{{ trade.is_aggressive ? 2 : 1 }} filled</p>
             </div>
 

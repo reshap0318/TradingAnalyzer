@@ -4,13 +4,15 @@ import "time"
 
 // Config holds Binance Futures configuration
 type Config struct {
-	APIKey     string
-	SecretKey  string
-	IsTestnet  bool
-	BaseURL    string
-	Timeout    time.Duration
-	MaxRetries int
-	RetryDelay time.Duration
+	APIKey         string
+	SecretKey      string
+	IsTestnet      bool
+	BaseURL        string
+	Timeout        time.Duration
+	MaxRetries     int
+	RetryDelay     time.Duration
+	RecvWindow     int64 // milliseconds, default 5000
+	ServerTimeOffset int64 // milliseconds offset from server time
 }
 
 // DefaultConfig returns default configuration for Binance Futures
@@ -20,6 +22,8 @@ func DefaultConfig() *Config {
 		Timeout:    30 * time.Second,
 		MaxRetries: 3,
 		RetryDelay: 1 * time.Second,
+		RecvWindow: 5000, // 5 seconds default
+		ServerTimeOffset: 0,
 	}
 }
 

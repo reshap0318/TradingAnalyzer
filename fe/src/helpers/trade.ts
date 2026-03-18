@@ -6,19 +6,6 @@
 import type { ITradeOrder } from '@/stores/tradebot.store'
 
 /**
- * Calculate average entry price from filled orders only
- */
-export const calculateAvgEntry = (orders: ITradeOrder[]): number => {
-  const filledOrders = orders.filter(o => o.status === 'FILLED')
-  if (filledOrders.length === 0) return 0
-
-  const totalValue = filledOrders.reduce((sum, order) => sum + (order.price * order.quantity), 0)
-  const totalQty = filledOrders.reduce((sum, order) => sum + order.quantity, 0)
-
-  return totalQty > 0 ? totalValue / totalQty : 0
-}
-
-/**
  * Get filled orders count
  */
 export const getFilledOrdersCount = (orders: ITradeOrder[]): number => {

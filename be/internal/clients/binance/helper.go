@@ -33,14 +33,14 @@ func getCurrentTimestamp() int64 {
 	return time.Now().UnixNano() / int64(time.Millisecond)
 }
 
-// formatQuantity formats quantity to string with proper precision
+// formatQuantity converts quantity to string without changing decimal places
 func formatQuantity(qty float64) string {
 	return strconv.FormatFloat(qty, 'f', -1, 64)
 }
 
-// formatPrice formats price to string with proper precision
+// formatPrice converts price to string without changing decimal places
 func formatPrice(price float64) string {
-	return strconv.FormatFloat(price, 'f', 2, 64)
+	return strconv.FormatFloat(price, 'f', -1, 64)
 }
 
 // getMaxLeverageBySymbol returns maximum leverage based on symbol category

@@ -68,13 +68,15 @@ func NewClient(cfg *config.BinanceConfig, cacheClient *database.CacheClient) *Cl
 	return &Client{
 		apiClient: client,
 		config: &Config{
-			APIKey:     cfg.APIKey,
-			SecretKey:  cfg.SecretKey,
-			IsTestnet:  cfg.IsTestnet,
-			BaseURL:    client.BaseURL,
-			Timeout:    time.Duration(cfg.Timeout) * time.Second,
-			MaxRetries: cfg.MaxRetries,
-			RetryDelay: time.Duration(cfg.RetryDelay) * time.Second,
+			APIKey:         cfg.APIKey,
+			SecretKey:      cfg.SecretKey,
+			IsTestnet:      cfg.IsTestnet,
+			BaseURL:        client.BaseURL,
+			Timeout:        time.Duration(cfg.Timeout) * time.Second,
+			MaxRetries:     cfg.MaxRetries,
+			RetryDelay:     time.Duration(cfg.RetryDelay) * time.Second,
+			RecvWindow:     5000, // Default 5 seconds
+			ServerTimeOffset: timeOffset,
 		},
 		cache:    cacheClient,
 		cacheCfg: DefaultCacheConfig(),
