@@ -77,7 +77,7 @@ func (s *Services) BacktestGetByID(ctx *gin.Context, id uint) (res *dtos.Backtes
 		json.Unmarshal([]byte(bt.EquityCurveJSON), &equityCurve)
 	}
 
-	// Fetch OHLCV data from Binance
+	// Fetch OHLCV data from Binance using primary timeframe from strategy
 	var ohlcv []dtos.CandleData
 	if strategy != nil && strategy.PrimaryTF != "" {
 		ohlcv, err = s.backtestFetchOHLCVFromKlines(bt.Symbol, strategy.PrimaryTF, bt.StartTime, bt.EndTime)
