@@ -80,7 +80,7 @@ func (s *Services) BacktestGetByID(ctx *gin.Context, id uint) (res *dtos.Backtes
 	// Fetch OHLCV data from Binance
 	var ohlcv []dtos.CandleData
 	if strategy != nil && strategy.PrimaryTF != "" {
-		ohlcv, err = s.backtestFetchOHLCV(bt.Symbol, strategy.PrimaryTF, bt.StartTime, bt.EndTime)
+		ohlcv, err = s.backtestFetchOHLCVFromKlines(bt.Symbol, strategy.PrimaryTF, bt.StartTime, bt.EndTime)
 		if err != nil {
 			fmt.Printf("⚠️  [BACKTEST] Failed to fetch OHLCV: %v\n", err)
 			// Continue without OHLCV data
@@ -133,29 +133,24 @@ func (s *Services) BacktestGetByID(ctx *gin.Context, id uint) (res *dtos.Backtes
 	}, nil
 }
 
-// backtestFetchOHLCV fetches OHLCV data from Binance for the specified time range
-func (s *Services) backtestFetchOHLCV(symbol, timeframe string, startTime, endTime time.Time) ([]dtos.CandleData, error) {
-	klines, err := s.BinanceClient.GetKlinesWithStartTime(symbol, timeframe, 1000, startTime.UnixMilli())
+// backtestFetchOHLCVFromKlines fetches OHLCV data from Binance klines
+func (s *Services) backtestFetchOHLCVFromKlines(symbol, timeframe string, startTime, endTime time.Time) ([]dtos.CandleData, error) {
+	klines, err := s.backtestFetchKlinesBatched(symbol, timeframe, startTime, endTime)
 	if err != nil {
 		return nil, err
 	}
 
-	// Filter by end time and convert to CandleData
-	var candles []dtos.CandleData
-	endTimeMs := endTime.UnixMilli()
-
-	for _, k := range klines {
-		if k.OpenTime > endTimeMs {
-			break
-		}
-		candles = append(candles, dtos.CandleData{
+	// Convert to CandleData
+	candles := make([]dtos.CandleData, len(klines))
+	for i, k := range klines {
+		candles[i] = dtos.CandleData{
 			Timestamp: k.OpenTime,
 			Open:      k.Open,
 			High:      k.High,
 			Low:       k.Low,
 			Close:     k.Close,
 			Volume:    k.Volume,
-		})
+		}
 	}
 
 	return candles, nil
@@ -325,7 +320,7 @@ func (s *Services) BacktestCreate(ctx *gin.Context, req *dtos.BacktestRequest) (
 	fmt.Println()
 
 	// 5. Run backtest in background
-	go s.backtestRunWorker(backtest.ID, req.Days, strategy, mmConfigConverted, req.Symbol, req.Capital, startTime)
+	go s.backtestRunWorker(backtest.ID, req.Days, strategy, mmConfigConverted, req.Symbol, req.Capital, startTime, endTime)
 
 	// 6. Return simple response (without OHLCV)
 	return &dtos.BacktestResponse{

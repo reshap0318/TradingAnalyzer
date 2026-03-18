@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/reshap/trading-bot/internal/clients/binance"
@@ -113,6 +114,7 @@ func (s *Services) backtestRunWorker(
 	symbol string,
 	initialCapital float64,
 	startTime time.Time,
+	endTime time.Time,
 ) {
 	fmt.Println()
 	fmt.Println("👷 [BACKTEST WORKER] ═══════════════════════════════════")
@@ -147,7 +149,7 @@ func (s *Services) backtestRunWorker(
 	fmt.Println()
 	fmt.Println("📥 [BACKTEST WORKER] Fetching klines...")
 
-	binanceData, err := s.backtestFetchAllKlines(symbol, days, startTime, strategy)
+	binanceData, err := s.backtestFetchAllKlines(symbol, days, startTime, endTime, strategy)
 	if err != nil {
 		s.backtestWorkerFailed(backtestID, fmt.Errorf("failed to fetch klines: %w", err))
 		return
@@ -291,6 +293,7 @@ func (s *Services) backtestFetchAllKlines(
 	symbol string,
 	days int,
 	startTime time.Time,
+	endTime time.Time,
 	strategy *dtos.StrategyData,
 ) (map[string][]binance.KlineInfo, error) {
 	timeframeMap := make(map[string]int)
@@ -313,7 +316,8 @@ func (s *Services) backtestFetchAllKlines(
 			totalNeeded = backtestMinCandles
 		}
 
-		klines, err := s.backtestFetchKlinesBatched(symbol, tf.TimeframeName, totalNeeded, startTime)
+		// Use endTime from backtest period
+		klines, err := s.backtestFetchKlinesBatched(symbol, tf.TimeframeName, startTime, endTime)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch klines for %s: %w", tf.TimeframeName, err)
 		}
@@ -335,48 +339,116 @@ func (s *Services) backtestFetchAllKlines(
 	return results, nil
 }
 
-// backtestFetchKlinesBatched fetches klines in batches of max 1500
+// backtestFetchKlinesBatched fetches klines in batches with automatic batch calculation
+// This function handles pagination automatically when data exceeds Binance limit (1500)
+// Parameters:
+//   - symbol: Trading pair (e.g., BTCUSDT)
+//   - interval: Timeframe (e.g., 1h, 15m)
+//   - startTime: Start time for data range
+//   - endTime: End time for data range (optional, if zero will fetch all available)
+//
+// Returns:
+//   - []binance.KlineInfo: Sorted klines from startTime to endTime
+//   - error: Any error encountered during fetch
 func (s *Services) backtestFetchKlinesBatched(
 	symbol string,
 	interval string,
-	totalNeeded int,
 	startTime time.Time,
+	endTime time.Time,
 ) ([]binance.KlineInfo, error) {
-	if totalNeeded <= backtestMaxBinanceLimit {
-		return s.BinanceClient.GetKlinesWithStartTime(symbol, interval, totalNeeded, startTime.UnixMilli())
-	}
+	startTimeMs := startTime.UnixMilli()
+	endTimeMs := endTime.UnixMilli()
+
+	// Calculate total batches needed based on time range
+	// Binance returns max 1500 candles per request
+	totalBatches := s.backtestCalculateBatches(startTimeMs, endTimeMs, interval)
+
+	fmt.Printf("   ├── Fetching %s (%s): %d batches needed\n", symbol, interval, totalBatches)
 
 	var allKlines []binance.KlineInfo
-	currentStartTime := startTime.UnixMilli()
-	remaining := totalNeeded
+	currentStartTime := startTimeMs
 
-	for remaining > 0 {
-		limit := remaining
-		if limit > backtestMaxBinanceLimit {
-			limit = backtestMaxBinanceLimit
-		}
-
-		klines, err := s.BinanceClient.GetKlinesWithStartTime(symbol, interval, limit, currentStartTime)
+	for batch := 0; batch < totalBatches; batch++ {
+		// Fetch with limit 1500 (Binance max)
+		klines, err := s.BinanceClient.GetKlinesWithStartTime(symbol, interval, backtestMaxBinanceLimit, currentStartTime)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("batch %d failed: %w", batch+1, err)
 		}
 
 		if len(klines) == 0 {
 			break
 		}
 
-		allKlines = append(allKlines, klines...)
-		remaining -= len(klines)
+		// Filter klines that exceed endTime
+		for _, k := range klines {
+			if k.OpenTime <= endTimeMs {
+				allKlines = append(allKlines, k)
+			}
+		}
 
+		// Check if we've reached the end time
 		lastCandle := klines[len(klines)-1]
+		if lastCandle.CloseTime >= endTimeMs {
+			break
+		}
+
+		// Set start time for next batch (1ms after last candle's close time)
 		currentStartTime = lastCandle.CloseTime + 1
 	}
 
+	// Sort by OpenTime (ascending)
 	sort.Slice(allKlines, func(i, j int) bool {
 		return allKlines[i].OpenTime < allKlines[j].OpenTime
 	})
 
 	return allKlines, nil
+}
+
+// backtestCalculateBatches calculates number of batches needed based on time range
+// Formula: (endTime - startTime) / (interval_in_ms * 1500)
+func (s *Services) backtestCalculateBatches(startTimeMs, endTimeMs int64, interval string) int {
+	// Parse interval to get milliseconds
+	intervalMs := s.backtestIntervalToMs(interval)
+
+	// Total candles in range
+	totalCandles := (endTimeMs - startTimeMs) / intervalMs
+
+	// Calculate batches (1500 candles per batch)
+	batches := int(math.Ceil(float64(totalCandles) / float64(backtestMaxBinanceLimit)))
+
+	// Minimum 1 batch
+	if batches < 1 {
+		return 1
+	}
+
+	return batches
+}
+
+// backtestIntervalToMs converts interval string to milliseconds
+func (s *Services) backtestIntervalToMs(interval string) int64 {
+	// Remove suffix and parse number
+	unit := interval[len(interval)-1:]
+	numStr := interval[:len(interval)-1]
+
+	num, err := strconv.ParseInt(numStr, 10, 64)
+	if err != nil {
+		return 60000 // Default to 1m
+	}
+
+	switch unit {
+	case "m":
+		return num * 60 * 1000 // minutes to ms
+	case "h":
+		return num * 60 * 60 * 1000 // hours to ms
+	case "d":
+		return num * 24 * 60 * 60 * 1000 // days to ms
+	case "w":
+		return num * 7 * 24 * 60 * 60 * 1000 // weeks to ms
+	case "M":
+		return num * 30 * 24 * 60 * 60 * 1000 // months to ms (approximate)
+	default:
+		return 60000 // Default to 1m
+	}
 }
 
 // ============================================================================
