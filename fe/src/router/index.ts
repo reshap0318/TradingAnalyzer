@@ -101,6 +101,24 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: true,
       title: 'Signal Analyze'
     }
+  },
+  {
+    path: '/backtest',
+    name: 'backtest',
+    component: () => import('@/pages/BacktestPage.vue'),
+    meta: {
+      requiresAuth: true,
+      title: 'Backtest'
+    }
+  },
+  {
+    path: '/backtest/:id',
+    name: 'backtest-detail',
+    component: () => import('@/pages/BacktestDetailPage.vue'),
+    meta: {
+      requiresAuth: true,
+      title: 'Backtest Detail'
+    }
   }
   // Add more routes here
 ]

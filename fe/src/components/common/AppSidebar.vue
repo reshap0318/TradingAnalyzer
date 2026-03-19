@@ -14,7 +14,8 @@ import {
   PhCaretDown,
   PhRobot,
   PhCurrencyCircleDollar,
-  PhFlask
+  PhFlask,
+  PhTestTube
 } from '@phosphor-icons/vue'
 
 const route = useRoute()
@@ -44,6 +45,7 @@ const menuItems = [
       { name: 'Watchlists', icon: PhList, route: '/watchlists' },
       { name: 'Strategies', icon: PhChalkboardTeacher, route: '/strategies' },
       { name: 'Signal Analyze', icon: PhFlask, route: '/signal-analyze' },
+      { name: 'Backtest', icon: PhTestTube, route: '/backtest' },
       { name: 'Bot Control', icon: PhRobot, route: '/bot-control' },
       { name: 'Trade History', icon: PhCurrencyCircleDollar, route: '/trades' }
     ]
