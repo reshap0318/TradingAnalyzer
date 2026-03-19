@@ -76,16 +76,6 @@ export const getTpSlStatusColor = (status: string): string => {
   if (status.includes("TP_HIT")) return 'text-green-600';
   else if (status.includes("TP_HIT")) return 'text-red-600';
   else return 'text-gray-600'
-  switch (status?.toUpperCase()) {
-    case 'TP_HIT':
-      return 'text-green-600'
-    case 'SL_HIT':
-      return 'text-red-600'
-    case 'ACTIVE':
-      return 'text-blue-600'
-    default:
-      return 'text-gray-600'
-  }
 }
 
 /**

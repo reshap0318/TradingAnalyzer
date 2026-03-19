@@ -5,6 +5,13 @@ import { useTimeframeStore } from '@/stores/timeframe.store'
 import { useIndicatorStore } from '@/stores/indicator.store'
 import { useConfigStore } from '@/stores/config.store'
 import { getValidationErrors } from '@/helpers/validation'
+import {
+  configKeyToLabel,
+  isBooleanField,
+  getConfigNumericValue,
+  getInputAttrs,
+  formatConfigValue
+} from '@/helpers/config'
 import { PhX, PhFlask, PhPlus } from '@phosphor-icons/vue'
 
 interface Props {
@@ -28,97 +35,21 @@ const indicatorStore = useIndicatorStore()
 const configStore = useConfigStore()
 
 // Get MM configs from store
-const mmConfigs = computed(() => 
+const mmConfigs = computed(() =>
   configStore.items.filter(c => c.category === 'MONEY_MANAGEMENT')
 )
 
-// Helper: Convert config_key to label (e.g., "MIN_CONFIDENCE" → "Min Confidence")
-const configKeyToLabel = (key: string): string => {
-  return key
-    .replace(/_/g, ' ')  // Replace underscore with space
-    .split(' ')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(' ')
-}
-
-// Helper: Check if field should be boolean (radio button)
-const isBooleanField = (configKey: string): boolean => {
-  return configKey.toLowerCase().includes('is_') || configKey.toLowerCase().includes('agressive')
-}
-
-// Helper: Check if field should be decimal number
-const isDecimalField = (value: string): boolean => {
-  return value.includes('.')
-}
-
-// Helper: Get config value as number
-const getConfigNumericValue = (config: any): number => {
-  const val = parseFloat(config.value)
-  return isNaN(val) ? 0 : val
-}
-
-// Helper: Get input attributes for field
-const getInputAttrs = (config: any) => {
-  const configKey = config.config_key
-  const value = config.value
-  
-  if (isBooleanField(configKey)) {
-    return { type: 'radio' }
-  }
-  
-  const isDecimal = isDecimalField(value)
-  
-  // Common attrs for number inputs
-  const attrs: any = {
-    type: 'number',
-    step: isDecimal ? '0.01' : '1'
-  }
-  
-  // Add min/max for specific fields
-  if (configKey.includes('PERCENT') || configKey.includes('CONFIDENCE')) {
-    attrs.min = 0
-    attrs.max = 100
-  } else if (configKey.includes('POSITION_SIZE')) {
-    attrs.min = 0
-    attrs.max = 1
-    attrs.step = '0.01'
-  } else if (configKey.includes('RATIO') || configKey.includes('TARGET')) {
-    attrs.min = 0
-    attrs.step = '0.1'
-  } else if (configKey.includes('LEVERAGE')) {
-    attrs.min = 1
-  } else if (configKey.includes('HOURS') || configKey.includes('COUNT') || configKey.includes('TRADES')) {
-    attrs.min = 1
-  }
-  
-  return attrs
-}
-
-// Helper: Format default value display
+// Helper: Format default value display using config helper
 const formatDefaultValue = (config: any): string => {
   const configKey = config.config_key
   const value = config.value
-  
+
   if (isBooleanField(configKey)) {
     return value.toLowerCase() === 'true' ? 'Aggressive' : 'Conservative'
   }
-  
+
   const numericValue = getConfigNumericValue(config)
-  
-  if (configKey.includes('PERCENT') || configKey.includes('CONFIDENCE')) {
-    return `${numericValue}%`
-  }
-  if (configKey.includes('POSITION_SIZE')) {
-    return `${(numericValue * 100).toFixed(0)}%`
-  }
-  if (configKey.includes('LEVERAGE')) {
-    return `${numericValue}x`
-  }
-  if (configKey.includes('HOURS')) {
-    return `${numericValue}h`
-  }
-  
-  return numericValue.toString()
+  return formatConfigValue(configKey, numericValue)
 }
 
 const modalTitle = computed(() => props.editing ? 'Edit Strategy' : 'Create Strategy')

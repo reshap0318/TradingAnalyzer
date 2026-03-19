@@ -38,7 +38,7 @@ export const formatNumber = (value: number, decimals: number = 2): string => {
 /**
  * Format date to locale string
  */
-export const formatDate = (dateString: string): string => {
+export const formatDate = (dateString: string | number): string => {
   return new Date(dateString).toLocaleString()
 }
 
@@ -53,6 +53,7 @@ export const formatTime = (dateString: string): string => {
  * Format duration in seconds to human readable
  */
 export const formatDuration = (seconds: number): string => {
+  if (!seconds) return '-'
   if (seconds < 60) return `${Math.floor(seconds)}s`
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.floor(seconds % 60)}s`
   if (seconds < 86400) {
