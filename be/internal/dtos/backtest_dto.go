@@ -24,13 +24,13 @@ type BacktestResponse struct {
 	Capital      float64            `json:"capital"`
 	Summary      BacktestSummary    `json:"summary"`
 	EquityCurve  []EquityPoint      `json:"equity_curve"`
-	OHLCV        []CandleData       `json:"ohlcv"` // OHLCV data for charting
 	Trades       []BacktestTradeDTO `json:"trades"`
 	Status       string             `json:"status"`
 	ErrorMessage string             `json:"error_message,omitempty"`
 	CreatedAt    time.Time          `json:"created_at"`
 	CompletedAt  *time.Time         `json:"completed_at"`
 	Strategy     *StrategyData      `json:"strategy,omitempty"`
+	OHLCV        []CandleData       `json:"ohlcv"` // OHLCV data for charting
 }
 
 // CandleData represents OHLCV candle data for charting
