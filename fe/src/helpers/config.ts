@@ -74,7 +74,7 @@ export function formatConfigValue(configKey: string, value: number): string {
     value = value * 100
   }
   
-  const formattedValue = Number.isInteger(value) ? value.toString() : value.toFixed(2)
+  const formattedValue = Number.isInteger(value) ? value.toString() : (suffix === '%' ? value.toFixed(2) : value.toFixed(4))
   
   return `${prefix || ''}${formattedValue}${suffix || ''}`
 }

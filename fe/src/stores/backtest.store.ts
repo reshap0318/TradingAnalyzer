@@ -299,11 +299,11 @@ export const useBacktestStore = defineStore('backtest', () => {
       if (backtest) {
         if (backtest.status === 'COMPLETED') {
           stopPolling()
-          showSuccess('Success', 'Backtest completed successfully')
+          // showSuccess('Success', 'Backtest completed successfully')
           await fetchBacktests() // Refresh list
         } else if (backtest.status === 'FAILED') {
           stopPolling()
-          showError('Error', backtest.error_message || 'Backtest failed')
+          // showError('Error', backtest.error_message || 'Backtest failed')
         }
       }
     }, 2000)
