@@ -17,24 +17,19 @@ func SeedTimeframes(db *gorm.DB) {
 		name      string
 		inMinutes int
 	}{
-		// Scalping (sangat cepat, 1-15 menit hold)
 		{"1m", 1},
 		{"3m", 3},
 		{"5m", 5},
-		// Short-term scalping (15-30 menit hold)
 		{"15m", 15},
 		{"30m", 30},
-		// Day trading (beberapa jam hold)
 		{"1h", 60},
 		{"2h", 120},
 		{"4h", 240},
 		{"6h", 360},
 		{"8h", 480},
 		{"12h", 720},
-		// Swing trading (beberapa hari hold)
 		{"1d", 1440},
 		{"3d", 4320},
-		// Position trading (mingguan/bulanan)
 		{"1w", 10080},
 		{"1M", 43200},
 	}

@@ -465,21 +465,39 @@ func SeedStrategies(db *gorm.DB) {
 		},
 
 		// ──────────────────────────────────────────────
-		// 18. Pure Momentum Breakout (Solusi 1)
-		// PURE TREND: 100% Mengikuti tren. Tanpa oscillator agar tidak terkena cancel-out efek overbought.
-		// Sangat brutal dalam mencetak Strong Signal di kondisi market hijau/merah tajam.
+		// 18. The Pure Driver (Trend Master)
+		// 100% mengandalkan Penentu Arah (MA & MACD). Cocok untuk tren panjang super kuat.
 		// ──────────────────────────────────────────────
 		{
-			Name:      "Pure Momentum Breakout",
-			PrimaryTF: "15m",
-			Timeframes: []tfSeed{
-				{"15m", 0.70}, {"1h", 0.30},
-			},
+			Name:       "The Pure Driver",
+			PrimaryTF:  "15m",
+			Timeframes: []tfSeed{{"15m", 0.60}, {"1h", 0.40}},
 			Indicators: []indSeed{
-				{1, 0.50}, // MA (Penentu Arah Utama)
-				{2, 0.30}, // MACD (Kekuatan Pendorong)
-				{6, 0.10}, // Volume (Konfirmasi Breakout)
-				{9, 0.10}, // Trend Bonus
+				{1, 0.60}, // MA
+				{2, 0.40}, // MACD
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "70"}, {"MAX_DAILY_TRADES", "5"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "2"},
+				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "3.0"},
+				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.15"},
+				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "true"},
+				{"ORDER_EXPIRATION_HOURS", "2"},
+			},
+		},
+
+		// ──────────────────────────────────────────────
+		// 19. Driver + Volume (The Breakout)
+		// Trend follower yang wajib dikonfirmasi oleh ledakan transaksi.
+		// ──────────────────────────────────────────────
+		{
+			Name:       "Driver + Volume",
+			PrimaryTF:  "15m",
+			Timeframes: []tfSeed{{"15m", 0.50}, {"1h", 0.50}},
+			Indicators: []indSeed{
+				{1, 0.50}, // MA
+				{2, 0.30}, // MACD
+				{6, 0.20}, // Volume
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "65"}, {"MAX_DAILY_TRADES", "5"},
@@ -492,47 +510,116 @@ func SeedStrategies(db *gorm.DB) {
 		},
 
 		// ──────────────────────────────────────────────
-		// 19. Pure Knife Catcher (Solusi 1)
-		// PURE REVERSION: 100% mencari pantulan atas/bawah. Tanpa MA agar tidak diblokir oleh bobot trend.
-		// Akurasi tinggi menangkap harga oversold yang parah di timeframe kecil.
+		// 20. Driver + RSI (The Safe Pullback)
+		// Ikut tren, tapi direm sedikit oleh RSI agar tidak terburu-buru masuk pucuk.
 		// ──────────────────────────────────────────────
 		{
-			Name:      "Pure Knife Catcher",
-			PrimaryTF: "15m",
-			Timeframes: []tfSeed{
-				{"5m", 0.40}, {"15m", 0.60},
+			Name:       "Driver + RSI",
+			PrimaryTF:  "15m",
+			Timeframes: []tfSeed{{"15m", 0.60}, {"1h", 0.40}},
+			Indicators: []indSeed{
+				{1, 0.50}, // MA
+				{2, 0.30}, // MACD
+				{3, 0.20}, // RSI
 			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "60"}, // Diturunkan sedikit karena RSI mengurangi skor
+				{"MAX_DAILY_TRADES", "5"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "2"},
+				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "3.0"},
+				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
+				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"},
+				{"ORDER_EXPIRATION_HOURS", "2"},
+			},
+		},
+
+		// ──────────────────────────────────────────────
+		// 21. Driver + Bollinger (The Squeeze)
+		// Memanfaatkan volatilitas rentang Bollinger saat tren dimulai.
+		// ──────────────────────────────────────────────
+		{
+			Name:       "Driver + Bollinger",
+			PrimaryTF:  "1h",
+			Timeframes: []tfSeed{{"1h", 0.70}, {"4h", 0.30}},
+			Indicators: []indSeed{
+				{1, 0.50}, // MA
+				{2, 0.30}, // MACD
+				{5, 0.20}, // Bollinger Bands
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "65"}, {"MAX_DAILY_TRADES", "4"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "2"},
+				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "3.0"},
+				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
+				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"},
+				{"ORDER_EXPIRATION_HOURS", "4"},
+			},
+		},
+
+		// ──────────────────────────────────────────────
+		// 22. Pure Oscillator (The Knife Catcher V2)
+		// Murni menangkap dasar market. Batas confidence diturunkan drastis karena sifat Oscillator.
+		// ──────────────────────────────────────────────
+		{
+			Name:       "Pure Oscillator",
+			PrimaryTF:  "15m",
+			Timeframes: []tfSeed{{"5m", 0.40}, {"15m", 0.60}},
 			Indicators: []indSeed{
 				{3, 0.40}, // RSI
 				{4, 0.40}, // Stochastic
 				{5, 0.20}, // Bollinger Bands
 			},
 			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "65"}, {"MAX_DAILY_TRADES", "5"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "2"},
+				{"MIN_CONFIDENCE", "45"}, // Sangat penting! Max skor organik tipe ini cuma ~58.
+				{"MAX_DAILY_TRADES", "10"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "3"},
 				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "2.5"},
 				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"}, // Mutlak jaring bawah
+				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"},
 				{"ORDER_EXPIRATION_HOURS", "2"},
 			},
 		},
 
 		// ──────────────────────────────────────────────
-		// 20. Steady Swing Trend (Solusi 1)
-		// PURE TREND: Mirip Momentum Breakout tapi khusus untuk long-term holding.
+		// 23. The Price Action Sniper
+		// Kombinasi konfirmasi pergerakan Candlestick dan Trend jangka menengah.
 		// ──────────────────────────────────────────────
 		{
-			Name:       "Steady Swing Trend",
+			Name:       "Price Action Sniper",
 			PrimaryTF:  "4h",
 			Timeframes: []tfSeed{{"4h", 0.60}, {"1d", 0.40}},
 			Indicators: []indSeed{
-				{1, 0.60}, // MA Dominan
-				{2, 0.20}, // MACD konfirmator
-				{8, 0.10}, // ATR Volatilitas
-				{9, 0.10}, // Trend Bonus
+				{1, 0.40}, // MA
+				{2, 0.20}, // MACD
+				{7, 0.30}, // Candle Patterns
+				{8, 0.10}, // ATR
 			},
 			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "70"}, {"MAX_DAILY_TRADES", "2"},
+				{"MIN_CONFIDENCE", "60"}, {"MAX_DAILY_TRADES", "3"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "1"},
+				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "4.0"},
+				{"RISK_ENTRY_BUFFER", "0.005"}, {"MAX_POSITION_SIZE", "0.15"},
+				{"LEVERAGE", "3"}, {"IS_AGRESSIVE", "false"},
+				{"ORDER_EXPIRATION_HOURS", "12"},
+			},
+		},
+
+		// ──────────────────────────────────────────────
+		// 24. Steady Swing Trend V2
+		// Versi perbaikan untuk amunisi jangka panjang. Semua indikator terkalibrasi normal 100%.
+		// ──────────────────────────────────────────────
+		{
+			Name:       "Steady Swing Trend V2",
+			PrimaryTF:  "4h",
+			Timeframes: []tfSeed{{"4h", 0.50}, {"1d", 0.50}},
+			Indicators: []indSeed{
+				{1, 0.50}, // MA Dominan
+				{2, 0.20}, // MACD Konfirmator
+				{9, 0.20}, // Trend Bonus
+				{8, 0.10}, // ATR Volatilitas
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "65"}, {"MAX_DAILY_TRADES", "2"},
 				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "1"},
 				{"RISK_REWARD_RATIO", "2.5"}, {"RISK_REWARD_TARGET", "5.0"},
 				{"RISK_ENTRY_BUFFER", "0.005"}, {"MAX_POSITION_SIZE", "0.10"},

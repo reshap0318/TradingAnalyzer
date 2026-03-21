@@ -28,7 +28,7 @@ const form = ref({
   name: '',
   symbol: 'BTCUSDT',
   strategy_id: 1,
-  days: 30,
+  days: 15,
   capital: 1000
 })
 
@@ -37,7 +37,7 @@ const rules = computed(() => ({
   name: { required, minLength: minLength(3) },
   symbol: { required, minLength: minLength(3) },
   strategy_id: { required, minValue: minValue(1) },
-  days: { required, minValue: minValue(1), maxValue: maxValue(30) },
+  days: { required, minValue: minValue(1), maxValue: maxValue(100) },
   capital: { required, minValue: minValue(10) }
 }))
 
@@ -55,7 +55,7 @@ watch(
         name: '',
         symbol: 'BTCUSDT',
         strategy_id: strategiesStore.strategies[0]?.id || 1,
-        days: 30,
+        days: 15,
         capital: 1000
       }
       v$.value.$reset()

@@ -204,7 +204,7 @@ const closeTradeDetail = () => {
               <PhClock :size="12" class="text-gray-400" />
               <span class="text-xs text-gray-500">Duration</span>
             </div>
-            <p class="text-sm font-bold text-gray-900">{{ formatDuration(trade.duration_minutes) }}</p>
+            <p class="text-sm font-bold text-gray-900">{{ formatDuration(trade.duration_minutes * 60) }}</p>
           </div>
         </div>
       </div>

@@ -241,7 +241,7 @@ export const useBacktestStore = defineStore('backtest', () => {
       showSuccess('Success', 'Backtest started successfully')
       
       // Start polling for completion
-      startPolling(backtest.id)
+      // startPolling(backtest.id)
       
       return backtest.id
     } catch (error: any) {

@@ -24,7 +24,7 @@ func SeedThreshold(db *gorm.DB) {
 		},
 		{
 			Category:     "BUY",
-			MinValue:     25,
+			MinValue:     35,
 			MaxValue:     70,
 			Action:       "BUY",
 			Color:        "light-green",
@@ -32,8 +32,8 @@ func SeedThreshold(db *gorm.DB) {
 		},
 		{
 			Category:     "WAIT",
-			MinValue:     -25,
-			MaxValue:     25,
+			MinValue:     -35,
+			MaxValue:     35,
 			Action:       "WAIT",
 			Color:        "gray",
 			OrderDisplay: 3,
@@ -41,7 +41,7 @@ func SeedThreshold(db *gorm.DB) {
 		{
 			Category:     "SELL",
 			MinValue:     -70,
-			MaxValue:     -25,
+			MaxValue:     -35,
 			Action:       "SELL",
 			Color:        "red",
 			OrderDisplay: 4,

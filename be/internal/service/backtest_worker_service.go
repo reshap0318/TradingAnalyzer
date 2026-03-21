@@ -23,7 +23,7 @@ import (
 const (
 	backtestMaxBinanceLimit = 1500
 	backtestBufferPercent   = 20  // 20% extra candles for indicator warmup
-	backtestMinCandles      = 150 // Minimum candles needed for indicators
+	backtestMinCandles      = 200 // Minimum candles needed for indicators
 
 	// Exit reasons
 	exitReasonHitTP      = "HIT_TP"
@@ -316,8 +316,17 @@ func (s *Services) backtestFetchAllKlines(
 			totalNeeded = backtestMinCandles
 		}
 
-		// Use endTime from backtest period
-		klines, err := s.backtestFetchKlinesBatched(symbol, tf.TimeframeName, startTime, endTime)
+		// Calculate the exact start time needed to fetch at least 'totalNeeded' candles
+		requiredDuration := time.Duration(totalNeeded*tfMinutes) * time.Minute
+		tfStartTime := endTime.Add(-requiredDuration)
+
+		fetchStartTime := startTime
+		if tfStartTime.Before(fetchStartTime) {
+			fetchStartTime = tfStartTime
+		}
+
+		// Use fetchStartTime to ensure enough warmup history is available
+		klines, err := s.backtestFetchKlinesBatched(symbol, tf.TimeframeName, fetchStartTime, endTime)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch klines for %s: %w", tf.TimeframeName, err)
 		}
@@ -737,7 +746,7 @@ func (s *Services) backtestValidate5Gates(
 ) bool {
 	// Gate 1.5: Minimum Risk/Reward Ratio Hard Limit
 	if plan.RiskRewardRatio < float64(mmConfig.RISK_REWARD_RATIO) {
-		fmt.Printf("🚫 [GATE 1.5] R:R too low: %.2f < %.2f\n", 
+		fmt.Printf("🚫 [GATE 1.5] R:R too low: %.2f < %.2f\n",
 			plan.RiskRewardRatio, mmConfig.RISK_REWARD_RATIO)
 		return false
 	}
