@@ -555,6 +555,45 @@ func (s *Services) backtestRunSimulation(
 				continue
 			}
 
+			// FASE 1.5: Cek Reverse Signal
+			if currentActiveTrade.TotalQty > 0 {
+				subsetKlinesRev := s.backtestBuildSubsetKlines(allKlines, candle.OpenTime)
+				analyzeResultRev, errRev := s.signalAnalyzeCalculate(
+					symbol,
+					wallet.Balance,
+					strategy,
+					subsetKlinesRev,
+					thresholds,
+				)
+
+				if errRev == nil && analyzeResultRev != nil {
+					// if errRev == nil && analyzeResultRev.Signal.Valid {
+					isReversed := false
+					newSignal := analyzeResultRev.Signal.Signal
+
+					if (currentActiveTrade.Side == "BUY" || currentActiveTrade.Side == "STRONG_BUY") && (newSignal == "SELL" || newSignal == "STRONG_SELL") {
+						isReversed = true
+					} else if (currentActiveTrade.Side == "SELL" || currentActiveTrade.Side == "STRONG_SELL") && (newSignal == "BUY" || newSignal == "STRONG_BUY") {
+						isReversed = true
+					}
+
+					if isReversed {
+						fmt.Printf("🚨 [REVERSE SIGNAL] Changing from %s to %s @ %s\n", currentActiveTrade.Side, newSignal, candleTime.Format("2006-01-02 15:04"))
+						trade := s.backtestCloseTrade(currentActiveTrade, candle, "REVERSE_SIGNAL", candleTime, wallet, dailyStats)
+						completedTrades = append(completedTrades, trade)
+
+						equityCurve = append(equityCurve, equityPoint{
+							Timestamp: candle.OpenTime,
+							Balance:   wallet.Balance,
+							PnL:       wallet.Balance - wallet.InitialBalance,
+						})
+
+						currentActiveTrade = nil
+						continue
+					}
+				}
+			}
+
 			// FASE 2: Sync Pending Entries
 			s.backtestSyncPendingEntries(currentActiveTrade, candle, candleTime, expirationHours)
 

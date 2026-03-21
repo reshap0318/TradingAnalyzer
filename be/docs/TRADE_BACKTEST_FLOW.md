@@ -1,4 +1,4 @@
-Flow ini sudah merangkum semua logika dari *live system* kamu: **Signal Analyze**, **Trade Execute (5 Gates)**, dan update terbaru dari **Trade Monitor (Auto-Adapt TP/SL dengan `closePosition=true` & *Dead Signal Detection*)**, yang disesuaikan khusus untuk *backtest* **1 Symbol, 1 Strategy, dan default Balance 1000**.
+Flow ini sudah merangkum semua logika dari *live system* kamu: **Signal Analyze**, **Trade Execute (5 Gates)**, dan update terbaru dari **Trade Monitor (Auto-Adapt TP/SL dengan `closePosition=true`, *Dead Signal Detection*, dan **Reverse Signal Close**)**, yang disesuaikan khusus untuk *backtest* **1 Symbol, 1 Strategy, dan default Balance 1000**.
 
 Berikut adalah alur hierarki teks utuh dan diagram Mermaid-nya.
 
@@ -31,6 +31,19 @@ Berikut adalah alur hierarki teks utuh dan diagram Mermaid-nya.
             * Jika posisi LONG & `CurrentCandle.High` >= `TPPrice` ATAU
             * Jika posisi SHORT & `CurrentCandle.Low` <= `TPPrice`
             * *Eksekusi TP:* Hitung profit berdasarkan `TotalQty`. Tambah ke `VirtualWallet` (dikurangi fee taker). Update `DailyStats` (Reset `ConsecutiveLosses` = 0, `TPHits` + 1, tambah PnL harian). Ubah status jadi `TP_HIT`, masukkan ke `TradeHistory`. Set `CurrentActiveTrade = nil`. **Lanjut ke candle berikutnya (Skip step di bawah).**
+    * **2.3.1.5 FASE 1.5: Cek Reverse Signal** 🆕
+        * *Condition:* Hanya jika `CurrentActiveTrade.TotalQty > 0` (sudah ada entry filled)
+        * *Virtual Signal Analyze:* Hitung indikator menggunakan data hingga `CurrentCandle`
+        * *Cek Signal Direction:*
+            * Jika posisi LONG (BUY/STRONG_BUY) & Signal baru = SELL/STRONG_SELL → **REVERSE DETECTED**
+            * Jika posisi SHORT (SELL/STRONG_SELL) & Signal baru = BUY/STRONG_BUY → **REVERSE DETECTED**
+        * *Eksekusi Reverse Close:*
+            * Hitung PnL berdasarkan `CurrentCandle.Close`
+            * Kurangi `VirtualWallet` (jika loss) atau Tambah (jika profit)
+            * Update `DailyStats` (Reset `ConsecutiveLosses` = 0 jika profit, atau +1 jika loss)
+            * Ubah status jadi `REVERSE_SIGNAL`, masukkan ke `TradeHistory`
+            * Set `CurrentActiveTrade = nil`
+            * **Lanjut ke candle berikutnya (Skip step di bawah).**
     * **2.3.2 FASE 2: Sync Pending Entries (Jaring Limit Order)**
         * Loop setiap `Entry` di `CurrentActiveTrade.Entries` yang berstatus `PENDING`:
             * *Cek Expired:* Jika `CurrentCandle.Timestamp` > `(CreatedAt + jam_expired)`, ubah status entry jadi `CANCELLED`.
@@ -94,10 +107,14 @@ graph TD
     Phase1[FASE 1: Cek TP dan SL]
     SLCheck{Candle Sentuh<br/>SL Price?}
     SLHit[Close Trade: SL HIT<br/>Hitung Minus, Potong Wallet<br/>CurrentActiveTrade = nil]
-    
+
     TPCheck{Candle Sentuh<br/>TP Price?}
     TPHit[Close Trade: TP HIT<br/>Hitung Plus, Tambah Wallet<br/>CurrentActiveTrade = nil]
-    
+
+    Phase1_5[FASE 1.5: Cek Reverse Signal 🆕]
+    ReverseCheck{Signal Analyze<br/>Opposite Direction?}
+    ReverseHit[Close Trade: REVERSE SIGNAL<br/>Hitung PnL, Update Wallet<br/>CurrentActiveTrade = nil]
+
     Phase2[FASE 2: Sync Pending Entries]
     LoopEntries{Cek Setiap<br/>Pending Entry}
     CheckExpired{Candle Time ><br/>Expired Time?}
@@ -151,8 +168,12 @@ graph TD
     SLCheck -->|Tidak| TPCheck
     
     TPCheck -->|Ya| TPHit
-    TPCheck -->|Tidak| Phase2
-    
+    TPCheck -->|Tidak| Phase1_5
+
+    Phase1_5 --> ReverseCheck
+    ReverseCheck -->|Ya| ReverseHit
+    ReverseCheck -->|Tidak| Phase2
+
     Phase2 --> LoopEntries
     LoopEntries --> CheckExpired
     CheckExpired -->|Ya| EntryExpired
@@ -172,6 +193,7 @@ graph TD
     
     SLHit --> LoopCheck
     TPHit --> LoopCheck
+    ReverseHit --> LoopCheck
     DeadSignal --> LoopCheck
     NextCandleMonitor --> LoopCheck
     
@@ -197,3 +219,59 @@ graph TD
 ```
 
 Konsep `closePosition=true` (Auto-adapt TP/SL) ditangani secara *native* karena engine hanya mengupdate nilai `TotalQty` saat *limit entry* ke-2/3 kena, dan engine akan selalu pakai `TotalQty` yang paling *fresh* saat nanti mengecek PnL di FASE 1.
+
+---
+
+## 🆕 Updates
+
+### **2026-03-21: Added Reverse Signal Close (FASE 1.5)**
+
+**Feature:** Close posisi otomatis jika Signal Analyze menunjukkan arah berlawanan.
+
+**Implementation:**
+- Location: `internal/service/backtest_worker_service.go` (Line ~558)
+- Condition: Hanya aktif jika `CurrentActiveTrade.TotalQty > 0`
+- Trigger: Signal berlawanan (BUY → SELL/STRONG_SELL atau SELL → BUY/STRONG_BUY)
+- Exit Reason: `REVERSE_SIGNAL`
+
+**Backtest Logic:**
+```go
+// FASE 1.5: Cek Reverse Signal
+if currentActiveTrade.TotalQty > 0 {
+    subsetKlinesRev := s.backtestBuildSubsetKlines(allKlines, candle.OpenTime)
+    analyzeResultRev, errRev := s.signalAnalyzeCalculate(...)
+    
+    if errRev == nil && analyzeResultRev != nil {
+        isReversed := false
+        newSignal := analyzeResultRev.Signal.Signal
+        
+        // Check opposite direction
+        if (currentActiveTrade.Side == "BUY" || "STRONG_BUY") && (newSignal == "SELL" || "STRONG_SELL") {
+            isReversed = true
+        }
+        if (currentActiveTrade.Side == "SELL" || "STRONG_SELL") && (newSignal == "BUY" || "STRONG_BUY") {
+            isReversed = true
+        }
+        
+        if isReversed {
+            // Close trade with REVERSE_SIGNAL
+            trade := s.backtestCloseTrade(currentActiveTrade, candle, "REVERSE_SIGNAL", ...)
+            currentActiveTrade = nil
+            continue
+        }
+    }
+}
+```
+
+**Note:** Reverse Signal menggunakan Signal Analyze yang heavy (~10-15 API calls). 
+Pertimbangkan untuk:
+- Add config `ENABLE_REVERSE_SIGNAL_CLOSE` (default: false)
+- Add confidence threshold (misal: hanya close jika signal strength > 70%)
+- Cache Signal Analyze result (5-10 menit)
+- Skip jika trade age < 5 menit (grace period)
+
+---
+
+**Last Updated:** 2026-03-21
+**Version:** 2.0 (Added FASE 1.5: Reverse Signal Close)
+**Author:** TradingAnalyzer Team

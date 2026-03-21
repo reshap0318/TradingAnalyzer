@@ -128,6 +128,23 @@ func (s *Services) tradeMonitorProcessTrade(ctx *gin.Context, trade *models.Trad
 	}
 
 	// ========================================================================
+	// FASE 1.5: CEK REVERSE SIGNAL
+	// ========================================================================
+	result.Logs = append(result.Logs, "Phase 1.5: Checking for Reverse Signal...")
+	shouldReturnReverse, err := s.tradeMonitorFase1bCheckReverseSignal(ctx, trade, currentMarketPrice, result)
+	if err != nil {
+		result.Logs = append(result.Logs, fmt.Sprintf("ERROR in Phase 1.5: %v", err))
+		return nil, fmt.Errorf("fase 1.5 failed: %w", err)
+	}
+
+	if shouldReturnReverse {
+		result.Logs = append(result.Logs, "Trade closed due to reverse signal. Halting further checks.")
+		result.Status = trade.Status // REVERSE_SIGNAL or CLOSED
+		result.Message = "Reverse signal hit, trade closed"
+		return result, nil
+	}
+
+	// ========================================================================
 	// FASE 2: SINKRONISASI JARING / ENTRY
 	// ========================================================================
 	result.Logs = append(result.Logs, "Phase 2: Syncing Entry orders...")
@@ -293,8 +310,8 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 	if !tpExists {
 		processResult.Logs = append(processResult.Logs, fmt.Sprintf("TP Algo %d not found in open orders. Fetching manually...", trade.TPOrderID))
 		tpOrderDetail, err := s.BinanceClient.GetAlgoOrder(ctx, &binance.GetAlgoOrdersRequest{
-			Symbol:  trade.Symbol,
-			AlgoID:  trade.TPOrderID,
+			Symbol: trade.Symbol,
+			AlgoID: trade.TPOrderID,
 		})
 		if err == nil {
 			tpAlgoOrder = tpOrderDetail
@@ -308,8 +325,8 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 	if !slExists {
 		processResult.Logs = append(processResult.Logs, fmt.Sprintf("SL Algo %d not found in open orders. Fetching manually...", trade.SLOrderID))
 		slOrderDetail, err := s.BinanceClient.GetAlgoOrder(ctx, &binance.GetAlgoOrdersRequest{
-			Symbol:  trade.Symbol,
-			AlgoID:  trade.SLOrderID,
+			Symbol: trade.Symbol,
+			AlgoID: trade.SLOrderID,
 		})
 		if err == nil {
 			slAlgoOrder = slOrderDetail
@@ -392,7 +409,7 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 				if err != nil {
 					return fmt.Errorf("failed to fetch entries: %w", err)
 				}
-				
+
 				for _, entry := range entries {
 					if entry.Status == "PENDING" || entry.Status == "NEW" {
 						err = s.repo.TradeEntry.UpdateStatus(tx, entry.ID, "CANCELLED", exitReason)
@@ -539,6 +556,117 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 		return result, true, nil
 	}
 	return result, shouldReturn, nil
+}
+
+// tradeMonitorFase1bCheckReverseSignal handles Fase 1.5: Cek Reverse Signal
+func (s *Services) tradeMonitorFase1bCheckReverseSignal(
+	ctx *gin.Context,
+	trade *models.Trade,
+	currentMarketPrice float64,
+	processResult *dtos.ProcessTradeResult,
+) (bool, error) {
+
+	// 1. Only check reverse signal if we have actually entered the trade
+	// Hitung total qty dari semua entry yang filled/partially filled menurut Database
+	totalFilledQtyDB := 0.0
+	for _, e := range trade.Entries {
+		if e.Status == "FILLED" || e.Status == "PARTIALLY_FILLED" {
+			totalFilledQtyDB += e.FilledQty
+		}
+	}
+	if totalFilledQtyDB == 0 {
+		processResult.Logs = append(processResult.Logs, "No filled entries yet, skipping reverse signal check.")
+		return false, nil
+	}
+
+	analyzeReq := &dtos.SignalAnalyzeRequest{
+		Symbol:     trade.Symbol,
+		StrategyID: 0,
+		Capital:    100.0, // dummy, doesn't matter for reverse signal check
+	}
+
+	analyzeRes, err := s.SignalAnalyze(ctx, analyzeReq)
+	if err != nil {
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("⚠️ Could not fetch SignalAnalyze for reverse check: %v", err))
+		return false, nil // Do not fail monitor
+	}
+
+	// if !analyzeRes.Signal.Valid {
+	// 	return false, nil
+	// }
+
+	isReversed := false
+	newSignal := analyzeRes.Signal.Signal
+
+	if (trade.Side == "BUY" || trade.Side == "STRONG_BUY") && (newSignal == "SELL" || newSignal == "STRONG_SELL") {
+		isReversed = true
+	} else if (trade.Side == "SELL" || trade.Side == "STRONG_SELL") && (newSignal == "BUY" || newSignal == "STRONG_BUY") {
+		isReversed = true
+	}
+
+	if !isReversed {
+		return false, nil
+	}
+
+	processResult.Logs = append(processResult.Logs, fmt.Sprintf("🚨 REVERSE SIGNAL DETECTED! Current Side: %s, New Signal: %s", trade.Side, newSignal))
+
+	err = s.repo.TxManager.WithinTransaction(func(tx *gorm.DB) error {
+		pnl := calculatePnL(trade, currentMarketPrice)
+		pnlPct := calculatePnLPct(trade, pnl)
+
+		now := time.Now()
+		updateTrade := &models.Trade{
+			Status:     "CLOSED",
+			ClosedAt:   &now,
+			ExitPrice:  currentMarketPrice,
+			ExitReason: "REVERSE_SIGNAL",
+			PnL:        pnl,
+			PnLPct:     pnlPct,
+		}
+		_, err := s.repo.Trade.Update(tx, &models.Trade{ID: trade.ID}, updateTrade)
+		if err != nil {
+			return err
+		}
+
+		// Close Position in Binance
+		closeSide := binance.OrderSideSell
+		if trade.Side == "SELL" || trade.Side == "STRONG_SELL" {
+			closeSide = binance.OrderSideBuy
+		}
+
+		_, closeErr := s.BinanceClient.ClosePosition(trade.Symbol, totalFilledQtyDB, closeSide)
+		if closeErr != nil {
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("⚠️ Warning: Failed to close Binance position on reverse: %v", closeErr))
+		} else {
+			processResult.Logs = append(processResult.Logs, "✅ Binance position closed successfully due to reverse signal.")
+		}
+
+		// Cancel all orders in Binance
+		processResult.Logs = append(processResult.Logs, fmt.Sprintf("Canceling ALL open orders for symbol %s...", trade.Symbol))
+		if cancelErr := s.BinanceClient.CancelAllOrders(trade.Symbol); cancelErr != nil {
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Failed to cancel all orders for %s: %v", trade.Symbol, cancelErr))
+		} else {
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("ALL orders for %s canceled on Binance successfully.", trade.Symbol))
+		}
+
+		// Cancel pending entries in DB
+		entries, _ := s.repo.TradeEntry.FindByTradeID(tx, trade.ID)
+		for _, entry := range entries {
+			if entry.Status == "PENDING" || entry.Status == "NEW" {
+				_ = s.repo.TradeEntry.UpdateStatus(tx, entry.ID, "CANCELLED", "Reverse signal")
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return false, err
+	}
+
+	trade.Status = "CLOSED"
+	processResult.Logs = append(processResult.Logs, "✅ Trade closed successfully with REVERSE_SIGNAL.")
+	return true, nil
 }
 
 // tradeMonitorFase2SyncEntries handles Fase 2: Sinkronisasi Entry
@@ -691,13 +819,13 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 				}
 			}
 
-			// Karena Algo Order memakai closePosition=true, kita TIDAK PERLU 
+			// Karena Algo Order memakai closePosition=true, kita TIDAK PERLU
 			// melakukan "Cancel & Replace" setiap kali averaging hit!
-			// Kita hanya perlu membuatnya SEKALI: saat entry pertama kena, 
+			// Kita hanya perlu membuatnya SEKALI: saat entry pertama kena,
 			// atau saat Fallback (ID = 0 karena gagal dibuat sebelumnya).
 			if trade.TPOrderID == 0 && totalFilledQty > 0 {
 				processResult.Logs = append(processResult.Logs, fmt.Sprintf("Entries filled but TP/SL Algo missing (ID: 0). Creating Algo TP/SL..."))
-				
+
 				tpOrderID, slOrderID, err := s.tradeMonitorCreateAlgoTPOrder(ctx, trade, processResult)
 				if err != nil {
 					// 🚨 JIKA GAGAL CREATE, TRADE TIDAK PUNYA TP/SL DI BINANCE SAMA SEKALI
@@ -732,7 +860,7 @@ func (s *Services) tradeMonitorFase2SyncEntries(
 				tpUpdated = true
 				slUpdated = true
 			} else if totalFilledQty > 0 {
-				// Averaging hit, TP/SL sudah ada (> 0). 
+				// Averaging hit, TP/SL sudah ada (> 0).
 				// Biarkan saja, `closePosition=true` akan mengatur semuanya!
 				processResult.Logs = append(processResult.Logs, fmt.Sprintf("Averaging entry filled. Existing TP/SL Algo (%d, %d) will automatically adapt using closePosition=true.", trade.TPOrderID, trade.SLOrderID))
 			}
@@ -766,7 +894,7 @@ func (s *Services) tradeMonitorCreateAlgoTPOrder(ctx context.Context, trade *mod
 
 	// Place Take Profit Market (Algo Order)
 	processResult.Logs = append(processResult.Logs, fmt.Sprintf("Requesting new Algo TP Order (TriggerPrice: %v, Side: %s, ClosePosition: true)...", tpAdjusted, closeSide))
-	
+
 	tpReq := &binance.PlaceAlgoOrderRequest{
 		Symbol:        trade.Symbol,
 		Side:          closeSide,
@@ -784,7 +912,7 @@ func (s *Services) tradeMonitorCreateAlgoTPOrder(ctx context.Context, trade *mod
 
 	// Place Stop Loss Market (Algo Order)
 	processResult.Logs = append(processResult.Logs, fmt.Sprintf("Requesting new Algo SL Order (TriggerPrice: %v, Side: %s, ClosePosition: true)...", slAdjusted, closeSide))
-	
+
 	slReq := &binance.PlaceAlgoOrderRequest{
 		Symbol:        trade.Symbol,
 		Side:          closeSide,
@@ -796,11 +924,11 @@ func (s *Services) tradeMonitorCreateAlgoTPOrder(ctx context.Context, trade *mod
 	slResp, err := s.BinanceClient.PlaceAlgoOrder(ctx, slReq)
 	if err != nil {
 		processResult.Logs = append(processResult.Logs, fmt.Sprintf("FAILED setting Algo Stop Loss: %v", err))
-		
+
 		// Rollback TP if SL fails to keep state consistent
 		processResult.Logs = append(processResult.Logs, fmt.Sprintf("Rolling back orphaned Algo TP %d...", tpResp.AlgoID))
 		s.BinanceClient.CancelAlgoOrder(ctx, &binance.CancelAlgoOrderRequest{Symbol: trade.Symbol, AlgoID: tpResp.AlgoID})
-		
+
 		return 0, 0, fmt.Errorf("failed to place Algo SL order: %w", err)
 	}
 	processResult.Logs = append(processResult.Logs, fmt.Sprintf("SUCCESS setting Algo Stop Loss (AlgoID: %d)", slResp.AlgoID))
@@ -869,7 +997,7 @@ func (s *Services) tradeMonitorFase3Netting(ctx *gin.Context, trade *models.Trad
 	// Jika YA (semua cancelled/rejected) dan tidak ada yang filled: Update DB Trade.status = "CANCELLED"
 	if allCancelledOrRejected && !hasAnyFilled {
 		processResult.Logs = append(processResult.Logs, "Zero entries filled and all entries cancelled/rejected. Marking trade as DEAD_SIGNAL (CANCELLED).")
-		
+
 		// 🚨 SAPU JAGAT BACKUP PLAN (Pencegah Zombie Limit Order 🧟)
 		// Jika Fase 2 gagal cancel akibat network down, paksa sapu bersih di sini sebelum menutup Trade DB.
 		processResult.Logs = append(processResult.Logs, fmt.Sprintf("Executing CancelAllOrders for symbol %s as DEAD_SIGNAL precaution...", trade.Symbol))

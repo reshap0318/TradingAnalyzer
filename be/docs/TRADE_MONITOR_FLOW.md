@@ -8,6 +8,7 @@
 4. [Phase Details](#phase-details)
    - [FASE 0: Persiapan Data](#fase-0-persiapan-data)
    - [FASE 1: Cek TP/SL](#fase-1-cek-tpsl)
+   - [FASE 1.5: Cek Reverse Signal](#fase-15-cek-reverse-signal)
    - [FASE 2: Sync Entries](#fase-2-sync-entries)
    - [FASE 3: Netting & Finalisasi](#fase-3-netting--finalisasi)
 5. [Function Reference](#function-reference)
@@ -79,32 +80,48 @@ graph TD
     F --> F1[Get Current Market Price]
     F1 --> F2[Fetch Open Orders]
     F2 --> F3[Fetch Open Algo Orders]
-    
+
     F3 --> G[FASE 1: Cek TP/SL]
     G --> G1{Any Filled Entries?}
-    G1 -->|No| H[Skip TP/SL Check]
+    G1 -->|No| G10[Skip TP/SL Check]
     G1 -->|Yes| G2{TPOrderID = 0?}
-    
+
     G2 -->|Yes: Fallback| G3[Manual Price Check]
     G3 --> G4{TP/SL Hit?}
     G4 -->|Yes| G5[Close: TP_HIT_SYSTEM/SL_HIT_SYSTEM]
     G4 -->|No| G6[Wait for Next Cycle]
-    
+
     G2 -->|No: Normal| G7[Check Algo Order Status]
     G7 --> G8{TP/SL FILLED?}
     G8 -->|Yes| G9[Validate Position]
     G9 --> G10{Position Match DB?}
-    
+
     G10 -->|No: Mismatch| G11[Sync Entries First]
     G11 --> G12[Close: TP_HIT_MISMATCH/SL_HIT_MISMATCH]
     G10 -->|Yes: Normal| G13[Close: TP_HIT/SL_HIT]
-    
+
     G8 -->|No| G14{Position = 0?}
     G14 -->|Yes| G15[Manual Close Detected]
     G15 --> G16[Close: MANUAL_CLOSE]
-    G14 -->|No| H
-    
-    H --> I[FASE 2: Sync Entries]
+    G14 -->|No| G20[Continue to FASE 1.5]
+
+    G5 --> O[Cancel All Orders]
+    G11 --> O
+    G12 --> O
+    G13 --> O
+    G16 --> O
+
+    G6 --> G20
+    G10 --> G20
+
+    G20 --> H[FASE 1.5: Cek Reverse Signal]
+    H --> H1{Signal Analyze<br/>Opposite Direction?}
+    H1 -->|Yes| H2[Close: REVERSE_SIGNAL]
+    H1 -->|No| I[Continue to FASE 2]
+
+    H2 --> O2[Cancel All Orders & TP/SL Algo]
+    O2 --> P[Update Trade Status]
+    P --> K
     I --> I1[For Each Entry]
     I1 --> I2{Order in Binance?}
     
@@ -289,6 +306,7 @@ map[int64]*binance.AlgoOrderResponse {
 - `TP_HIT_SYSTEM` - TP hit tanpa order (fallback, TPOrderID=0)
 - `SL_HIT_SYSTEM` - SL hit tanpa order (fallback, TPOrderID=0)
 - `MANUAL_CLOSE` - User close manual via Binance app (detect position=0)
+- `REVERSE_SIGNAL` 🆕 - Close karena signal analyze menunjukkan arah berlawanan
 
 #### **Logs (Normal):**
 ```
@@ -330,6 +348,118 @@ Phase 1: Checking TP/SL status...
 Canceling ALL open orders for symbol BTCUSDT...
 ALL orders for BTCUSDT canceled on Binance successfully.
 Trade closed manually by user. Halting further checks.
+```
+
+---
+
+### **FASE 1.5: Cek Reverse Signal** 🆕
+
+**Purpose:** Detect perubahan market condition yang berlawanan arah dengan posisi saat ini, dan close posisi secara preventif sebelum TP/SL hit.
+
+**Location:** `internal/service/trade_monitor_service.go` - Function `tradeMonitorFase1bCheckReverseSignal()`
+
+#### **Steps:**
+
+```
+1. Check if Trade Has Filled Entries
+   totalFilledQtyDB = Σ(entry.FilledQty) where status in ["FILLED", "PARTIALLY_FILLED"]
+   
+   If totalFilledQtyDB == 0:
+   ├─ Log: "No filled entries yet, skipping reverse signal check."
+   └─ Return false (no close)
+   ↓
+2. Call Signal Analyze
+   analyzeReq := &dtos.SignalAnalyzeRequest{
+       Symbol:     trade.Symbol,
+       StrategyID: 0,
+       Capital:    100.0, // dummy value
+   }
+   
+   analyzeRes, err := s.SignalAnalyze(ctx, analyzeReq)
+   
+   If err != nil:
+   ├─ Log: "⚠️ Could not fetch SignalAnalyze for reverse check: %v"
+   └─ Return false (fail gracefully, don't close)
+   ↓
+3. Check Signal Direction
+   newSignal := analyzeRes.Signal.Signal
+   
+   isReversed := false
+   
+   If (trade.Side == "BUY" || "STRONG_BUY") && (newSignal == "SELL" || "STRONG_SELL"):
+   └─ isReversed = true
+   
+   If (trade.Side == "SELL" || "STRONG_SELL") && (newSignal == "BUY" || "STRONG_BUY"):
+   └─ isReversed = true
+   ↓
+4. If NOT Reversed:
+   └─ Return false (continue monitoring)
+   ↓
+5. If REVERSE SIGNAL DETECTED:
+   Log: "🚨 REVERSE SIGNAL DETECTED! Current Side: %s, New Signal: %s"
+   ↓
+6. Execute Close (Within Transaction):
+   ├─ Calculate PnL using currentMarketPrice (from FASE 0)
+   ├─ Calculate PnLPct
+   ├─ Update DB:
+   │   status = "CLOSED"
+   │   closed_at = now
+   │   exit_price = currentMarketPrice
+   │   exit_reason = "REVERSE_SIGNAL"
+   │   pnl = calculated PnL
+   │   pnl_pct = calculated PnLPct
+   │
+   ├─ Close Position di Binance:
+   │   closeSide = opposite of trade.Side
+   │   ClosePosition(symbol, totalFilledQtyDB, closeSide)
+   │
+   ├─ Cancel All Orders:
+   │   CancelAllOrders(symbol)
+   │
+   ├─ Cancel TP/SL Algo Orders:
+   │   If TPOrderID > 0: CancelAlgoOrder(TPOrderID)
+   │   If SLOrderID > 0: CancelAlgoOrder(SLOrderID)
+   │
+   └─ Update Pending Entries:
+       For each entry with status PENDING/NEW:
+       └─ Update status = "CANCELLED", reason = "Reverse signal"
+   ↓
+7. Return true (trade closed)
+```
+
+#### **API Calls:**
+
+| Scenario | API Calls | Details |
+|----------|-----------|---------|
+| **Signal Analyze** | ~10-15 calls | Get Klines, calculate indicators (MACD, RSI, Stochastic, etc.) |
+| **Reverse Close** | 4-6 calls | ClosePosition + CancelAllOrders + CancelAlgoOrder(TP) + CancelAlgoOrder(SL) |
+| **Total** | ~14-21 calls | One-time per reverse detection |
+
+**Note:** Signal Analyze adalah heavy operation. Pertimbangkan untuk:
+- Cache hasil analyze (5-10 menit)
+- Skip jika trade baru dibuat (< 5 menit)
+- Add confidence threshold (misal: hanya close jika signal strength > 70%)
+
+#### **Exit Reason:**
+- `REVERSE_SIGNAL` 🆕 - Close karena signal analyze menunjukkan arah berlawanan
+
+#### **Logs:**
+```
+Phase 1.5: Checking for Reverse Signal...
+🚨 REVERSE SIGNAL DETECTED! Current Side: BUY, New Signal: SELL
+Canceling ALL open orders for symbol BTCUSDT...
+ALL orders for BTCUSDT canceled on Binance successfully.
+⚠️ Warning: Failed to close Binance position on reverse: API error
+✅ Binance position closed successfully due to reverse signal.
+✅ Trade closed successfully with REVERSE_SIGNAL.
+Trade closed due to reverse signal. Halting further checks.
+```
+
+#### **Warning Logs:**
+```
+Phase 1.5: Checking for Reverse Signal...
+⚠️ Could not fetch SignalAnalyze for reverse check: failed to get klines: no data found
+No filled entries yet, skipping reverse signal check.
 ```
 
 ---
@@ -824,6 +954,7 @@ cacheKey := "binance:futures:exchange_info:all"
 | **`MANUAL_CLOSE`** | User close via Binance app | User action | ✅ Yes (position=0) | 2-3 |
 | **`MANUAL_CLOSE_BY_USER`** | User close via API | MARKET order | ✅ Yes | 3-5 |
 | **`DEAD_SIGNAL`** | All entries cancelled/rejected | Cancel orders | ✅ Yes (position=0) | 1-2 |
+| **`REVERSE_SIGNAL`** 🆕 | Signal analyze opposite direction | MARKET order | ✅ Yes | 14-21 |
 
 ---
 
@@ -844,6 +975,20 @@ TP/SL Hit Detected
     │
     └─ Position = 0 but Algo NOT filled?
         └─ Yes → MANUAL_CLOSE
+
+Reverse Signal Detection (FASE 1.5)
+    ↓
+    ├─ Any filled entries?
+    │   ├─ No → Skip reverse check
+    │   └─ Yes → Continue
+    │
+    ├─ Call Signal Analyze
+    │   ├─ Error → Fail gracefully (no close)
+    │   └─ Success → Check signal direction
+    │
+    └─ Signal opposite to current position?
+        ├─ BUY/STRONG_BUY + SELL/STRONG_SELL → REVERSE_SIGNAL
+        └─ SELL/STRONG_SELL + BUY/STRONG_BUY → REVERSE_SIGNAL
 ```
 
 ---
@@ -1128,13 +1273,26 @@ if trade.TPOrderID > 0 {
 | **Monitor Interval** | 1 minute | Cron job schedule |
 | **Normal Flow Duration** | 2-3 seconds | Per trade |
 | **Mismatch Flow Duration** | 4-6 seconds | Per trade (with sync) |
+| **Reverse Signal Flow** | 3-5 seconds | Per trade (with Signal Analyze) |
 | **API Calls (Normal)** | 4-5 calls | Per trade per cycle |
 | **API Calls (Mismatch)** | 9-10 calls | Per trade (one-time) |
+| **API Calls (Reverse Signal)** | 14-21 calls | Per trade (one-time, heavy) |
 | **API Weight (Normal)** | 60-100/minute | Per trade |
 | **API Weight (Mismatch)** | 150-250/minute | Per trade (one-time) |
+| **API Weight (Reverse Signal)** | 300-450/minute | Per trade (one-time, Signal Analyze) |
 | **Binance Limit** | 2400 weight/minute | Per IP |
 | **Ghost Position Prevention** | ✅ 100% | With MISMATCH flow |
 | **Cache Hit Rate** | ~80% | Price (5s), Position (10s) |
+
+---
+
+**Note:** Reverse Signal flow menggunakan Signal Analyze yang heavy (~10-15 API calls untuk fetch klines dan calculate indicators). 
+
+**Rekomendasi Optimization:**
+- Add config `ENABLE_REVERSE_SIGNAL_CLOSE` (default: false)
+- Add config `REVERSE_SIGNAL_MIN_CONFIDENCE` (threshold confidence %)
+- Cache Signal Analyze result (5-10 menit per symbol)
+- Skip jika trade age < 5 menit (grace period)
 
 ---
 
@@ -1227,6 +1385,28 @@ Total:                  8-9 calls × 20 weight = 160-180/minute
    s.BinanceClient.CancelAllOrders(symbol) // 1 call vs N calls
    ```
 
+9. **Fail Gracefully pada Reverse Signal**
+   ```go
+   analyzeRes, err := s.SignalAnalyze(ctx, analyzeReq)
+   if err != nil {
+       // Log warning but don't fail the trade
+       processResult.Logs = append(processResult.Logs,
+           fmt.Sprintf("⚠️ Could not fetch SignalAnalyze for reverse check: %v", err))
+       return false, nil // Don't close, continue monitoring
+   }
+   ```
+
+10. **Consider Caching Signal Analyze** (heavy operation)
+    ```go
+    // Cache result for 5-10 minutes per symbol
+    cacheKey := "signal:analyze:" + symbol
+    cached, err := rdb.Get(ctx, cacheKey).Result()
+    if err == nil {
+        return cached, nil // Use cached result
+    }
+    // Otherwise call SignalAnalyze and cache result
+    ```
+
 ---
 
 ## 📚 Related Documentation
@@ -1238,6 +1418,6 @@ Total:                  8-9 calls × 20 weight = 160-180/minute
 
 ---
 
-**Last Updated:** 2026-03-18  
-**Version:** 3.0 (Complete flow with function reference)  
+**Last Updated:** 2026-03-21
+**Version:** 4.0 (Added FASE 1.5: Reverse Signal Close)
 **Author:** TradingAnalyzer Team
