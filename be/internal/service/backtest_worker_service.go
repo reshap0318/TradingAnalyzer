@@ -533,6 +533,7 @@ func (s *Services) backtestRunSimulation(
 			dailyStats.PnL = 0.0
 			dailyStats.SLHits = 0
 			dailyStats.TPHits = 0
+			dailyStats.ConsecutiveLosses = 0
 		}
 
 		// ─────────────────────────────────────────────────────────────────
@@ -734,6 +735,13 @@ func (s *Services) backtestValidate5Gates(
 	plan *dtos.TradingPlan,
 	mmConfig *config.MMConfig,
 ) bool {
+	// Gate 1.5: Minimum Risk/Reward Ratio Hard Limit
+	if plan.RiskRewardRatio < float64(mmConfig.RISK_REWARD_RATIO) {
+		fmt.Printf("🚫 [GATE 1.5] R:R too low: %.2f < %.2f\n", 
+			plan.RiskRewardRatio, mmConfig.RISK_REWARD_RATIO)
+		return false
+	}
+
 	// Gate 2A: Consecutive Loss Limit
 	if dailyStats.ConsecutiveLosses >= int(mmConfig.MAX_DAILY_LOSS_COUNT) {
 		fmt.Printf("🚫 [GATE 2A] Consecutive losses limit reached: %d >= %d\n",

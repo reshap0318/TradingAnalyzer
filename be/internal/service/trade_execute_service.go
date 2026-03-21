@@ -142,14 +142,21 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 		}, nil
 	}
 
-	fmt.Printf("[DEBUG] MAX_DAILY_TRADES = %d, RISK_REWARD_TARGET = %.2f\n",
-		mmConfig.MAX_DAILY_TRADES, mmConfig.RISK_REWARD_TARGET)
-
-	fmt.Printf("[DEBUG] symStat.Count = %d, symStat.Active = %d, Symbol = %s\n",
-		symStat.Count, symStat.Active, req.Symbol)
-
-	fmt.Printf("[DEBUG] analyzeRes.Signal.TradingPlan.RiskRewardRatio = %.2f\n",
-		analyzeRes.Signal.TradingPlan.RiskRewardRatio)
+	// VALIDATION 4.5: HARD LIMIT - Minimum Risk/Reward Ratio
+	if analyzeRes.Signal.TradingPlan.RiskRewardRatio < float64(mmConfig.RISK_REWARD_RATIO) {
+		return &dtos.TradeResponse{
+			Symbol:           req.Symbol,
+			PrimaryTimeframe: analyzeRes.PrimaryTimeframe,
+			Timestamp:        time.Now(),
+			Signal:           analyzeRes.Signal,
+			Scoring:          analyzeRes.Scoring,
+			ExecutionInfo: dtos.ExecutionInfo{
+				Executed: false,
+				Message: fmt.Sprintf("HARD LIMIT: Rejected because R:R %.2f is lower than minimum allowed %.2f.",
+					analyzeRes.Signal.TradingPlan.RiskRewardRatio, mmConfig.RISK_REWARD_RATIO),
+			},
+		}, nil
+	}
 
 	// VALIDATION 5: SOFT LIMIT - Daily Trade Count & RR Ratio TARGET Override
 	if symStat.Count >= mmConfig.MAX_DAILY_TRADES {

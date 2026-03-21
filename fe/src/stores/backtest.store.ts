@@ -306,7 +306,7 @@ export const useBacktestStore = defineStore('backtest', () => {
           // showError('Error', backtest.error_message || 'Backtest failed')
         }
       }
-    }, 2000)
+    }, 5000)
   }
 
   // Stop polling

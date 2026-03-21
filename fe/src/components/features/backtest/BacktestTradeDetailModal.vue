@@ -54,7 +54,7 @@ watch(
             {{ trade.side }}
           </span>
         </div>
-        <div>
+        <div class="text-end">
           <p class="text-xs text-gray-500">Status</p>
           <span
             class="inline-block mt-1 px-2 py-1 text-xs rounded-full"
@@ -116,7 +116,7 @@ watch(
           <div class="flex justify-between py-2 border-b border-gray-100 last:border-0">
             <span class="text-sm text-gray-500">Duration</span>
             <span class="text-sm font-medium text-gray-900">
-              {{ formatDuration(trade.duration_minutes) }}
+              {{ formatDuration(trade.duration_minutes * 60) }}
             </span>
           </div>
         </div>
