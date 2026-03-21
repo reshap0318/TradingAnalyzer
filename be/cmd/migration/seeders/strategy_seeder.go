@@ -477,10 +477,10 @@ func SeedStrategies(db *gorm.DB) {
 				{2, 0.40}, // MACD
 			},
 			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "70"}, {"MAX_DAILY_TRADES", "5"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "2"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "3.0"},
-				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.15"},
+				{"MIN_CONFIDENCE", "55"}, {"MAX_DAILY_TRADES", "8"}, // Confidence diturunkan drastis agar sinyal meledak
+				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "3"}, // Stop loss diperketat (3% account loss)
+				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.5"}, // Wajib untung 2x lipat dari resiko!
+				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
 				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "true"},
 				{"ORDER_EXPIRATION_HOURS", "2"},
 			},
@@ -500,10 +500,10 @@ func SeedStrategies(db *gorm.DB) {
 				{6, 0.20}, // Volume
 			},
 			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "65"}, {"MAX_DAILY_TRADES", "5"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "2"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "3.0"},
-				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.15"},
+				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "8"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "3"},
+				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.5"},
+				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
 				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "true"},
 				{"ORDER_EXPIRATION_HOURS", "2"},
 			},
@@ -523,10 +523,9 @@ func SeedStrategies(db *gorm.DB) {
 				{3, 0.20}, // RSI
 			},
 			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "60"}, // Diturunkan sedikit karena RSI mengurangi skor
-				{"MAX_DAILY_TRADES", "5"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "2"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "3.0"},
+				{"MIN_CONFIDENCE", "48"}, {"MAX_DAILY_TRADES", "8"}, 
+				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "3"},
+				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.5"},
 				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
 				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"},
 				{"ORDER_EXPIRATION_HOURS", "2"},
@@ -547,9 +546,9 @@ func SeedStrategies(db *gorm.DB) {
 				{5, 0.20}, // Bollinger Bands
 			},
 			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "65"}, {"MAX_DAILY_TRADES", "4"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "2"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "3.0"},
+				{"MIN_CONFIDENCE", "52"}, {"MAX_DAILY_TRADES", "6"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "2"},
+				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.5"},
 				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
 				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"},
 				{"ORDER_EXPIRATION_HOURS", "4"},
@@ -570,11 +569,11 @@ func SeedStrategies(db *gorm.DB) {
 				{5, 0.20}, // Bollinger Bands
 			},
 			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "45"}, // Sangat penting! Max skor organik tipe ini cuma ~58.
-				{"MAX_DAILY_TRADES", "10"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "3"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "2.5"},
-				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
+				{"MIN_CONFIDENCE", "38"}, // Ekstrem rendah agar sinyal sekecil apapun masuk tahap filter RR
+				{"MAX_DAILY_TRADES", "15"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "4"},
+				{"RISK_REWARD_RATIO", "1.8"}, {"RISK_REWARD_TARGET", "3.0"}, // Oscillator rawan TP jauh, jadi RR direndahkan dikit
+				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.05"}, // Lot kecil, tembak banyak
 				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"},
 				{"ORDER_EXPIRATION_HOURS", "2"},
 			},
@@ -595,10 +594,10 @@ func SeedStrategies(db *gorm.DB) {
 				{8, 0.10}, // ATR
 			},
 			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "60"}, {"MAX_DAILY_TRADES", "3"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "1"},
-				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "4.0"},
-				{"RISK_ENTRY_BUFFER", "0.005"}, {"MAX_POSITION_SIZE", "0.15"},
+				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "4"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "2"},
+				{"RISK_REWARD_RATIO", "2.5"}, {"RISK_REWARD_TARGET", "4.5"}, // 1 trade = untung 2.5x modal risk!
+				{"RISK_ENTRY_BUFFER", "0.005"}, {"MAX_POSITION_SIZE", "0.10"},
 				{"LEVERAGE", "3"}, {"IS_AGRESSIVE", "false"},
 				{"ORDER_EXPIRATION_HOURS", "12"},
 			},
@@ -619,9 +618,9 @@ func SeedStrategies(db *gorm.DB) {
 				{8, 0.10}, // ATR Volatilitas
 			},
 			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "65"}, {"MAX_DAILY_TRADES", "2"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "1"},
-				{"RISK_REWARD_RATIO", "2.5"}, {"RISK_REWARD_TARGET", "5.0"},
+				{"MIN_CONFIDENCE", "55"}, {"MAX_DAILY_TRADES", "3"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.02"}, {"MAX_DAILY_LOSS_COUNT", "1"}, // Kalah 1x hari ini langsung puasa
+				{"RISK_REWARD_RATIO", "3.0"}, {"RISK_REWARD_TARGET", "5.0"}, // Sangat ekstrem, menang 1x tutup loss sebulan
 				{"RISK_ENTRY_BUFFER", "0.005"}, {"MAX_POSITION_SIZE", "0.10"},
 				{"LEVERAGE", "2"}, {"IS_AGRESSIVE", "false"},
 				{"ORDER_EXPIRATION_HOURS", "48"},

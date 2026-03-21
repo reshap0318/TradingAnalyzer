@@ -108,6 +108,25 @@ const loadSampleParams = () => {
           />
         </div>
 
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            Role <span class="text-red-500">*</span>
+          </label>
+          <select
+            v-model="store.indicatorReq.role"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+            :class="{ 'border-danger': store.indicatorReqValid.role.$error }"
+          >
+            <option value="" disabled>Select Role</option>
+            <option value="DRIVER">DRIVER</option>
+            <option value="FILTER">FILTER</option>
+            <option value="BOOSTER">BOOSTER</option>
+          </select>
+          <p v-if="store.indicatorReqValid.role.$error" class="mt-1 text-sm text-danger">
+            {{ getValidationErrors(store.indicatorReqValid.role).join(', ') }}
+          </p>
+        </div>
+
         <UiInput
           v-model="store.indicatorReq.description"
           label="Description"

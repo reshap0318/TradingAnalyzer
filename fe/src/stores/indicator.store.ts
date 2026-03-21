@@ -13,6 +13,7 @@ export interface IIndicator {
   id: number
   name: string
   indicator: string
+  role: 'DRIVER' | 'FILTER' | 'BOOSTER'
   description: string
   params: Record<string, any>
   is_active: boolean
@@ -24,6 +25,7 @@ export interface IIndicator {
 export interface IIndicatorRequest {
   name: string
   indicator: string
+  role: 'DRIVER' | 'FILTER' | 'BOOSTER'
   description: string
   params: Record<string, any>
   is_active: boolean
@@ -41,6 +43,7 @@ export const useIndicatorStore = defineStore('indicator', () => {
   const indicatorReq = ref<IIndicatorRequest>({
     name: '',
     indicator: '',
+    role: 'DRIVER',
     description: '',
     params: {},
     is_active: true,
@@ -57,6 +60,7 @@ export const useIndicatorStore = defineStore('indicator', () => {
   const indicatorRules = ref({
     name: { required },
     indicator: { required },
+    role: { required },
     weight: { required, minValue: minValue(0), maxValue: maxValue(1) },
     order_view: { required, minValue: minValue(1) }
   })
@@ -211,6 +215,7 @@ export const useIndicatorStore = defineStore('indicator', () => {
     indicatorReq.value = {
       name: '',
       indicator: '',
+      role: 'DRIVER',
       description: '',
       params: {},
       is_active: true,
@@ -229,6 +234,7 @@ export const useIndicatorStore = defineStore('indicator', () => {
     indicatorReq.value = {
       name: indicator.name,
       indicator: indicator.indicator,
+      role: indicator.role,
       description: indicator.description,
       params: indicator.params,
       is_active: indicator.is_active,

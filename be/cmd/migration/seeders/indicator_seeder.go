@@ -23,6 +23,7 @@ func SeedIndicators(db *gorm.DB) {
 	defaultIndicator := []struct {
 		Name        string
 		Indicator   string
+		Role        string
 		Description string
 		Params      string
 		Weight      float64
@@ -32,6 +33,7 @@ func SeedIndicators(db *gorm.DB) {
 		{
 			Name:        "Moving Average",
 			Indicator:   "moving_average",
+			Role:        "DRIVER",
 			Description: "Moving Average - Trend indicator using multiple SMAs and EMAs",
 			Params:      `{"sma_periods": [20, 50, 200], "ema_periods": [12, 26]}`,
 			Weight:      0.30,
@@ -40,6 +42,7 @@ func SeedIndicators(db *gorm.DB) {
 		{
 			Name:        "MACD",
 			Indicator:   "macd",
+			Role:        "DRIVER",
 			Description: "Moving Average Convergence Divergence - Trend-following momentum indicator",
 			Params:      `{"fast_period": 12, "slow_period": 26, "signal_period": 9}`,
 			Weight:      0.22,
@@ -48,6 +51,7 @@ func SeedIndicators(db *gorm.DB) {
 		{
 			Name:        "RSI",
 			Indicator:   "rsi",
+			Role:        "FILTER",
 			Description: "Relative Strength Index - Momentum oscillator measuring speed and magnitude of price changes",
 			Params:      `{"period": 14, "overbought": 70, "oversold": 30}`,
 			Weight:      0.13,
@@ -58,6 +62,7 @@ func SeedIndicators(db *gorm.DB) {
 		{
 			Name:        "Stochastic",
 			Indicator:   "stochastic",
+			Role:        "FILTER",
 			Description: "Stochastic Oscillator - Momentum indicator comparing closing price to price range (with trend neutralization)",
 			Params:      `{"k_period": 14, "d_period": 3, "smooth": 3, "overbought": 80, "oversold": 20}`,
 			Weight:      0.10,
@@ -66,6 +71,7 @@ func SeedIndicators(db *gorm.DB) {
 		{
 			Name:        "Bollinger Bands",
 			Indicator:   "bollinger_bands",
+			Role:        "FILTER",
 			Description: "Bollinger Bands - Volatility bands at standard deviations above/below moving average",
 			Params:      `{"period": 20, "std_dev": 2.0}`,
 			Weight:      0.10,
@@ -74,6 +80,7 @@ func SeedIndicators(db *gorm.DB) {
 		{
 			Name:        "Volume",
 			Indicator:   "volume",
+			Role:        "BOOSTER",
 			Description: "Volume analysis - Comparing current volume to moving average",
 			Params:      `{"ma_period": 20}`,
 			Weight:      0.05,
@@ -84,6 +91,7 @@ func SeedIndicators(db *gorm.DB) {
 		{
 			Name:        "Candle Patterns",
 			Indicator:   "candle_patterns",
+			Role:        "BOOSTER",
 			Description: "Candlestick Patterns - Pattern recognition for reversal and continuation patterns (last 5 candles)",
 			Params:      `{}`,
 			Weight:      0.04,
@@ -92,6 +100,7 @@ func SeedIndicators(db *gorm.DB) {
 		{
 			Name:        "ATR",
 			Indicator:   "atr",
+			Role:        "FILTER",
 			Description: "Average True Range - Volatility indicator measuring price movement magnitude",
 			Params:      `{"period": 14}`,
 			Weight:      0.02,
@@ -100,6 +109,7 @@ func SeedIndicators(db *gorm.DB) {
 		{
 			Name:        "Trend Bonus",
 			Indicator:   "trend_bonus",
+			Role:        "BOOSTER",
 			Description: "Trend alignment bonus - Rewards when MA and MACD are aligned (strong trend). Returns ±20 signal",
 			Params:      `{}`,
 			Weight:      0.04,
@@ -116,6 +126,7 @@ func SeedIndicators(db *gorm.DB) {
 			indicator := models.Indicators{
 				Name:        indicatorData.Name,
 				Indicator:   indicatorData.Indicator,
+				Role:        indicatorData.Role,
 				Description: indicatorData.Description,
 				IsActive:    true,
 				Weight:      indicatorData.Weight,
@@ -136,6 +147,7 @@ func SeedIndicators(db *gorm.DB) {
 		} else {
 			// Indicator exists, update if needed
 			existing.Description = indicatorData.Description
+			existing.Role = indicatorData.Role
 			existing.Params = []byte(indicatorData.Params)
 			existing.Weight = indicatorData.Weight
 			existing.OrderView = indicatorData.OrderView

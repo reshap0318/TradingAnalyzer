@@ -5,6 +5,7 @@ type IndicatorRequest struct {
 	Name        string  `json:"name" binding:"required,max=100"`
 	Description string  `json:"description"`
 	Indicator   string  `json:"indicator" binding:"required,max=50"`
+	Role        string  `json:"role" binding:"required,oneof=DRIVER FILTER BOOSTER"`
 	Params      *string `json:"params"` // JSON string
 	IsActive    bool    `json:"is_active"`
 	Weight      float64 `json:"weight" binding:"required"`
@@ -25,6 +26,7 @@ type IndicatorData struct {
 	Name          string         `json:"name"`
 	Description   string         `json:"description"`
 	Indicator     string         `json:"indicator"`
+	Role          string         `json:"role"`
 	Params        interface{}    `json:"params"`
 	IsActive      bool           `json:"is_active"`
 	Weight        float64        `json:"weight"`

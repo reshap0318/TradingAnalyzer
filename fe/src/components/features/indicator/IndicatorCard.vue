@@ -33,14 +33,27 @@ const getParamsPreview = (params: Record<string, any>): string => {
         <h3 class="text-lg font-semibold text-gray-900">{{ indicator.name }}</h3>
         <p class="text-xs text-gray-500 font-mono mt-1">{{ indicator.indicator }}</p>
       </div>
-      <span
-        class="flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full"
-        :class="indicator.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'"
-      >
-        <PhCheckCircle v-if="indicator.is_active" :size="12" weight="fill" />
-        <PhXCircle v-else :size="12" weight="fill" />
-        {{ indicator.is_active ? 'Active' : 'Inactive' }}
-      </span>
+      <div class="flex flex-col items-end gap-1">
+        <!-- <span
+          class="flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full"
+          :class="indicator.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'"
+        >
+          <PhCheckCircle v-if="indicator.is_active" :size="12" weight="fill" />
+          <PhXCircle v-else :size="12" weight="fill" />
+          {{ indicator.is_active ? 'Active' : 'Inactive' }}
+        </span> -->
+        <span
+          class="flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full"
+          :class="{
+            'bg-blue-100 text-blue-700': indicator.role === 'DRIVER',
+            'bg-purple-100 text-purple-700': indicator.role === 'FILTER',
+            'bg-orange-100 text-orange-700': indicator.role === 'BOOSTER'
+          }"
+        >
+          <PhCheckCircle v-if="indicator.is_active" :size="12" weight="fill" />
+          {{ indicator.role }}
+        </span>
+      </div>
     </div>
 
     <!-- Description -->

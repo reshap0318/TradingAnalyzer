@@ -10,6 +10,7 @@ type Indicators struct {
 	ID          uint            `gorm:"primaryKey;autoIncrement" json:"id"`
 	Name        string          `gorm:"column:name;type:varchar(100);uniqueIndex;not null" json:"name"` // e.g., "rsi", "macd", "stochastic"
 	Indicator   string          `gorm:"column:indicator;type:varchar(50);uniqueIndex;not null" json:"indicator"`
+	Role        string          `gorm:"column:role;type:varchar(20);not null;default:'FILTER'" json:"role"`
 	Description string          `gorm:"column:description;type:text" json:"description"`
 	Params      json.RawMessage `gorm:"column:params;type:json" json:"params"` // Custom parameters in JSON
 	IsActive    bool            `gorm:"column:is_active;default:true" json:"is_active"`
