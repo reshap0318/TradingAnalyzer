@@ -219,7 +219,7 @@ export const useSignalAnalyzeStore = defineStore('signalAnalyze', () => {
 
       // Auto fetch raw data untuk chart setelah analyze berhasil
       if (result.value?.primary_timeframe) {
-        await fetchRawData(result.value.primary_timeframe, 300)
+        await fetchRawData(result.value.primary_timeframe, 500)
       }
 
       showSuccess('Analysis Complete', `Signal for ${payload.symbol} has been analyzed`)
@@ -233,7 +233,7 @@ export const useSignalAnalyzeStore = defineStore('signalAnalyze', () => {
     }
   }
 
-  async function fetchRawData(timeframe: string, limit: number = 300): Promise<boolean> {
+  async function fetchRawData(timeframe: string, limit: number = 500): Promise<boolean> {
     chartLoading.value = true
 
     try {

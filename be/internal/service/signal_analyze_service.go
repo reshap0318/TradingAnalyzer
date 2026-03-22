@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/reshap/trading-bot/internal/clients/binance"
-	"github.com/reshap/trading-bot/internal/config"
 	"github.com/reshap/trading-bot/internal/dtos"
 	"github.com/reshap/trading-bot/internal/helpers"
 	"github.com/reshap/trading-bot/internal/helpers/indicators"
@@ -126,7 +125,7 @@ func (s *Services) SignalAnalyze(ctx *gin.Context, req *dtos.SignalAnalyzeReques
 	for _, tf := range strategy.Timeframes {
 		timeframeKlines = append(timeframeKlines, binance.MultiKlineRequest{
 			Interval: tf.TimeframeName,
-			Limit:    300,
+			Limit:    500,
 		})
 	}
 
@@ -147,7 +146,7 @@ func (s *Services) signalAnalyzeCalculate(
 	binanceData map[string][]binance.KlineInfo,
 	thresholds []models.Threshold,
 ) (*dtos.SignalAnalyzeResponse, error) {
-	config := s.getConfigMM(strategy)
+	config := strategy.MoneyManagement
 	finalSignal := 0.0
 	breakdown := make([]dtos.TimeframeSignalData, 0)
 
@@ -162,26 +161,26 @@ func (s *Services) signalAnalyzeCalculate(
 		// Convert to OHLCV and closes
 		ohlcData, closes := convertKlinesToOHLCV(klines)
 
-		var tfSignal float64
+		var driverScore float64
+		filterMultiplier := 1.0
+		boosterMultiplier := 1.0
 		indicatorBreakdown := make([]dtos.IndicatorBreakdown, 0)
-		for _, iw := range strategy.IndicatorWeights {
-			result, err := indicators.AnalyzeIndicatorWithConfig(
-				iw.IndicatorDetail.Indicator,
-				ohlcData,
-				closes,
-				cacheKey,
-				&s.cfg.INDICATORS,
-			)
 
+		// V2 Pass 1: SUM DRIVERS
+		for _, iw := range strategy.IndicatorWeights {
+			if iw.IndicatorDetail == nil || (iw.IndicatorDetail.Role != "DRIVER" && iw.IndicatorDetail.Role != "") {
+				continue
+			}
+			result, err := indicators.AnalyzeIndicatorWithConfig(
+				iw.IndicatorDetail.Indicator, ohlcData, closes, cacheKey, &s.cfg.INDICATORS,
+			)
 			if err != nil {
 				continue
 			}
 
-			// Calculate contribution
 			contribution := float64(result.Signal) * iw.Weight
-			tfSignal += contribution
+			driverScore += contribution
 
-			// Build indicator detail
 			indicatorDetail := dtos.IndicatorBreakdown{
 				Name:         iw.IndicatorDetail.Name,
 				RawSignal:    result.Signal,
@@ -189,8 +188,6 @@ func (s *Services) signalAnalyzeCalculate(
 				Contribution: helpers.RoundFloat(contribution, 3),
 				Details:      result.Details,
 			}
-
-			// Add extra fields based on indicator type
 			if result.Values != nil {
 				if values, ok := result.Values.(map[string]interface{}); ok {
 					for k, v := range values {
@@ -200,14 +197,75 @@ func (s *Services) signalAnalyzeCalculate(
 					}
 				}
 			}
-
-			// Add zone if present
 			if result.Zone != "" {
 				indicatorDetail.Zone = result.Zone
 			}
-
 			indicatorBreakdown = append(indicatorBreakdown, indicatorDetail)
 		}
+
+		driverOrientation := 1.0
+		if driverScore < 0 {
+			driverOrientation = -1.0
+		} else if driverScore == 0 {
+			driverOrientation = 0.0
+		}
+
+		// V2 Pass 2: CALCULATE FILTERS AND BOOSTERS
+		for _, iw := range strategy.IndicatorWeights {
+			if iw.IndicatorDetail == nil || iw.IndicatorDetail.Role == "DRIVER" || iw.IndicatorDetail.Role == "" {
+				continue
+			}
+			result, err := indicators.AnalyzeIndicatorWithConfig(
+				iw.IndicatorDetail.Indicator, ohlcData, closes, cacheKey, &s.cfg.INDICATORS,
+			)
+			if err != nil {
+				continue
+			}
+
+			rawSignal := float64(result.Signal)
+			role := iw.IndicatorDetail.Role
+			agreement := (rawSignal / 100.0) * driverOrientation
+			var mult float64 = 1.0
+
+			if role == "FILTER" && driverOrientation != 0 {
+				if agreement < 0 {
+					// Disagreement -> Penalty (scale down to iw.Weight)
+					penaltyScale := math.Abs(agreement)
+					mult = 1.0 - (penaltyScale * (1.0 - iw.Weight))
+					filterMultiplier *= mult
+				}
+			} else if role == "BOOSTER" && driverOrientation != 0 {
+				if agreement > 0 {
+					// Agreement -> Boost (scale up to iw.Weight)
+					boostScale := agreement
+					mult = 1.0 + (boostScale * (iw.Weight - 1.0))
+					boosterMultiplier *= mult
+				}
+			}
+
+			indicatorDetail := dtos.IndicatorBreakdown{
+				Name:         iw.IndicatorDetail.Name,
+				RawSignal:    result.Signal,
+				Weight:       iw.Weight,
+				Contribution: helpers.RoundFloat(mult, 3), // Show multiplier as contribution
+				Details:      result.Details,
+			}
+			if result.Values != nil {
+				if values, ok := result.Values.(map[string]interface{}); ok {
+					for k, v := range values {
+						if k == "value" {
+							indicatorDetail.Value = v
+						}
+					}
+				}
+			}
+			if result.Zone != "" {
+				indicatorDetail.Zone = result.Zone
+			}
+			indicatorBreakdown = append(indicatorBreakdown, indicatorDetail)
+		}
+
+		tfSignal := driverScore * filterMultiplier * boosterMultiplier
 
 		// ✅ Weight already available from interval.Timeframes
 		tfWeight := tf.Weight
@@ -267,61 +325,14 @@ func (s *Services) signalAnalyzeCalculate(
 	}, nil
 }
 
-func (s *Services) getConfigMM(strategy *dtos.StrategyData) (mmConfig *config.MMConfig) {
-	mmConfig = &config.MMConfig{
-		MIN_CONFIDENCE:         strategy.MoneyManagement.MIN_CONFIDENCE,
-		MAX_DAILY_TRADES:       strategy.MoneyManagement.MAX_DAILY_TRADES,
-		MAX_DAILY_LOSS_PERCENT: strategy.MoneyManagement.MAX_DAILY_LOSS_PERCENT,
-		MAX_DAILY_LOSS_COUNT:   strategy.MoneyManagement.MAX_DAILY_LOSS_COUNT,
-		RISK_REWARD_RATIO:      strategy.MoneyManagement.RISK_REWARD_RATIO,
-		RISK_REWARD_TARGET:     strategy.MoneyManagement.RISK_REWARD_TARGET,
-		RISK_ENTRY_BUFFER:      strategy.MoneyManagement.RISK_ENTRY_BUFFER,
-		MAX_POSITION_SIZE:      strategy.MoneyManagement.MAX_POSITION_SIZE,
-		LEVERAGE:               strategy.MoneyManagement.LEVERAGE,
-		IS_AGRESSIVE:           strategy.MoneyManagement.IS_AGRESSIVE,
-		ORDER_EXPIRATION_HOURS: strategy.MoneyManagement.ORDER_EXPIRATION_HOURS,
-	}
-
-	// Override with global config if not set in strategy
-	if mmConfig.MIN_CONFIDENCE == 0 {
-		mmConfig.MIN_CONFIDENCE = s.cfg.MM.MIN_CONFIDENCE
-	}
-	if mmConfig.MAX_DAILY_TRADES == 0 {
-		mmConfig.MAX_DAILY_TRADES = s.cfg.MM.MAX_DAILY_TRADES
-	}
-	if mmConfig.MAX_DAILY_LOSS_PERCENT == 0 {
-		mmConfig.MAX_DAILY_LOSS_PERCENT = s.cfg.MM.MAX_DAILY_LOSS_PERCENT
-	}
-	if mmConfig.MAX_DAILY_LOSS_COUNT == 0 {
-		mmConfig.MAX_DAILY_LOSS_COUNT = s.cfg.MM.MAX_DAILY_LOSS_COUNT
-	}
-	if mmConfig.RISK_REWARD_RATIO == 0 {
-		mmConfig.RISK_REWARD_RATIO = s.cfg.MM.RISK_REWARD_RATIO
-	}
-	if mmConfig.RISK_REWARD_TARGET == 0 {
-		mmConfig.RISK_REWARD_TARGET = s.cfg.MM.RISK_REWARD_TARGET
-	}
-	if mmConfig.RISK_ENTRY_BUFFER == 0 {
-		mmConfig.RISK_ENTRY_BUFFER = s.cfg.MM.RISK_ENTRY_BUFFER
-	}
-	if mmConfig.MAX_POSITION_SIZE == 0 {
-		mmConfig.MAX_POSITION_SIZE = s.cfg.MM.MAX_POSITION_SIZE
-	}
-	if mmConfig.LEVERAGE == 0 {
-		mmConfig.LEVERAGE = s.cfg.MM.LEVERAGE
-	}
-	if mmConfig.ORDER_EXPIRATION_HOURS == 0 {
-		mmConfig.ORDER_EXPIRATION_HOURS = s.cfg.MM.ORDER_EXPIRATION_HOURS
-	}
-	return
-}
+// getConfigMM mapping removed in V2 checkout
 
 func (s *Services) buildTradingPlan(
 	currentPrice float64,
 	tradingCapital float64,
 	signal string,
 	primaryKlines []binance.KlineInfo,
-	config *config.MMConfig,
+	config *dtos.MMConfigResponse,
 ) *dtos.TradingPlan {
 	// Use RISK_ENTRY_BUFFER from config (convert to decimal, e.g., 0.5% = 0.005)
 	bufferPercent := float64(config.RISK_ENTRY_BUFFER)

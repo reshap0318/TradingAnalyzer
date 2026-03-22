@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/reshap/trading-bot/internal/clients/binance"
-	"github.com/reshap/trading-bot/internal/config"
 	"github.com/reshap/trading-bot/internal/dtos"
 	"github.com/reshap/trading-bot/internal/models"
 	"gorm.io/gorm"
@@ -32,7 +31,7 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 	if err != nil {
 		return nil, fmt.Errorf("failed to get active strategy: %w", err)
 	}
-	mmConfig := s.getConfigMM(strategy)
+	mmConfig := strategy.MoneyManagement
 	minBalance := 3.0
 
 	symStat := s.tradeExecuteTodayStat(req.Symbol)
@@ -243,7 +242,7 @@ func (s *Services) tradeExecuteTodayStat(symbol string) dtos.TradeDayStat {
 func (s *Services) tradeExecuteBinance(
 	ctx *gin.Context,
 	symbol string,
-	config *config.MMConfig,
+	config *dtos.MMConfigResponse,
 	analyzeRes *dtos.SignalAnalyzeResponse,
 	capitalUsed float64,
 ) (*dtos.TradeResponse, error) {
