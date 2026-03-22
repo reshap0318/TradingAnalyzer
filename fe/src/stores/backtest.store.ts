@@ -92,7 +92,7 @@ export interface IBacktestTrade {
   signal: string
   confidence: number
   trading_mode: 'AGGRESSIVE' | 'CONSERVATIVE'
-  status: 'ACTIVE' | 'CLOSED' | 'CANCELLED'
+  status: 'ACTIVE' | 'CLOSED' | 'CANCELLED' | 'EXPIRED'
   targets: ITradeTargets
   entries: ITradeEntry[]
   exit: ITradeExit | null

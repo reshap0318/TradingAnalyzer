@@ -44,14 +44,6 @@ const sessionSummary = computed(() => store.sessionSummary)
 const activeTrades = computed(() => store.activeTrades)
 const summaryLoading = computed(() => store.summaryLoading)
 
-// Calculate total indicator weight
-const totalIndicatorWeight = computed(() => {
-  if (!strategy.value?.indicator_weights || strategy.value.indicator_weights.length === 0) {
-    return 0
-  }
-  return strategy.value.indicator_weights.reduce((sum, ind) => sum + ind.weight, 0) * 100
-})
-
 // V3 Group indicators by TF
 const groupedIndicators = computed(() => {
   if (!strategy.value?.indicator_weights) return {}

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { IIndicator } from '@/stores/indicator.store'
-import { PhPencilSimple, PhTrash, PhCheckCircle, PhXCircle } from '@phosphor-icons/vue'
+import { PhPencilSimple, PhTrash, PhCheckCircle } from '@phosphor-icons/vue'
 
 const props = defineProps<{
   indicator: IIndicator

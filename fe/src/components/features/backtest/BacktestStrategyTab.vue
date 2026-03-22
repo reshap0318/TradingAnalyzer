@@ -16,11 +16,6 @@ const totalTimeframeWeight = computed(() => {
   return props.backtest.strategy.timeframes.reduce((sum, tf) => sum + tf.weight, 0)
 })
 
-const totalIndicatorWeight = computed(() => {
-  if (!props.backtest?.strategy?.indicator_weights) return 0
-  return props.backtest.strategy.indicator_weights.reduce((sum, ind) => sum + ind.weight, 0)
-})
-
 const groupedIndicators = computed(() => {
   if (!props.backtest?.strategy?.indicator_weights) return {}
   const groups: Record<string, typeof props.backtest.strategy.indicator_weights> = {}
