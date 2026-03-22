@@ -23,7 +23,7 @@ Strategy
 
 ### 2.1 Primary Timeframe
 
-Timeframe utama yang digunakan sebagai acuan iterasi candle oleh mesin. Tentukan berdasarkan gaya trading Anda:
+Timeframe utama yang digunakan sebagai acuan iterasi candle oleh mesin. Tabel di bawah **hanya contoh ilustrasi, bukan patokan baku** — Anda bebas menentukan Primary TF sesuai kebutuhan dan eksperimen Anda sendiri:
 
 | Gaya         | Primary TF | Cocok Untuk                      |
 |:-------------|:-----------|:---------------------------------|
@@ -119,12 +119,14 @@ Parameter manajemen risiko yang mengontrol seberapa agresif bot beroperasi:
 | `IS_AGRESSIVE`           | Boolean | Entry 1 pakai MARKET order (langsung terisi)              | true/false       |
 | `ORDER_EXPIRATION_HOURS` | Number  | Berapa jam limit order bertahan sebelum dibatalkan        | 1–48            |
 
-**Hubungan Antar Parameter:**
+**Hubungan Antar Parameter (hanya contoh ilustrasi, bukan aturan baku):**
 
 ```
-Scalping  → MIN_CONFIDENCE rendah, MAX_TRADES tinggi, LEVERAGE tinggi, EXPIRY pendek
-Swing     → MIN_CONFIDENCE tinggi, MAX_TRADES rendah, LEVERAGE rendah, EXPIRY panjang
+Contoh Scalping  → MIN_CONFIDENCE rendah, MAX_TRADES tinggi, LEVERAGE tinggi, EXPIRY pendek
+Contoh Swing     → MIN_CONFIDENCE tinggi, MAX_TRADES rendah, LEVERAGE rendah, EXPIRY panjang
 ```
+
+> ⚠️ Angka dan kombinasi di atas hanyalah gambaran umum. Sesuaikan seluruh parameter berdasarkan hasil backtest dan toleransi risiko Anda.
 
 ### 2.5 Symbols
 

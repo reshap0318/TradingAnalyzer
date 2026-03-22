@@ -79,6 +79,7 @@ func SeedStrategies(db *gorm.DB) {
 				{1, 0.50, tf("15m")}, {2, 0.50, tf("15m")}, // Drivers on 15m macro
 				{3, 0.10, tf("5m")},  // RSI Filter on 5m (veto 90%)
 				{7, 1.50, tf("5m")},  // Candle Booster on 5m
+				{7, 1.30, tf("1m")},  // Candle Booster on 1m (entry precision)
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "35"}, {"MAX_DAILY_TRADES", "8"},
@@ -121,6 +122,7 @@ func SeedStrategies(db *gorm.DB) {
 				{1, 0.60, tf("15m")}, {2, 0.40, tf("15m")}, // Drivers on 15m
 				{4, 0.20, tf("5m")},  // Stoch Filter on 5m (veto 80%)
 				{6, 1.30, tf("5m")},  // Volume Booster on 5m
+				{7, 1.30, tf("1m")},  // Candle Booster on 1m (entry precision)
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "40"}, {"MAX_DAILY_TRADES", "10"},
@@ -190,6 +192,7 @@ func SeedStrategies(db *gorm.DB) {
 				{1, 0.70, tf("1h")}, {2, 0.30, tf("1h")}, // Drivers on 1h
 				{6, 1.80, tf("15m")},  // Volume Booster on 15m
 				{8, 0.20, tf("15m")},  // ATR Filter on 15m (no flat market)
+				{7, 1.50, tf("5m")},   // Candle Booster on 5m (entry precision)
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "6"},
@@ -231,6 +234,7 @@ func SeedStrategies(db *gorm.DB) {
 			Indicators: []indSeed{
 				{1, 0.90, tf("1h")}, {2, 0.10, tf("1h")}, // Drivers on 1h
 				{7, 2.00, tf("15m")}, // Candle Booster on 15m (2x)
+				{8, 0.60, tf("1h")},  // ATR Filter on 1h (avoid flat market)
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "45"}, {"MAX_DAILY_TRADES", "5"},
@@ -252,6 +256,7 @@ func SeedStrategies(db *gorm.DB) {
 				{1, 0.50, nil}, {2, 0.50, nil}, // Drivers on ALL TFs
 				{5, 0.20, tf("5m")},  // BB Filter on 5m
 				{6, 1.80, tf("5m")},  // Volume Booster on 5m
+				{7, 1.50, tf("1m")},  // Candle Booster on 1m (scalp precision)
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "40"}, {"MAX_DAILY_TRADES", "15"},
@@ -278,6 +283,7 @@ func SeedStrategies(db *gorm.DB) {
 				{1, 0.70, tf("4h")}, {2, 0.30, tf("4h")}, // Drivers on 4h
 				{8, 0.60, tf("1h")},  // ATR Filter on 1h
 				{9, 1.50, tf("4h")},  // Trend Booster on 4h
+				{6, 1.30, tf("15m")}, // Volume Booster on 15m (entry confirmation)
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "55"}, {"MAX_DAILY_TRADES", "3"},
@@ -319,6 +325,7 @@ func SeedStrategies(db *gorm.DB) {
 			Indicators: []indSeed{
 				{1, 1.00, tf("4h")},  // Solo MA Driver on 4h
 				{6, 1.50, tf("1h")},  // Volume Booster on 1h
+				{9, 1.50, tf("4h")},  // Trend Booster on 4h (alignment bonus)
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "3"},
@@ -339,7 +346,9 @@ func SeedStrategies(db *gorm.DB) {
 			Indicators: []indSeed{
 				{1, 0.60, tf("1d")}, {2, 0.40, tf("1d")}, // Drivers on Daily
 				{3, 0.60, tf("4h")}, {4, 0.60, tf("4h")}, // Soft Filters on 4h
-				{9, 1.20, tf("1d")}, // Trend Booster on Daily
+				{9, 1.20, tf("1d")},  // Trend Booster on Daily
+				{6, 1.20, tf("1h")},  // Volume Booster on 1h (momentum confirmation)
+				{5, 0.50, tf("1h")},  // BB Filter on 1h (band protection)
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "65"}, {"MAX_DAILY_TRADES", "1"},
