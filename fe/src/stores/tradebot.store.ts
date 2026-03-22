@@ -22,6 +22,12 @@ export interface IStrategy {
   timeframes?: IStrategyTimeframe[]
   indicator_weights?: IStrategyIndicator[]
   money_management?: IMoneyManagement
+  symbols?: IStrategySymbol[]
+}
+
+export interface IStrategySymbol {
+  symbol: string
+  is_active: boolean
 }
 
 export interface IStrategyTimeframe {
@@ -36,9 +42,11 @@ export interface IStrategyTimeframe {
 export interface IStrategyIndicator {
   indicator_id: number
   weight: number
+  tf?: string
   indicator_detail?: {
     name: string
     indicator: string
+    role?: string
   }
 }
 

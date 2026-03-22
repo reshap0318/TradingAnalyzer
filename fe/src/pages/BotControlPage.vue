@@ -12,6 +12,7 @@ import {
   PhFlask
 } from '@phosphor-icons/vue'
 import Swal from 'sweetalert2'
+import { configKeyToLabel, formatConfigValue } from '@/helpers/config'
 import { ActiveTradeCard, TradeExecutedCard } from '@/components/features/bot-control'
 
 const store = useTradeBotStore()
@@ -49,6 +50,20 @@ const totalIndicatorWeight = computed(() => {
     return 0
   }
   return strategy.value.indicator_weights.reduce((sum, ind) => sum + ind.weight, 0) * 100
+})
+
+// V3 Group indicators by TF
+const groupedIndicators = computed(() => {
+  if (!strategy.value?.indicator_weights) return {}
+  const groups: Record<string, typeof strategy.value.indicator_weights> = {}
+  strategy.value.indicator_weights.forEach(ind => {
+    const tfName = ind.tf || 'All Timeframes'
+    if (!groups[tfName]) {
+      groups[tfName] = []
+    }
+    groups[tfName].push(ind)
+  })
+  return groups
 })
 
 // Calculate total PnL from session
@@ -90,6 +105,19 @@ watch(() => isActive.value, async (newActive) => {
     store.clearSessionData()
   }
 }, { immediate: true })
+
+// Helper for Role Badges
+const getRoleBadge = (role?: string) => {
+  if (!role) return { bg: 'bg-blue-100', text: 'text-blue-700', label: 'DRIVER' }
+  const upper = role.toUpperCase()
+  switch (upper) {
+    case 'DRIVER': return { bg: 'bg-blue-100', text: 'text-blue-700', label: 'DRIVER' }
+    case 'FILTER': return { bg: 'bg-amber-100', text: 'text-amber-700', label: 'FILTER' }
+    case 'BOOSTER': return { bg: 'bg-purple-100', text: 'text-purple-700', label: 'BOOSTER' }
+    case 'FIX': return { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'FIX' }
+    default: return { bg: 'bg-gray-100', text: 'text-gray-700', label: upper }
+  }
+}
 
 // Strategy selection
 const showStrategyModal = ref(false)
@@ -376,18 +404,40 @@ onUnmounted(() => {
           <div v-if="strategy.indicator_weights && strategy.indicator_weights.length > 0" class="mb-6">
             <div class="flex items-center justify-between mb-3">
               <h4 class="text-sm font-semibold text-gray-700">Indicator Weights</h4>
-              <span class="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                Total: {{ totalIndicatorWeight.toFixed(1) }}%
-              </span>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div
-                v-for="ind in strategy.indicator_weights"
-                :key="ind.indicator_id"
-                class="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-between"
-              >
-                <span class="text-sm font-medium text-gray-900">{{ ind.indicator_detail?.name || 'Unknown' }}</span>
-                <span class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">{{ (ind.weight * 100).toFixed(1) }}%</span>
+
+            <div v-for="(indicators, tf) in groupedIndicators" :key="tf" class="mb-4 last:mb-0">
+              <h5 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                {{ tf === 'All Timeframes' ? 'Global (All TFs)' : 'Timeframe: ' + tf }}
+              </h5>
+              <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                <div
+                  v-for="ind in indicators"
+                  :key="ind.indicator_id"
+                  class="p-3 bg-gray-50 rounded-xl border border-gray-200 flex flex-col gap-1.5"
+                >
+                  <div class="flex items-center justify-between">
+                    <span class="text-base font-bold text-gray-900 truncate pr-2" :title="ind.indicator_detail?.name">
+                      {{ ind.indicator_detail?.name || 'Unknown' }}
+                    </span>
+                    <span class="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                      <template v-if="ind.indicator_detail?.role == 'DRIVER'">
+                        {{ (ind.weight * 100).toFixed(1) }}%
+                      </template>
+                      <template v-else>
+                        {{ ind.weight }}X
+                      </template>
+                    </span>
+                  </div>
+                  <div>
+                    <span
+                      class="px-1.5 py-0.5 text-[9px] font-bold rounded uppercase"
+                      :class="[getRoleBadge(ind.indicator_detail?.role).bg, getRoleBadge(ind.indicator_detail?.role).text]"
+                    >
+                      {{ getRoleBadge(ind.indicator_detail?.role).label }}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -395,41 +445,46 @@ onUnmounted(() => {
           <!-- Full Money Management -->
           <div v-if="strategy.money_management">
             <h4 class="text-sm font-semibold text-gray-700 mb-3">Money Management</h4>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div class="p-4 bg-gray-50 rounded-xl">
-                <p class="text-xs text-gray-500 mb-1">Min Confidence</p>
-                <p class="text-lg font-bold text-gray-900">{{ strategy.money_management.min_confidence ?? '-' }}%</p>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div
+                v-for="(value, key) in strategy.money_management"
+                :key="key"
+                class="bg-gray-50 rounded-xl p-3"
+              >
+                <p class="text-xs text-gray-500 mb-1">{{ configKeyToLabel(key.toUpperCase()) }}</p>
+                <template v-if="key === 'is_agressive'">
+                  <span
+                    class="inline-block mt-0.5 px-2 py-0.5 text-[10px] font-bold rounded uppercase whitespace-nowrap"
+                    :class="value ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'"
+                  >
+                    {{ value ? 'Aggressive' : 'Conservative' }}
+                  </span>
+                </template>
+                <template v-else>
+                  <p class="text-sm font-semibold text-gray-900">
+                    {{ formatConfigValue(key.toUpperCase(), Number(value) || 0) }}
+                  </p>
+                </template>
               </div>
-              <div class="p-4 bg-gray-50 rounded-xl">
-                <p class="text-xs text-gray-500 mb-1">Max Daily Trades</p>
-                <p class="text-lg font-bold text-gray-900">{{ strategy.money_management.max_daily_trades ?? '-' }}</p>
-              </div>
-              <div class="p-4 bg-gray-50 rounded-xl">
-                <p class="text-xs text-gray-500 mb-1">Max Daily Loss</p>
-                <p class="text-lg font-bold text-gray-900">{{ strategy.money_management.max_daily_loss_percent ?? '-' }}%</p>
-              </div>
-              <div class="p-4 bg-gray-50 rounded-xl">
-                <p class="text-xs text-gray-500 mb-1">Risk/Reward</p>
-                <p class="text-lg font-bold text-gray-900">{{ strategy.money_management.risk_reward_ratio ?? '-' }}</p>
-              </div>
-              <div class="p-4 bg-gray-50 rounded-xl">
-                <p class="text-xs text-gray-500 mb-1">Max Position</p>
-                <p class="text-lg font-bold text-gray-900">{{ ((strategy.money_management.max_position_size ?? 0) * 100).toFixed(0) }}%</p>
-              </div>
-              <div class="p-4 bg-gray-50 rounded-xl">
-                <p class="text-xs text-gray-500 mb-1">Leverage</p>
-                <p class="text-lg font-bold text-gray-900">{{ strategy.money_management.leverage ?? '-' }}x</p>
-              </div>
-              <div class="p-4 bg-gray-50 rounded-xl">
-                <p class="text-xs text-gray-500 mb-1">Mode</p>
-                <p class="text-lg font-bold" :class="strategy.money_management.is_agressive ? 'text-orange-600' : 'text-blue-600'">
-                  {{ strategy.money_management.is_agressive ? 'Aggressive' : 'Conservative' }}
-                </p>
-              </div>
-              <div class="p-4 bg-gray-50 rounded-xl">
-                <p class="text-xs text-gray-500 mb-1">Order Expiry</p>
-                <p class="text-lg font-bold text-gray-900">{{ strategy.money_management.order_expiration_hours ?? '-' }}h</p>
-              </div>
+            </div>
+          </div>
+
+          <!-- Trading Symbols -->
+          <div v-if="strategy.symbols && strategy.symbols.length > 0" class="mt-6 border-t border-gray-100 pt-6">
+            <h4 class="text-sm font-semibold text-gray-700 mb-3">Trading Symbols</h4>
+            <div class="flex flex-wrap gap-2">
+              <span
+                v-for="sym in strategy.symbols"
+                :key="sym.symbol"
+                class="px-3 py-1.5 text-sm font-medium rounded-lg border"
+                :class="
+                  sym.is_active
+                    ? 'bg-green-50 border-green-200 text-green-700'
+                    : 'bg-gray-50 border-gray-200 text-gray-400'
+                "
+              >
+                {{ sym.symbol }}
+              </span>
             </div>
           </div>
         </div>

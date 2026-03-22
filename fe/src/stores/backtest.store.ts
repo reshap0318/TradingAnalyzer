@@ -72,7 +72,7 @@ export interface ITradeEntry {
 
 // Trade exit
 export interface ITradeExit {
-  reason: 'HIT_TP' | 'HIT_SL' | 'CLOSED_END' | 'DEAD_SIGNAL' | 'EXPIRED'
+  reason: 'HIT_TP' | 'HIT_SL' | 'CLOSED_END' | 'DEAD_SIGNAL' | 'EXPIRED_TP_HIT' | 'EXPIRED_SL_HIT' | 'REVERSE_SIGNAL'
   price: number
   timestamp: number
 }
@@ -92,7 +92,7 @@ export interface IBacktestTrade {
   signal: string
   confidence: number
   trading_mode: 'AGGRESSIVE' | 'CONSERVATIVE'
-  status: 'ACTIVE' | 'CLOSED' | 'CANCELLED' | 'EXPIRED'
+  status: 'ACTIVE' | 'CLOSED' | 'CANCELLED'
   targets: ITradeTargets
   entries: ITradeEntry[]
   exit: ITradeExit | null
@@ -142,10 +142,12 @@ export interface IStrategyTimeframe {
 export interface IStrategyIndicator {
   indicator_id: number
   weight: number
+  tf?: string
   indicator_detail?: {
     id: number
     name: string
     indicator: string
+    role?: string
   }
 }
 

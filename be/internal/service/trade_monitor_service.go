@@ -205,8 +205,62 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 		}
 	}
 
-	// 1. GERBANG AWAL: Jika DB belum ada entry terisi, skip cek TP/SL
+	// 1. GERBANG AWAL: Jika DB belum ada entry terisi, cek apakah setup sudah expired (hit TP/SL duluan)
 	if totalFilledQtyDB == 0 {
+		expiredHitTP := false
+		expiredHitSL := false
+
+		if trade.Side == "BUY" || trade.Side == "STRONG_BUY" {
+			if currentMarketPrice >= trade.TPPrice { expiredHitTP = true }
+			if currentMarketPrice <= trade.SLPrice { expiredHitSL = true }
+		} else if trade.Side == "SELL" || trade.Side == "STRONG_SELL" {
+			if currentMarketPrice <= trade.TPPrice { expiredHitTP = true }
+			if currentMarketPrice >= trade.SLPrice { expiredHitSL = true }
+		}
+
+		if expiredHitTP || expiredHitSL {
+			exitReason := "EXPIRED_TP_HIT"
+			if expiredHitSL {
+				exitReason = "EXPIRED_SL_HIT"
+			}
+			processResult.Logs = append(processResult.Logs, fmt.Sprintf("🚨 Setup EXPIRED! Price hit TP/SL before any entry was filled. Exit Reason: %s", exitReason))
+
+			err := s.repo.TxManager.WithinTransaction(func(tx *gorm.DB) error {
+				now := time.Now()
+				updateTrade := &models.Trade{
+					Status:     "CANCELLED",
+					ClosedAt:   &now,
+					ExitPrice:  currentMarketPrice,
+					ExitReason: exitReason,
+					PnL:        0,
+					PnLPct:     0,
+				}
+				_, err := s.repo.Trade.Update(tx, &models.Trade{ID: trade.ID}, updateTrade)
+				if err != nil {
+					return fmt.Errorf("failed to update expired trade: %w", err)
+				}
+
+				if cancelErr := s.BinanceClient.CancelAllOrders(trade.Symbol); cancelErr != nil {
+					processResult.Logs = append(processResult.Logs, fmt.Sprintf("Warning: Failed to cancel orders for expired setup: %v", cancelErr))
+				} else {
+					processResult.Logs = append(processResult.Logs, "✅ Canceled all pending entry orders for expired setup.")
+				}
+
+				entries, err := s.repo.TradeEntry.FindByTradeID(tx, trade.ID)
+				for _, entry := range entries {
+					if entry.Status == "PENDING" || entry.Status == "NEW" {
+						_ = s.repo.TradeEntry.UpdateStatus(tx, entry.ID, "CANCELLED", "Setup Expired")
+					}
+				}
+				return nil
+			})
+			if err != nil {
+				return result, false, err
+			}
+			trade.Status = "CLOSED"
+			return result, true, nil
+		}
+
 		processResult.Logs = append(processResult.Logs, "No filled entries yet, skipping TP/SL check.")
 		return result, false, nil
 	}
@@ -423,7 +477,7 @@ func (s *Services) tradeMonitorFase1CheckTPSL(
 			if err != nil {
 				return result, false, err
 			}
-			trade.Status = "CLOSED"
+			trade.Status = "CANCELLED"
 			trade.TotalQty = actualQty
 			result.TPUpdated = tpFilled
 			result.SLUpdated = slFilled

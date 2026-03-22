@@ -37,7 +37,7 @@ type BacktestTrade struct {
 	PnLPercent float64 `gorm:"column:pnl_percent;type:decimal(10,2)" json:"pnl_percent"`
 
 	// Exit info
-	ExitReason      string `gorm:"column:exit_reason;size:50" json:"exit_reason"`             // HIT_TP, HIT_SL, CLOSED_END, DEAD_SIGNAL, EXPIRED
+	ExitReason      string `gorm:"column:exit_reason;size:50" json:"exit_reason"`             // HIT_TP, HIT_SL, CLOSED_END, EXPIRED_TP_HIT, EXPIRED_SL_HIT
 	Status          string `gorm:"column:status;size:20;default:'ACTIVE'" json:"status"`      // ACTIVE, CLOSED, CANCELLED, EXPIRED
 	DurationMinutes int64  `gorm:"column:duration_minutes;default:0" json:"duration_minutes"` // From first fill to exit
 

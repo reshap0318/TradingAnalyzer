@@ -127,6 +127,7 @@ func runMigration(dsn string, command string) {
 			&models.StrategyMoneyMgmt{},
 			&models.StrategyIndicator{},
 			&models.StrategyTimeframe{},
+			&models.StrategySymbol{},
 			&models.Strategy{},
 			// Master data
 			&models.Indicators{},

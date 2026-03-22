@@ -81,7 +81,10 @@ const tradeMarkers = computed(() => {
       // SELL entry: TP=Green (↑), SL=Red (↑)
       let exitColor = trade.side === 'BUY' ? '#ef4444': '#22c55e'
 
-      if (exitReason.includes('SL') || exitReason === 'HIT_SL') {
+      if (exitReason === 'EXPIRED_TP_HIT' || exitReason === 'EXPIRED_SL_HIT') {
+        exitLabel = 'Exp'
+        exitColor = '#6b7280'  // Gray for Expired (no fill, PnL=0)
+      } else if (exitReason.includes('SL') || exitReason === 'HIT_SL') {
         exitLabel = 'SL'
         // Invert color for SL
         exitColor = trade.side === 'BUY' ? '#22c55e': '#ef4444'
@@ -91,6 +94,9 @@ const tradeMarkers = computed(() => {
       } else if (exitReason.includes('DEAD')) {
         exitLabel = 'Dead'
         exitColor = '#6b7280'  // Gray for Dead
+      } else if (exitReason === 'REVERSE_SIGNAL') {
+        exitLabel = 'Rev'
+        exitColor = '#f59e0b'  // Amber for Reverse Signal
       }
 
       // Shape: OPPOSITE of entry
