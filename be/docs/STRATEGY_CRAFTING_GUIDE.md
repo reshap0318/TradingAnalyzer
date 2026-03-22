@@ -11,7 +11,7 @@ Setiap strategi terdiri dari **5 komponen** utama:
 ```
 Strategy
 ├── Primary Timeframe   (1 value: e.g. "15m")
-├── Timeframes[]        (Multi-TF dengan bobot masing-masing)
+├── Timeframes[]        (Multi-TF dengan bobot masing-masing, Primary Timeframe juga masuk kesini)
 ├── Indicators[]        (Indikator teknikal + peran + bobot + TF target)
 ├── Money Management[]  (Parameter manajemen risiko)
 └── Symbols[]           (Koin yang akan diperdagangkan)

@@ -42,7 +42,7 @@ func main() {
 		AllowHeaders:     []string{"*"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
-		MaxAge:           12 * 3600, // 12 hours
+		MaxAge:           24 * 3600, // 12 hours
 	}))
 
 	cfg := config.LoadConfig()
