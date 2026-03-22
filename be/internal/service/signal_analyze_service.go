@@ -125,7 +125,7 @@ func (s *Services) SignalAnalyze(ctx *gin.Context, req *dtos.SignalAnalyzeReques
 	for _, tf := range strategy.Timeframes {
 		timeframeKlines = append(timeframeKlines, binance.MultiKlineRequest{
 			Interval: tf.TimeframeName,
-			Limit:    500,
+			Limit:    300,
 		})
 	}
 
@@ -150,6 +150,19 @@ func (s *Services) signalAnalyzeCalculate(
 	finalSignal := 0.0
 	breakdown := make([]dtos.TimeframeSignalData, 0)
 
+	// ========================================================================
+	// PHASE 1: Pre-compute DRIVER scores for all TFs
+	// ========================================================================
+	type driverPrecompute struct {
+		Score     float64
+		HasDriver bool
+		OhlcData  []indicators.OHLCData
+		Closes    []float64
+		CacheKey  string
+		Breakdown []dtos.IndicatorBreakdown
+	}
+	driverMap := make(map[string]*driverPrecompute)
+
 	for _, tf := range strategy.Timeframes {
 		klines, exists := binanceData[tf.TimeframeName]
 		if !exists || len(klines) == 0 {
@@ -157,21 +170,20 @@ func (s *Services) signalAnalyzeCalculate(
 		}
 
 		cacheKey := fmt.Sprintf("%s_%d", tf.TimeframeName, time.Now().UnixMilli())
-
-		// Convert to OHLCV and closes
 		ohlcData, closes := convertKlinesToOHLCV(klines)
 
-		var driverScore float64
-		filterMultiplier := 1.0
-		boosterMultiplier := 1.0
-		indicatorBreakdown := make([]dtos.IndicatorBreakdown, 0)
+		dp := &driverPrecompute{
+			OhlcData:  ohlcData,
+			Closes:    closes,
+			CacheKey:  cacheKey,
+			Breakdown: make([]dtos.IndicatorBreakdown, 0),
+		}
 
-		// V2 Pass 1: SUM DRIVERS
+		// Compute DRIVER score for this TF
 		for _, iw := range strategy.IndicatorWeights {
 			if iw.IndicatorDetail == nil || (iw.IndicatorDetail.Role != "DRIVER" && iw.IndicatorDetail.Role != "") {
 				continue
 			}
-			// V3: Skip if indicator is targeting a different timeframe
 			if iw.TimeframeName != nil && *iw.TimeframeName != tf.TimeframeName {
 				continue
 			}
@@ -183,7 +195,8 @@ func (s *Services) signalAnalyzeCalculate(
 			}
 
 			contribution := float64(result.Signal) * iw.Weight
-			driverScore += contribution
+			dp.Score += contribution
+			dp.HasDriver = true
 
 			role := iw.IndicatorDetail.Role
 			if role == "" {
@@ -209,8 +222,47 @@ func (s *Services) signalAnalyzeCalculate(
 			if result.Zone != "" {
 				indicatorDetail.Zone = result.Zone
 			}
-			indicatorBreakdown = append(indicatorBreakdown, indicatorDetail)
+			dp.Breakdown = append(dp.Breakdown, indicatorDetail)
 		}
+
+		driverMap[tf.TimeframeName] = dp
+	}
+
+	// Compute global inherited driver score (weighted avg of TFs that have drivers)
+	var globalDriverScore float64
+	var globalDriverWeightSum float64
+	for _, tf := range strategy.Timeframes {
+		dp, exists := driverMap[tf.TimeframeName]
+		if !exists || !dp.HasDriver {
+			continue
+		}
+		globalDriverScore += dp.Score * tf.Weight
+		globalDriverWeightSum += tf.Weight
+	}
+	if globalDriverWeightSum > 0 {
+		globalDriverScore /= globalDriverWeightSum
+	}
+
+	// ========================================================================
+	// PHASE 2: Apply FILTER & BOOSTER per TF (inheriting driver if needed)
+	// ========================================================================
+	for _, tf := range strategy.Timeframes {
+		dp, exists := driverMap[tf.TimeframeName]
+		if !exists {
+			continue
+		}
+
+		// Use local driver score if available, otherwise inherit global driver score
+		driverScore := dp.Score
+		if !dp.HasDriver {
+			driverScore = globalDriverScore
+		}
+
+		indicatorBreakdown := make([]dtos.IndicatorBreakdown, 0)
+		indicatorBreakdown = append(indicatorBreakdown, dp.Breakdown...)
+
+		filterMultiplier := 1.0
+		boosterMultiplier := 1.0
 
 		driverOrientation := 1.0
 		if driverScore < 0 {
@@ -219,17 +271,16 @@ func (s *Services) signalAnalyzeCalculate(
 			driverOrientation = 0.0
 		}
 
-		// V2 Pass 2: CALCULATE FILTERS AND BOOSTERS
+		// Calculate FILTERS and BOOSTERS
 		for _, iw := range strategy.IndicatorWeights {
 			if iw.IndicatorDetail == nil || iw.IndicatorDetail.Role == "DRIVER" || iw.IndicatorDetail.Role == "" {
 				continue
 			}
-			// V3: Skip if indicator is targeting a different timeframe
 			if iw.TimeframeName != nil && *iw.TimeframeName != tf.TimeframeName {
 				continue
 			}
 			result, err := indicators.AnalyzeIndicatorWithConfig(
-				iw.IndicatorDetail.Indicator, ohlcData, closes, cacheKey, &s.cfg.INDICATORS,
+				iw.IndicatorDetail.Indicator, dp.OhlcData, dp.Closes, dp.CacheKey, &s.cfg.INDICATORS,
 			)
 			if err != nil {
 				continue
@@ -242,14 +293,12 @@ func (s *Services) signalAnalyzeCalculate(
 
 			if role == "FILTER" && driverOrientation != 0 {
 				if agreement < 0 {
-					// Disagreement -> Penalty (scale down to iw.Weight)
 					penaltyScale := math.Abs(agreement)
 					mult = 1.0 - (penaltyScale * (1.0 - iw.Weight))
 					filterMultiplier *= mult
 				}
 			} else if role == "BOOSTER" && driverOrientation != 0 {
 				if agreement > 0 {
-					// Agreement -> Boost (scale up to iw.Weight)
 					boostScale := agreement
 					mult = 1.0 + (boostScale * (iw.Weight - 1.0))
 					boosterMultiplier *= mult
@@ -265,7 +314,7 @@ func (s *Services) signalAnalyzeCalculate(
 				Role:         roleDisplay,
 				RawSignal:    result.Signal,
 				Weight:       iw.Weight,
-				Contribution: helpers.RoundFloat(mult, 3), // Show multiplier as contribution
+				Contribution: helpers.RoundFloat(mult, 3),
 				Details:      result.Details,
 			}
 			if result.Values != nil {
@@ -284,18 +333,13 @@ func (s *Services) signalAnalyzeCalculate(
 		}
 
 		tfSignal := driverScore * filterMultiplier * boosterMultiplier
-
-		// ✅ Weight already available from interval.Timeframes
 		tfWeight := tf.Weight
 
-		// Calculate contribution to final signal
 		tfContribution := tfSignal * tfWeight
 		finalSignal += tfContribution
 
-		// Classify timeframe sentiment using threshold (with decimal precision)
 		signal, _ := getCategoryFromThreshold(tfSignal, thresholds)
 
-		// Store timeframe breakdown with indicators
 		breakdown = append(breakdown, dtos.TimeframeSignalData{
 			Timeframe:    tf.TimeframeName,
 			Trend:        signal,

@@ -123,7 +123,7 @@ const getTrendInfo = (trend: string) => {
             <!-- Trend Name -->
             <div>
               <p class="text-base font-bold text-gray-900 leading-tight">{{ tf.trend }}</p>
-              <p class="text-xs text-gray-500 mt-0.5">Timeframe Analysis</p>
+              <p class="text-xs text-gray-500 mt-0.5">W: {{ (tf.weight * 100).toFixed(2) }}%</p>
             </div>
           </div>
           
