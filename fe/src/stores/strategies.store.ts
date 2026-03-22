@@ -21,6 +21,13 @@ export interface IStrategy {
   timeframes: IStrategyTimeframe[]
   indicator_weights: IStrategyIndicator[]
   money_management: any[] | IMoneyManagement  // Can be array or object
+  symbols?: IStrategySymbol[]
+}
+
+export interface IStrategySymbol {
+  id?: number
+  symbol: string
+  is_active: boolean
 }
 
 export interface IStrategyTimeframe {
@@ -35,6 +42,7 @@ export interface IStrategyTimeframe {
 export interface IStrategyIndicator {
   indicator_id: number
   weight: number
+  tf?: string | null  // null = all TFs
   indicator_detail?: {
     id: number
     name: string
@@ -59,8 +67,9 @@ export interface IStrategyForm {
   primary_tf: string
   is_active: boolean
   timeframes: { tf: string; weight: number }[]
-  indicator_weights: { indicator_id: number; weight: number }[]
+  indicator_weights: { indicator_id: number; weight: number; tf: string | null }[]
   money_management: IMoneyManagement
+  symbols: { symbol: string; is_active: boolean }[]
 }
 
 export const useStrategiesStore = defineStore('strategies', () => {
@@ -86,7 +95,8 @@ export const useStrategiesStore = defineStore('strategies', () => {
       leverage: 5,
       is_agressive: 0,  // 0 = Conservative, 1 = Aggressive
       order_expiration_hours: 4
-    }
+    },
+    symbols: []
   })
 
   // Validation Rules
@@ -248,7 +258,8 @@ export const useStrategiesStore = defineStore('strategies', () => {
         leverage: 5,
         is_agressive: 0,
         order_expiration_hours: 4
-      }
+      },
+      symbols: []
     }
     formValid.value.$reset()
   }
@@ -257,34 +268,26 @@ export const useStrategiesStore = defineStore('strategies', () => {
     const configStore = useConfigStore()
     const mmConfigs = configStore.items.filter(c => c.category === 'MONEY_MANAGEMENT')
     
-    // Build default money management from configs
+    // Default MM Object structure from MMconfigs
     const defaultMM: any = {}
     mmConfigs.forEach(config => {
       const fieldName = config.config_key.toLowerCase()
       const value = config.value
-      
-      // Convert to appropriate type
-      if (config.config_key.toLowerCase().includes('is_')) {
-        // Boolean field
+      if (fieldName.includes('is_')) {
         defaultMM[fieldName] = value.toLowerCase() === 'true' ? 1 : 0
       } else if (value.includes('.')) {
-        // Decimal number
         defaultMM[fieldName] = parseFloat(value) || 0
       } else {
-        // Integer
         defaultMM[fieldName] = parseInt(value) || 0
       }
     })
-    
-    // Convert money_management from array to object if needed
+
+    // Parse the retrieved strategy money_management params
     let mmObject: any = {}
     if (Array.isArray(strategy.money_management)) {
-      // Backend returns array format: [{parameter, value}, ...]
       strategy.money_management.forEach((item: any) => {
         const key = item.parameter.toLowerCase()
         let value: any = item.value
-        
-        // Convert to appropriate type
         if (key.includes('is_')) {
           value = value.toLowerCase() === 'true' ? 1 : 0
         } else if (value.includes('.')) {
@@ -292,7 +295,6 @@ export const useStrategiesStore = defineStore('strategies', () => {
         } else {
           value = parseInt(value) || 0
         }
-        
         mmObject[key] = value
       })
     } else if (strategy.money_management && typeof strategy.money_management === 'object') {
@@ -310,7 +312,8 @@ export const useStrategiesStore = defineStore('strategies', () => {
       })),
       indicator_weights: strategy.indicator_weights.map(ind => ({
         indicator_id: ind.indicator_id,
-        weight: ind.weight
+        weight: ind.weight,
+        tf: ind.tf || null
       })),
       money_management: { 
         // Start with defaults from config
@@ -323,7 +326,11 @@ export const useStrategiesStore = defineStore('strategies', () => {
           : typeof mmObject.is_agressive === 'boolean' 
             ? (mmObject.is_agressive ? 1 : 0)
             : mmObject.is_agressive
-      }
+      },
+      symbols: strategy.symbols ? strategy.symbols.map(s => ({
+        symbol: s.symbol,
+        is_active: s.is_active
+      })) : []
     }
   }
 

@@ -24,6 +24,7 @@ func (r *StrategyRepository) FindAllWithDetails(tx *gorm.DB) ([]models.Strategy,
 		Preload("Timeframes.Timeframe").
 		Preload("IndicatorWeights.Indicator").
 		Preload("MoneyManagement.Config").
+		Preload("Symbols").
 		Find(&strategies).Error; err != nil {
 		return nil, err
 	}
@@ -38,6 +39,7 @@ func (r *StrategyRepository) FindByIDWithDetails(tx *gorm.DB, id uint) (*models.
 		Preload("Timeframes.Timeframe").
 		Preload("IndicatorWeights.Indicator").
 		Preload("MoneyManagement.Config").
+		Preload("Symbols").
 		First(&strategy, id).Error; err != nil {
 		return nil, err
 	}
@@ -52,6 +54,7 @@ func (r *StrategyRepository) FindByNameWithDetails(tx *gorm.DB, name string) (*m
 		Preload("Timeframes.Timeframe").
 		Preload("IndicatorWeights.Indicator").
 		Preload("MoneyManagement.Config").
+		Preload("Symbols").
 		Where("name = ?", name).First(&strategy).Error; err != nil {
 		return nil, err
 	}
@@ -66,6 +69,7 @@ func (r *StrategyRepository) FindActiveWithDetails(tx *gorm.DB) ([]models.Strate
 		Preload("Timeframes.Timeframe").
 		Preload("IndicatorWeights.Indicator").
 		Preload("MoneyManagement.Config").
+		Preload("Symbols").
 		Where("is_active = ?", true).
 		Find(&strategies).Error; err != nil {
 		return nil, err
@@ -81,6 +85,7 @@ func (r *StrategyRepository) FindFirstActive(tx *gorm.DB) (*models.Strategy, err
 		Preload("Timeframes.Timeframe").
 		Preload("IndicatorWeights.Indicator").
 		Preload("MoneyManagement.Config").
+		Preload("Symbols").
 		Where("is_active = ?", true).
 		First(&strategy).Error; err != nil {
 		return nil, err

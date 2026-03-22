@@ -99,6 +99,7 @@ func runMigration(dsn string, command string) {
 			&models.StrategyTimeframe{},
 			&models.StrategyIndicator{},
 			&models.StrategyMoneyMgmt{},
+			&models.StrategySymbol{},
 			// Transactional
 			&models.Watchlist{},
 			&models.Trade{},

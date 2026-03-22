@@ -93,6 +93,7 @@ type TimeframeSignalData struct {
 // IndicatorBreakdown represents breakdown for a single indicator
 type IndicatorBreakdown struct {
 	Name         string      `json:"name"`
+	Role         string      `json:"role"`
 	RawSignal    int         `json:"rawSignal"`
 	Weight       float64     `json:"weight"`
 	Contribution float64     `json:"contribution"`

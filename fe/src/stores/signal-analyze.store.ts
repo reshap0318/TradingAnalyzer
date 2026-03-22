@@ -90,6 +90,7 @@ export interface ITimeframeSignalData {
 
 export interface IIndicatorBreakdown {
   name: string
+  role: string
   rawSignal: number
   weight: number
   contribution: number

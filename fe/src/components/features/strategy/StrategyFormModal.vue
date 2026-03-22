@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, watch, ref } from 'vue'
 import { useStrategiesStore } from '@/stores/strategies.store'
 import { useTimeframeStore } from '@/stores/timeframe.store'
 import { useIndicatorStore } from '@/stores/indicator.store'
@@ -55,6 +55,22 @@ const formatDefaultValue = (config: any): string => {
 const modalTitle = computed(() => props.editing ? 'Edit Strategy' : 'Create Strategy')
 const submitButtonText = computed(() => props.editing ? 'Update Strategy' : 'Create Strategy')
 const submitButtonLoading = computed(() => strategiesStore.formLoading)
+
+// Add symbol state
+const newSymbol = ref('')
+
+const addSymbol = () => {
+  const symStr = newSymbol.value.trim().toUpperCase()
+  if (symStr) {
+    if (!strategiesStore.strategyForm.symbols.find(s => s.symbol === symStr)) {
+      strategiesStore.strategyForm.symbols.push({
+        symbol: symStr,
+        is_active: true
+      })
+    }
+    newSymbol.value = ''
+  }
+}
 
 // Watch modal state and toggle body scroll
 watch(
@@ -235,7 +251,7 @@ const handleSubmit = () => {
                 <div
                   v-for="(ind, index) in strategiesStore.strategyForm.indicator_weights"
                   :key="index"
-                  class="flex items-center gap-4"
+                  class="flex items-center gap-3"
                 >
                   <select
                     v-model.number="ind.indicator_id"
@@ -251,14 +267,27 @@ const handleSubmit = () => {
                     </option>
                   </select>
 
+                  <select
+                    v-model="ind.tf"
+                    class="w-24 px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                  >
+                    <option :value="null">ALL</option>
+                    <option
+                      v-for="tf in strategiesStore.strategyForm.timeframes"
+                      :key="tf.tf"
+                      :value="tf.tf"
+                    >
+                      {{ tf.tf }}
+                    </option>
+                  </select>
+
                   <input
                     v-model.number="ind.weight"
                     type="number"
                     step="0.1"
                     min="0"
-                    max="1"
-                    placeholder="Weight (0-1)"
-                    class="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                    placeholder="Weight"
+                    class="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                   />
 
                   <button
@@ -271,7 +300,7 @@ const handleSubmit = () => {
               </div>
 
               <button
-                @click="strategiesStore.strategyForm.indicator_weights.push({ indicator_id: 0, weight: 0.5 })"
+                @click="strategiesStore.strategyForm.indicator_weights.push({ indicator_id: 0, weight: 0.5, tf: null })"
                 class="mt-4 w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-primary hover:text-primary transition-all flex items-center justify-center gap-2"
               >
                 <PhPlus :size="20" />
@@ -326,6 +355,53 @@ const handleSubmit = () => {
                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                 />
               </div>
+            </div>
+          </div>
+
+          <!-- 5. Trading Symbols (Coins) -->
+          <div class="mt-8 mb-8">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">5. Trading Symbols</h3>
+            <div class="bg-gray-50 rounded-xl p-4 border border-gray-200">
+              <div class="flex gap-2 mb-4">
+                <input
+                  v-model="newSymbol"
+                  @keypress.enter.prevent="addSymbol"
+                  type="text"
+                  placeholder="e.g. BTCUSDT"
+                  class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent uppercase"
+                />
+                <button
+                  @click.prevent="addSymbol"
+                  type="button"
+                  class="px-4 py-2 bg-primary text-white font-medium rounded-lg hover:bg-primary-dark transition-all flex items-center gap-2"
+                >
+                  <PhPlus :size="20" /> Adds
+                </button>
+              </div>
+
+              <div v-if="strategiesStore.strategyForm.symbols.length > 0" class="flex flex-wrap gap-2">
+                <div
+                  v-for="(sym, index) in strategiesStore.strategyForm.symbols"
+                  :key="index"
+                  class="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg shadow-sm"
+                >
+                  <span class="font-semibold text-sm text-gray-900">{{ sym.symbol }}</span>
+                  <label class="relative inline-flex items-center cursor-pointer ml-2">
+                    <input type="checkbox" v-model="sym.is_active" class="sr-only peer">
+                    <div class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                  <button
+                    @click="strategiesStore.strategyForm.symbols.splice(index, 1)"
+                    type="button"
+                    class="p-1 ml-1 text-red-500 hover:bg-red-50 rounded"
+                  >
+                    <PhX :size="16" />
+                  </button>
+                </div>
+              </div>
+              <p v-else class="text-sm text-gray-500 text-center py-2">
+                No symbols added. Add coins to target specifically.
+              </p>
             </div>
           </div>
         </div>

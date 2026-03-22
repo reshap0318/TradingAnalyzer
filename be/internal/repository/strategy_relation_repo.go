@@ -55,3 +55,20 @@ func (r *StrategyMoneyMgmtRepository) DeleteByStrategyID(tx *gorm.DB, strategyID
 	db := r.getDB(tx)
 	return db.Model(&models.StrategyMoneyMgmt{}).Where("strategy_id = ?", strategyID).Delete(&models.StrategyMoneyMgmt{}).Error
 }
+
+type StrategySymbolRepository struct {
+	*GenericRepository[models.StrategySymbol]
+}
+
+// NewStrategySymbolRepository creates a new strategy symbol repository
+func NewStrategySymbolRepository(db *gorm.DB) *StrategySymbolRepository {
+	return &StrategySymbolRepository{
+		GenericRepository: NewGenericRepository(db, &models.StrategySymbol{}),
+	}
+}
+
+// DeleteByStrategyID deletes all symbols for a strategy
+func (r *StrategySymbolRepository) DeleteByStrategyID(tx *gorm.DB, strategyID uint) error {
+	db := r.getDB(tx)
+	return db.Model(&models.StrategySymbol{}).Where("strategy_id = ?", strategyID).Delete(&models.StrategySymbol{}).Error
+}

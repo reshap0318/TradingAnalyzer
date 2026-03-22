@@ -171,6 +171,10 @@ func (s *Services) signalAnalyzeCalculate(
 			if iw.IndicatorDetail == nil || (iw.IndicatorDetail.Role != "DRIVER" && iw.IndicatorDetail.Role != "") {
 				continue
 			}
+			// V3: Skip if indicator is targeting a different timeframe
+			if iw.TimeframeName != nil && *iw.TimeframeName != tf.TimeframeName {
+				continue
+			}
 			result, err := indicators.AnalyzeIndicatorWithConfig(
 				iw.IndicatorDetail.Indicator, ohlcData, closes, cacheKey, &s.cfg.INDICATORS,
 			)
@@ -181,8 +185,13 @@ func (s *Services) signalAnalyzeCalculate(
 			contribution := float64(result.Signal) * iw.Weight
 			driverScore += contribution
 
+			role := iw.IndicatorDetail.Role
+			if role == "" {
+				role = "DRIVER"
+			}
 			indicatorDetail := dtos.IndicatorBreakdown{
 				Name:         iw.IndicatorDetail.Name,
+				Role:         role,
 				RawSignal:    result.Signal,
 				Weight:       iw.Weight,
 				Contribution: helpers.RoundFloat(contribution, 3),
@@ -215,6 +224,10 @@ func (s *Services) signalAnalyzeCalculate(
 			if iw.IndicatorDetail == nil || iw.IndicatorDetail.Role == "DRIVER" || iw.IndicatorDetail.Role == "" {
 				continue
 			}
+			// V3: Skip if indicator is targeting a different timeframe
+			if iw.TimeframeName != nil && *iw.TimeframeName != tf.TimeframeName {
+				continue
+			}
 			result, err := indicators.AnalyzeIndicatorWithConfig(
 				iw.IndicatorDetail.Indicator, ohlcData, closes, cacheKey, &s.cfg.INDICATORS,
 			)
@@ -243,8 +256,13 @@ func (s *Services) signalAnalyzeCalculate(
 				}
 			}
 
+			roleDisplay := role
+			if roleDisplay == "" {
+				roleDisplay = "DRIVER"
+			}
 			indicatorDetail := dtos.IndicatorBreakdown{
 				Name:         iw.IndicatorDetail.Name,
+				Role:         roleDisplay,
 				RawSignal:    result.Signal,
 				Weight:       iw.Weight,
 				Contribution: helpers.RoundFloat(mult, 3), // Show multiplier as contribution

@@ -8,6 +8,7 @@ type StrategyRequest struct {
 	Timeframes       []StrategyTimeframeRequest `json:"timeframes" binding:"dive"`
 	IndicatorWeights []StrategyIndicatorRequest `json:"indicator_weights" binding:"dive"`
 	MoneyManagement  []StrategyMoneyMgmtRequest `json:"money_management" binding:"dive"`
+	Symbols          []StrategySymbolRequest    `json:"symbols" binding:"dive"`
 }
 
 // StrategyTimeframeRequest represents a timeframe weight in strategy
@@ -18,14 +19,21 @@ type StrategyTimeframeRequest struct {
 
 // StrategyIndicatorRequest represents an indicator weight in strategy
 type StrategyIndicatorRequest struct {
-	IndicatorID uint    `json:"indicator_id" binding:"required"`
-	Weight      float64 `json:"weight" binding:"required,gte=0,lte=1"`
+	IndicatorID   uint    `json:"indicator_id" binding:"required"`
+	Weight        float64 `json:"weight" binding:"required,gte=0"`
+	TimeframeName *string `json:"tf"` // NULL = all TFs
 }
 
 // StrategyMoneyMgmtRequest represents a money management parameter in strategy
 type StrategyMoneyMgmtRequest struct {
 	Parameter string `json:"parameter" binding:"required,max=50"`
 	Value     string `json:"value" binding:"required"`
+}
+
+// StrategySymbolRequest represents a symbol in strategy
+type StrategySymbolRequest struct {
+	Symbol   string `json:"symbol" binding:"required,max=20"`
+	IsActive bool   `json:"is_active"`
 }
 
 // MMConfigResponse holds money management configuration (same as config.MMConfig)
@@ -52,9 +60,10 @@ type StrategyData struct {
 	IsActive         bool                    `json:"is_active"`
 	CreatedAt        string                  `json:"created_at"`
 	UpdatedAt        string                  `json:"updated_at"`
-	Timeframes       []StrategyTimeframeData `json:"timeframes"`
-	IndicatorWeights []StrategyIndicatorData `json:"indicator_weights"`
-	MoneyManagement  *MMConfigResponse       `json:"money_management,omitempty"`
+	Timeframes       []StrategyTimeframeData  `json:"timeframes"`
+	IndicatorWeights []StrategyIndicatorData  `json:"indicator_weights"`
+	MoneyManagement  *MMConfigResponse        `json:"money_management,omitempty"`
+	Symbols          []StrategySymbolData     `json:"symbols,omitempty"`
 }
 
 // StrategyTimeframeData represents timeframe weight data in responses
@@ -70,5 +79,13 @@ type StrategyIndicatorData struct {
 	ID              uint           `json:"id"`
 	IndicatorID     uint           `json:"indicator_id"`
 	Weight          float64        `json:"weight"`
+	TimeframeName   *string        `json:"tf"`
 	IndicatorDetail *IndicatorData `json:"indicator_detail,omitempty"`
+}
+
+// StrategySymbolData represents symbol data in responses
+type StrategySymbolData struct {
+	ID       uint   `json:"id"`
+	Symbol   string `json:"symbol"`
+	IsActive bool   `json:"is_active"`
 }

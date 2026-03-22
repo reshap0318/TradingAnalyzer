@@ -13,9 +13,46 @@ const formatScore = (score: number): string => {
   return score.toFixed(1)
 }
 
-// Helper untuk weight percent (data dari BE sudah dalam bentuk 0-1)
+// Helper untuk weight display (V3: can be > 1.0 for Boosters)
 const formatWeight = (weight: number): string => {
-  return `${(weight * 100).toFixed(0)}%`
+  if (weight > 1.0) return `${weight.toFixed(1)}x`  // Booster multiplier
+  return `${(weight * 100).toFixed(0)}%`             // Driver/Filter percentage
+}
+
+// V3: Get role badge styling
+const getRoleBadge = (role: string) => {
+  if (!role) role = 'DRIVER'
+  const upper = role.toUpperCase()
+  switch (upper) {
+    case 'DRIVER':  return { label: 'D', bg: 'bg-blue-100', text: 'text-blue-700', title: 'Driver' }
+    case 'FILTER':  return { label: 'F', bg: 'bg-amber-100', text: 'text-amber-700', title: 'Filter' }
+    case 'BOOSTER': return { label: 'B', bg: 'bg-purple-100', text: 'text-purple-700', title: 'Booster' }
+    default:        return { label: '?', bg: 'bg-gray-100', text: 'text-gray-700', title: 'Unknown' }
+  }
+}
+
+// V3: Format contribution based on role
+const formatContribution = (contribution: number, role: string): string => {
+  if (!role) role = 'DRIVER'
+  const upper = role.toUpperCase()
+  if (upper === 'FILTER' || upper === 'BOOSTER') {
+    return `×${contribution.toFixed(2)}` // Multiplier format
+  }
+  return contribution.toFixed(2) // Additive format
+}
+
+// V3: Contribution color for multiplier values
+const getContributionClass = (contribution: number, role: string): string => {
+  if (!role) role = 'DRIVER'
+  const upper = role.toUpperCase()
+  if (upper === 'FILTER') {
+    return contribution < 1.0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+  }
+  if (upper === 'BOOSTER') {
+    return contribution > 1.0 ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'
+  }
+  // Driver: positive = green, negative = red
+  return contribution >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
 }
 
 // Trend icon dan color
@@ -104,24 +141,38 @@ const getTrendInfo = (trend: string) => {
             :key="idx"
             class="p-2.5 bg-gray-50 rounded border border-gray-200"
           >
-            <!-- Name + Contribution (Same Row) -->
+            <!-- Name + Role Badge + Contribution (Same Row) -->
             <div class="flex items-center justify-between mb-3">
-              <p class="font-bold text-gray-900 text-base truncate flex-1" :title="indicator.name">
-                {{ indicator.name }}
-              </p>
+              <div class="flex items-center gap-1.5 flex-1 min-w-0">
+                <span
+                  class="shrink-0 w-5 h-5 flex items-center justify-center rounded text-[10px] font-bold"
+                  :class="[getRoleBadge(indicator.role).bg, getRoleBadge(indicator.role).text]"
+                  :title="getRoleBadge(indicator.role).title"
+                >
+                  {{ getRoleBadge(indicator.role).label }}
+                </span>
+                <p class="font-bold text-gray-900 text-sm truncate" :title="indicator.name">
+                  {{ indicator.name }}
+                </p>
+              </div>
               <span
-                class="px-2 py-0.5 rounded text-sm font-bold ml-2 flex-shrink-0"
-                :class="indicator.contribution >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+                class="px-2 py-0.5 rounded text-sm font-bold ml-2 shrink-0"
+                :class="getContributionClass(indicator.contribution, indicator.role)"
               >
-                {{ indicator.contribution.toFixed(2) }}
+                {{ formatContribution(indicator.contribution, indicator.role) }}
               </span>
             </div>
 
-            <!-- Weight Bar -->
+            <!-- Weight Bar (V3: cap percentage at 100% for display) -->
             <div class="relative h-2.5 bg-gray-200 rounded-full overflow-hidden mb-2.5">
               <div
-                class="absolute top-0 left-0 h-full rounded-full bg-blue-500"
-                :style="{ width: `${indicator.weight * 100}%` }"
+                class="absolute top-0 left-0 h-full rounded-full"
+                :class="{
+                  'bg-blue-500': (!indicator.role || indicator.role.toUpperCase() === 'DRIVER'),
+                  'bg-amber-500': indicator.role && indicator.role.toUpperCase() === 'FILTER',
+                  'bg-purple-500': indicator.role && indicator.role.toUpperCase() === 'BOOSTER'
+                }"
+                :style="{ width: `${Math.min(indicator.weight * 100, 100)}%` }"
               ></div>
             </div>
 
