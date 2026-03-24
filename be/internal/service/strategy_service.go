@@ -434,7 +434,7 @@ func (s *Services) parseMMConfigFromStrategy(moneyMgmt []models.StrategyMoneyMgm
 				mm.LEVERAGE = int8(val)
 			}
 		case "IS_AGRESSIVE":
-			mm.IS_AGRESSIVE = cfg.Value == "true"
+			mm.IS_AGRESSIVE = cfg.Value == "1"
 		case "ORDER_EXPIRATION_HOURS":
 			if val, err := helpers.ParseFloat(cfg.Value, 8); err == nil {
 				mm.ORDER_EXPIRATION_HOURS = int8(val)

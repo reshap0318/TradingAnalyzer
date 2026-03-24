@@ -54,17 +54,17 @@ func SeedStrategies(db *gorm.DB) {
 				{1, 0.80, tf("15m")}, // MA Driver on 15m
 				{2, 0.20, tf("15m")}, // MACD Driver on 15m
 				// 5m: Volume + BB entry trigger
-				{5, 0.20, tf("5m")},  // BB Filter on 5m (veto 80% if no squeeze)
-				{6, 2.00, tf("5m")},  // Volume Booster on 5m
+				{5, 0.20, tf("5m")}, // BB Filter on 5m (veto 80% if no squeeze)
+				{6, 2.00, tf("5m")}, // Volume Booster on 5m
 				// 1m: Candle precision
-				{7, 1.30, tf("1m")},  // Candle Booster on 1m
+				{7, 1.30, tf("1m")}, // Candle Booster on 1m
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "40"}, {"MAX_DAILY_TRADES", "12"},
 				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "4"},
 				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "2.5"},
 				{"RISK_ENTRY_BUFFER", "0.002"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "true"},
+				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "1"},
 				{"ORDER_EXPIRATION_HOURS", "1"},
 			},
 			Symbols: []symSeed{
@@ -77,16 +77,16 @@ func SeedStrategies(db *gorm.DB) {
 			Timeframes: []tfSeed{{"1m", 0.20}, {"5m", 0.60}, {"15m", 0.20}},
 			Indicators: []indSeed{
 				{1, 0.50, tf("15m")}, {2, 0.50, tf("15m")}, // Drivers on 15m macro
-				{3, 0.10, tf("5m")},  // RSI Filter on 5m (veto 90%)
-				{7, 1.50, tf("5m")},  // Candle Booster on 5m
-				{7, 1.30, tf("1m")},  // Candle Booster on 1m (entry precision)
+				{3, 0.10, tf("5m")}, // RSI Filter on 5m (veto 90%)
+				{7, 1.50, tf("5m")}, // Candle Booster on 5m
+				{7, 1.30, tf("1m")}, // Candle Booster on 1m (entry precision)
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "35"}, {"MAX_DAILY_TRADES", "8"},
 				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "3"},
 				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.0"},
 				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.05"},
-				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "false"},
+				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "0"},
 				{"ORDER_EXPIRATION_HOURS", "1"},
 			},
 			Symbols: []symSeed{
@@ -107,7 +107,7 @@ func SeedStrategies(db *gorm.DB) {
 				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "3"},
 				{"RISK_REWARD_RATIO", "1.8"}, {"RISK_REWARD_TARGET", "3.0"},
 				{"RISK_ENTRY_BUFFER", "0.002"}, {"MAX_POSITION_SIZE", "0.08"},
-				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "true"},
+				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "1"},
 				{"ORDER_EXPIRATION_HOURS", "2"},
 			},
 			Symbols: []symSeed{
@@ -120,16 +120,16 @@ func SeedStrategies(db *gorm.DB) {
 			Timeframes: []tfSeed{{"1m", 0.20}, {"5m", 0.50}, {"15m", 0.30}},
 			Indicators: []indSeed{
 				{1, 0.60, tf("15m")}, {2, 0.40, tf("15m")}, // Drivers on 15m
-				{4, 0.20, tf("5m")},  // Stoch Filter on 5m (veto 80%)
-				{6, 1.30, tf("5m")},  // Volume Booster on 5m
-				{7, 1.30, tf("1m")},  // Candle Booster on 1m (entry precision)
+				{4, 0.20, tf("5m")}, // Stoch Filter on 5m (veto 80%)
+				{6, 1.30, tf("5m")}, // Volume Booster on 5m
+				{7, 1.30, tf("1m")}, // Candle Booster on 1m (entry precision)
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "40"}, {"MAX_DAILY_TRADES", "10"},
 				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "3"},
 				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.5"},
 				{"RISK_ENTRY_BUFFER", "0.002"}, {"MAX_POSITION_SIZE", "0.05"},
-				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "false"},
+				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "0"},
 				{"ORDER_EXPIRATION_HOURS", "1"},
 			},
 			Symbols: []symSeed{
@@ -148,15 +148,15 @@ func SeedStrategies(db *gorm.DB) {
 			Indicators: []indSeed{
 				{1, 0.60, nil}, {2, 0.40, nil}, // Drivers on ALL TFs
 				{3, 0.50, tf("15m")}, {4, 0.50, tf("15m")}, // Filters on 15m
-				{5, 0.50, tf("15m")}, {8, 0.80, tf("1h")},  // BB on 15m, ATR on 1h
-				{6, 1.20, tf("15m")}, {7, 1.20, tf("5m")},  // Boosters
+				{5, 0.50, tf("15m")}, {8, 0.80, tf("1h")}, // BB on 15m, ATR on 1h
+				{6, 1.20, tf("15m")}, {7, 1.20, tf("5m")}, // Boosters
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "5"},
 				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "2"},
 				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.5"},
 				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"},
+				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "0"},
 				{"ORDER_EXPIRATION_HOURS", "4"},
 			},
 			Symbols: []symSeed{
@@ -168,16 +168,16 @@ func SeedStrategies(db *gorm.DB) {
 			PrimaryTF:  "15m",
 			Timeframes: []tfSeed{{"15m", 0.50}, {"1h", 0.30}, {"4h", 0.20}},
 			Indicators: []indSeed{
-				{1, 0.50, tf("4h")}, {2, 0.50, tf("4h")},               // Drivers only on 4h (macro)
+				{1, 0.50, tf("4h")}, {2, 0.50, tf("4h")}, // Drivers only on 4h (macro)
 				{3, 0.10, tf("15m")}, {4, 0.10, tf("15m")}, {5, 0.10, tf("15m")}, // Ultra tight filters on 15m
-				{6, 1.50, tf("15m")}, {7, 1.50, tf("15m")}, {9, 1.50, tf("1h")},  // Boosters
+				{6, 1.50, tf("15m")}, {7, 1.50, tf("15m")}, {9, 1.50, tf("1h")}, // Boosters
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "35"}, {"MAX_DAILY_TRADES", "3"},
 				{"MAX_DAILY_LOSS_PERCENT", "0.02"}, {"MAX_DAILY_LOSS_COUNT", "1"},
 				{"RISK_REWARD_RATIO", "2.5"}, {"RISK_REWARD_TARGET", "4.0"},
 				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.15"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"},
+				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "0"},
 				{"ORDER_EXPIRATION_HOURS", "6"},
 			},
 			Symbols: []symSeed{
@@ -190,16 +190,16 @@ func SeedStrategies(db *gorm.DB) {
 			Timeframes: []tfSeed{{"5m", 0.20}, {"15m", 0.60}, {"1h", 0.20}},
 			Indicators: []indSeed{
 				{1, 0.70, tf("1h")}, {2, 0.30, tf("1h")}, // Drivers on 1h
-				{6, 1.80, tf("15m")},  // Volume Booster on 15m
-				{8, 0.20, tf("15m")},  // ATR Filter on 15m (no flat market)
-				{7, 1.50, tf("5m")},   // Candle Booster on 5m (entry precision)
+				{6, 1.80, tf("15m")}, // Volume Booster on 15m
+				{8, 0.20, tf("15m")}, // ATR Filter on 15m (no flat market)
+				{7, 1.50, tf("5m")},  // Candle Booster on 5m (entry precision)
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "6"},
 				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "2"},
 				{"RISK_REWARD_RATIO", "1.8"}, {"RISK_REWARD_TARGET", "3.0"},
 				{"RISK_ENTRY_BUFFER", "0.004"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "true"},
+				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "1"},
 				{"ORDER_EXPIRATION_HOURS", "2"},
 			},
 			Symbols: []symSeed{
@@ -220,7 +220,7 @@ func SeedStrategies(db *gorm.DB) {
 				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "2"},
 				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.5"},
 				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "true"},
+				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "1"},
 				{"ORDER_EXPIRATION_HOURS", "2"},
 			},
 			Symbols: []symSeed{
@@ -241,7 +241,7 @@ func SeedStrategies(db *gorm.DB) {
 				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "2"},
 				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "4.0"},
 				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.08"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"},
+				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "0"},
 				{"ORDER_EXPIRATION_HOURS", "4"},
 			},
 			Symbols: []symSeed{
@@ -254,16 +254,16 @@ func SeedStrategies(db *gorm.DB) {
 			Timeframes: []tfSeed{{"1m", 0.10}, {"5m", 0.40}, {"15m", 0.50}},
 			Indicators: []indSeed{
 				{1, 0.50, nil}, {2, 0.50, nil}, // Drivers on ALL TFs
-				{5, 0.20, tf("5m")},  // BB Filter on 5m
-				{6, 1.80, tf("5m")},  // Volume Booster on 5m
-				{7, 1.50, tf("1m")},  // Candle Booster on 1m (scalp precision)
+				{5, 0.20, tf("5m")}, // BB Filter on 5m
+				{6, 1.80, tf("5m")}, // Volume Booster on 5m
+				{7, 1.50, tf("1m")}, // Candle Booster on 1m (scalp precision)
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "40"}, {"MAX_DAILY_TRADES", "15"},
 				{"MAX_DAILY_LOSS_PERCENT", "0.08"}, {"MAX_DAILY_LOSS_COUNT", "4"},
 				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "2.5"},
 				{"RISK_ENTRY_BUFFER", "0.002"}, {"MAX_POSITION_SIZE", "0.05"},
-				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "true"},
+				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "1"},
 				{"ORDER_EXPIRATION_HOURS", "1"},
 			},
 			Symbols: []symSeed{
@@ -290,7 +290,7 @@ func SeedStrategies(db *gorm.DB) {
 				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "2"},
 				{"RISK_REWARD_RATIO", "2.5"}, {"RISK_REWARD_TARGET", "4.5"},
 				{"RISK_ENTRY_BUFFER", "0.005"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "3"}, {"IS_AGRESSIVE", "false"},
+				{"LEVERAGE", "3"}, {"IS_AGRESSIVE", "0"},
 				{"ORDER_EXPIRATION_HOURS", "12"},
 			},
 			Symbols: []symSeed{
@@ -311,7 +311,7 @@ func SeedStrategies(db *gorm.DB) {
 				{"MAX_DAILY_LOSS_PERCENT", "0.02"}, {"MAX_DAILY_LOSS_COUNT", "1"},
 				{"RISK_REWARD_RATIO", "3.0"}, {"RISK_REWARD_TARGET", "6.0"},
 				{"RISK_ENTRY_BUFFER", "0.005"}, {"MAX_POSITION_SIZE", "0.15"},
-				{"LEVERAGE", "2"}, {"IS_AGRESSIVE", "false"},
+				{"LEVERAGE", "2"}, {"IS_AGRESSIVE", "0"},
 				{"ORDER_EXPIRATION_HOURS", "24"},
 			},
 			Symbols: []symSeed{
@@ -323,16 +323,16 @@ func SeedStrategies(db *gorm.DB) {
 			PrimaryTF:  "1h",
 			Timeframes: []tfSeed{{"1h", 0.60}, {"4h", 0.40}},
 			Indicators: []indSeed{
-				{1, 1.00, tf("4h")},  // Solo MA Driver on 4h
-				{6, 1.50, tf("1h")},  // Volume Booster on 1h
-				{9, 1.50, tf("4h")},  // Trend Booster on 4h (alignment bonus)
+				{1, 1.00, tf("4h")}, // Solo MA Driver on 4h
+				{6, 1.50, tf("1h")}, // Volume Booster on 1h
+				{9, 1.50, tf("4h")}, // Trend Booster on 4h (alignment bonus)
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "3"},
 				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "2"},
 				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "4.0"},
 				{"RISK_ENTRY_BUFFER", "0.005"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "3"}, {"IS_AGRESSIVE", "false"},
+				{"LEVERAGE", "3"}, {"IS_AGRESSIVE", "0"},
 				{"ORDER_EXPIRATION_HOURS", "8"},
 			},
 			Symbols: []symSeed{
@@ -346,16 +346,16 @@ func SeedStrategies(db *gorm.DB) {
 			Indicators: []indSeed{
 				{1, 0.60, tf("1d")}, {2, 0.40, tf("1d")}, // Drivers on Daily
 				{3, 0.60, tf("4h")}, {4, 0.60, tf("4h")}, // Soft Filters on 4h
-				{9, 1.20, tf("1d")},  // Trend Booster on Daily
-				{6, 1.20, tf("1h")},  // Volume Booster on 1h (momentum confirmation)
-				{5, 0.50, tf("1h")},  // BB Filter on 1h (band protection)
+				{9, 1.20, tf("1d")}, // Trend Booster on Daily
+				{6, 1.20, tf("1h")}, // Volume Booster on 1h (momentum confirmation)
+				{5, 0.50, tf("1h")}, // BB Filter on 1h (band protection)
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "65"}, {"MAX_DAILY_TRADES", "1"},
 				{"MAX_DAILY_LOSS_PERCENT", "0.02"}, {"MAX_DAILY_LOSS_COUNT", "1"},
 				{"RISK_REWARD_RATIO", "2.5"}, {"RISK_REWARD_TARGET", "5.0"},
 				{"RISK_ENTRY_BUFFER", "0.008"}, {"MAX_POSITION_SIZE", "0.20"},
-				{"LEVERAGE", "2"}, {"IS_AGRESSIVE", "false"},
+				{"LEVERAGE", "2"}, {"IS_AGRESSIVE", "0"},
 				{"ORDER_EXPIRATION_HOURS", "48"},
 			},
 			Symbols: []symSeed{
@@ -376,7 +376,7 @@ func SeedStrategies(db *gorm.DB) {
 				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "2"},
 				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.0"},
 				{"RISK_ENTRY_BUFFER", "0.004"}, {"MAX_POSITION_SIZE", "0.08"},
-				{"LEVERAGE", "3"}, {"IS_AGRESSIVE", "true"},
+				{"LEVERAGE", "3"}, {"IS_AGRESSIVE", "1"},
 				{"ORDER_EXPIRATION_HOURS", "4"},
 			},
 			Symbols: []symSeed{
