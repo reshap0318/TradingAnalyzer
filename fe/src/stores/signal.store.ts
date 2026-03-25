@@ -85,7 +85,7 @@ export const useSignalStore = defineStore('signal', () => {
   const loading = ref(false)
   const pagination = ref({
     page: 1,
-    page_size: 20,
+    page_size: 12,
     total_items: 0,
     total_pages: 0
   })
@@ -99,7 +99,7 @@ export const useSignalStore = defineStore('signal', () => {
     start_time: '',
     end_time: '',
     page: 1,
-    page_size: 20
+    page_size: 12
   })
 
   // ============== Computed ==============

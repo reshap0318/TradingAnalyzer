@@ -108,6 +108,20 @@ func (r *SignalRepository) DeleteOlderThan(tx *gorm.DB, olderThan time.Time) (in
 	return result.RowsAffected, nil
 }
 
+// DeleteOlderThanWithoutTrades deletes signals older than specified duration that are NOT referenced by trades
+func (r *SignalRepository) DeleteOlderThanWithoutTrades(tx *gorm.DB, olderThan time.Time) (int64, error) {
+	db := r.getDB(tx)
+	var signal models.Signal
+	result := db.Model(&signal).Where(
+		"created_at < ? AND id NOT IN (SELECT DISTINCT signal_log_id FROM trade WHERE signal_log_id IS NOT NULL)",
+		olderThan,
+	).Delete(&signal)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
+}
+
 // CountBySymbolAndDate counts signals by symbol and date
 func (r *SignalRepository) CountBySymbolAndDate(tx *gorm.DB, symbol string, date time.Time) (int64, error) {
 	db := r.getDB(tx)

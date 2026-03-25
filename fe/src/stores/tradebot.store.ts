@@ -88,6 +88,7 @@ export interface ITrade {
   side: string
   confidence: number
   total_score: number
+  signal_log_id?: number | null
   is_aggressive: boolean
   tp_price: number
   sl_price: number

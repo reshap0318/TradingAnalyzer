@@ -2,12 +2,18 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSignalStore } from '@/stores/signal.store'
+import { formatPrice, formatDate } from '@/helpers/formatters'
 import {
   PhTrash,
   PhMagnifyingGlass,
   PhArrowCounterClockwise,
   PhX,
-  PhFunnel
+  PhFunnel,
+  PhTarget,
+  PhStopCircle,
+  PhChartLineUp,
+  PhCurrencyBtc,
+  PhClock
 } from '@phosphor-icons/vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { showConfirmWithHtml, showError } from '@/lib/sweetalert'
@@ -21,27 +27,11 @@ const showFilters = ref(false)
 const selectedCategory = ref('')
 const signalValidFilter = ref('')
 
-// Cleanup - using SweetAlert instead of modal
-// const showCleanupModal = ref(false)  // Removed - using SweetAlert
-// const cleanupHours = ref(720)  // Removed - using SweetAlert
-
 // Computed
 const isLoading = computed(() => signalStore.loading)
 const signals = computed(() => signalStore.signals)
 const pagination = computed(() => signalStore.pagination)
 const validSignalsCount = computed(() => signalStore.validSignalsCount)
-
-// Format date for display
-function formatDate(dateString: string): string {
-  const date = new Date(dateString)
-  return date.toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
 
 // Get badge color for signal category
 function getCategoryBadgeClass(category: string): string {
@@ -133,7 +123,7 @@ async function openCleanupModal() {
       </div>
     </div>
   `
-  
+
   const result = await showConfirmWithHtml(
     'Cleanup Old Signals',
     htmlContent,
@@ -141,7 +131,7 @@ async function openCleanupModal() {
     'Delete',
     'Cancel'
   )
-  
+
   if (result.value) {
     const hours = result.value
     if (hours >= 1 && hours <= 720) {
@@ -297,217 +287,189 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Signals Table -->
-      <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-              <tr>
-                <th
-                  class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Symbol
-                </th>
-                <th
-                  class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Signal
-                </th>
-                <th
-                  class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Confidence
-                </th>
-                <th
-                  class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Score
-                </th>
-                <th
-                  class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Price
-                </th>
-                <th
-                  class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  TP/SL
-                </th>
-                <th
-                  class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Timeframe
-                </th>
-                <th
-                  class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Created At
-                </th>
-                <th
-                  class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-              <tr
-                v-for="signal in signals"
-                :key="signal.id"
-                @click="viewDetail(signal.id)"
-                class="hover:bg-gray-50 cursor-pointer transition-colors"
-              >
-                <td class="px-6 py-4 whitespace-nowrap">
-                  <div class="text-sm font-semibold text-gray-900">{{ signal.symbol }}</div>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                  <span
-                    :class="getCategoryBadgeClass(signal.signal_category)"
-                    class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border"
-                  >
-                    <span>{{ getCategoryIcon(signal.signal_category) }}</span>
-                    {{ signal.signal_category.replace('_', ' ') }}
-                  </span>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                  <div class="flex items-center gap-2">
-                    <div class="flex-1 bg-gray-200 rounded-full h-2 w-24">
-                      <div
-                        :class="{
-                          'bg-green-500': signal.confidence >= 70,
-                          'bg-yellow-500': signal.confidence >= 50 && signal.confidence < 70,
-                          'bg-red-500': signal.confidence < 50
-                        }"
-                        class="h-2 rounded-full"
-                        :style="{ width: `${Math.min(signal.confidence, 100)}%` }"
-                      ></div>
-                    </div>
-                    <span class="text-sm text-gray-900">{{ signal.confidence.toFixed(1) }}%</span>
-                  </div>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                  <span
-                    :class="{
-                      'text-green-600 font-semibold': signal.total_score >= 50,
-                      'text-red-600 font-semibold': signal.total_score <= -50,
-                      'text-gray-600': signal.total_score > -50 && signal.total_score < 50
-                    }"
-                    class="text-sm"
-                  >
-                    {{ signal.total_score > 0 ? '+' : '' }}{{ signal.total_score.toFixed(2) }}
-                  </span>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                  <div class="text-sm text-gray-900">
-                    ${{ signal.current_price.toLocaleString() }}
-                  </div>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                  <div class="text-xs">
-                    <div class="text-green-600">TP: ${{ signal.tp_price.toLocaleString() }}</div>
-                    <div class="text-red-600">SL: ${{ signal.sl_price.toLocaleString() }}</div>
-                  </div>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                  <span
-                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"
-                  >
-                    {{ signal.primary_timeframe }}
-                  </span>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                  <div class="text-sm text-gray-500">{{ formatDate(signal.created_at) }}</div>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-right">
-                  <button
-                    @click.stop="handleDelete(signal.id, $event)"
-                    class="text-red-600 hover:text-red-900 p-2 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Delete signal"
-                  >
-                    <PhTrash :size="16" />
-                  </button>
-                </td>
-              </tr>
-
-              <!-- Empty State -->
-              <tr v-if="!isLoading && signals.length === 0">
-                <td colspan="9" class="px-6 py-12 text-center">
-                  <div class="flex flex-col items-center">
-                    <PhMagnifyingGlass :size="48" class="text-gray-300 mb-4" />
-                    <p class="text-gray-500 text-lg font-medium">No signals found</p>
-                    <p class="text-gray-400 text-sm mt-1">Try adjusting your search or filters</p>
-                  </div>
-                </td>
-              </tr>
-
-              <!-- Loading State -->
-              <tr v-if="isLoading">
-                <td colspan="9" class="px-6 py-12 text-center">
-                  <div class="flex flex-col items-center">
-                    <PhArrowCounterClockwise :size="48" class="text-blue-500 animate-spin mb-4" />
-                    <p class="text-gray-500 text-lg font-medium">Loading signals...</p>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Pagination -->
+      <!-- Signals Grid - Card Layout -->
+      <div v-if="!isLoading && signals.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <div
-          v-if="pagination.total_pages > 1"
-          class="px-6 py-4 border-t border-gray-200 bg-gray-50"
+          v-for="signal in signals"
+          :key="signal.id"
+          @click="viewDetail(signal.id)"
+          class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
         >
-          <div class="flex items-center justify-between">
-            <div class="text-sm text-gray-700">
-              Showing
-              <span class="font-medium">{{
-                (pagination.page - 1) * pagination.page_size + 1
-              }}</span>
-              to
-              <span class="font-medium">{{
-                Math.min(pagination.page * pagination.page_size, pagination.total_items)
-              }}</span>
-              of <span class="font-medium">{{ pagination.total_items }}</span> results
-            </div>
-            <div class="flex items-center gap-2">
-              <button
-                @click="handlePageChange(pagination.page - 1)"
-                :disabled="pagination.page <= 1"
-                class="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Previous
-              </button>
-
-              <div class="flex items-center gap-1">
-                <button
-                  v-for="page in [pagination.page - 1, pagination.page, pagination.page + 1].filter(
-                    (p) => p >= 1 && p <= pagination.total_pages
-                  )"
-                  :key="page"
-                  @click="handlePageChange(page)"
-                  :class="{
-                    'bg-blue-600 text-white border-blue-600': page === pagination.page,
-                    'bg-white text-gray-700 border-gray-300 hover:bg-gray-50':
-                      page !== pagination.page
-                  }"
-                  class="px-3 py-1 text-sm font-medium border rounded-lg transition-colors"
-                >
-                  {{ page }}
-                </button>
+          <!-- Card Header -->
+          <div class="p-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="p-2 bg-white rounded-lg shadow-sm">
+                  <PhCurrencyBtc :size="20" class="text-blue-600" weight="fill" />
+                </div>
+                <div>
+                  <h4 class="text-lg font-bold text-gray-900">{{ signal.symbol }}</h4>
+                  <p class="text-xs text-gray-500">{{ signal.primary_timeframe }}</p>
+                </div>
               </div>
-
-              <button
-                @click="handlePageChange(pagination.page + 1)"
-                :disabled="pagination.page >= pagination.total_pages"
-                class="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              <span
+                :class="getCategoryBadgeClass(signal.signal_category)"
+                class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border"
               >
-                Next
+                <span>{{ getCategoryIcon(signal.signal_category) }}</span>
+                {{ signal.signal_category.replace('_', ' ') }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Card Body -->
+          <div class="p-4 bg-white">
+            <!-- Score & Validity -->
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <div class="text-xs text-gray-500 mb-1">Total Score</div>
+                <div
+                  :class="{
+                    'text-green-600 font-bold': signal.total_score >= 50,
+                    'text-red-600 font-bold': signal.total_score <= -50,
+                    'text-gray-600 font-semibold': signal.total_score > -50 && signal.total_score < 50
+                  }"
+                  class="text-lg"
+                >
+                  {{ signal.total_score > 0 ? '+' : '' }}{{ signal.total_score.toFixed(2) }}
+                </div>
+              </div>
+              <span
+                :class="signal.signal_valid ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'"
+                class="px-3 py-1.5 text-xs font-semibold rounded-full"
+              >
+                {{ signal.signal_valid ? '✓ Valid' : '✗ Invalid' }}
+              </span>
+            </div>
+
+            <!-- Price Info -->
+            <div class="grid grid-cols-3 gap-2 mb-4">
+              <div class="text-center p-2 bg-blue-50 rounded-lg">
+                <div class="text-xs text-gray-500 mb-1">Current</div>
+                <div class="text-sm font-bold text-gray-900">${{ formatPrice(signal.current_price) }}</div>
+              </div>
+              <div class="text-center p-2 bg-green-50 rounded-lg">
+                <div class="flex items-center justify-center gap-1 text-xs text-gray-500 mb-1">
+                  <PhTarget :size="12" />
+                  TP
+                </div>
+                <div class="text-sm font-bold text-green-700">${{ formatPrice(signal.tp_price) }}</div>
+              </div>
+              <div class="text-center p-2 bg-red-50 rounded-lg">
+                <div class="flex items-center justify-center gap-1 text-xs text-gray-500 mb-1">
+                  <PhStopCircle :size="12" />
+                  SL
+                </div>
+                <div class="text-sm font-bold text-red-700">${{ formatPrice(signal.sl_price) }}</div>
+              </div>
+            </div>
+
+            <!-- R:R Ratio -->
+            <div class="mb-4">
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-gray-500">Risk/Reward Ratio</span>
+                <span class="text-sm font-bold text-gray-900">{{ signal.risk_reward_ratio.toFixed(2) }}</span>
+              </div>
+            </div>
+
+            <!-- Created At -->
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+              <PhClock :size="14" />
+              <span>{{ formatDate(signal.created_at) }}</span>
+            </div>
+          </div>
+
+          <!-- Card Footer -->
+          <div class="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <PhChartLineUp :size="16" class="text-gray-400" />
+              <span class="text-xs text-gray-600">Click to view details</span>
+            </div>
+            <button
+              @click.stop="handleDelete(signal.id, $event)"
+              class="text-red-600 hover:text-red-900 p-2 hover:bg-red-50 rounded-lg transition-colors"
+              title="Delete signal"
+            >
+              <PhTrash :size="16" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div v-if="!isLoading && signals.length === 0" class="bg-white border border-gray-200 rounded-xl shadow-sm p-12 mb-6">
+        <div class="flex flex-col items-center">
+          <PhMagnifyingGlass :size="48" class="text-gray-300 mb-4" />
+          <p class="text-gray-500 text-lg font-medium">No signals found</p>
+          <p class="text-gray-400 text-sm mt-1">Try adjusting your search or filters</p>
+        </div>
+      </div>
+
+      <!-- Loading State -->
+      <div v-if="isLoading" class="bg-white border border-gray-200 rounded-xl shadow-sm p-12 mb-6">
+        <div class="flex flex-col items-center">
+          <PhArrowCounterClockwise :size="48" class="text-blue-500 animate-spin mb-4" />
+          <p class="text-gray-500 text-lg font-medium">Loading signals...</p>
+        </div>
+      </div>
+
+      <!-- Pagination -->
+      <div
+        v-if="pagination.total_pages > 1"
+        class="bg-white border border-gray-200 rounded-xl shadow-sm px-6 py-4 mb-6"
+      >
+        <div class="flex items-center justify-between">
+          <div class="text-sm text-gray-700">
+            Showing
+            <span class="font-medium">{{
+              (pagination.page - 1) * pagination.page_size + 1
+            }}</span>
+            to
+            <span class="font-medium">{{
+              Math.min(pagination.page * pagination.page_size, pagination.total_items)
+            }}</span>
+            of <span class="font-medium">{{ pagination.total_items }}</span> results
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              @click="handlePageChange(pagination.page - 1)"
+              :disabled="pagination.page <= 1"
+              class="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+
+            <div class="flex items-center gap-1">
+              <button
+                v-for="page in [pagination.page - 1, pagination.page, pagination.page + 1].filter(
+                  (p) => p >= 1 && p <= pagination.total_pages
+                )"
+                :key="page"
+                @click="handlePageChange(page)"
+                :class="{
+                  'bg-blue-600 text-white border-blue-600': page === pagination.page,
+                  'bg-white text-gray-700 border-gray-300 hover:bg-gray-50':
+                    page !== pagination.page
+                }"
+                class="px-3 py-1 text-sm font-medium border rounded-lg transition-colors"
+              >
+                {{ page }}
               </button>
             </div>
+
+            <button
+              @click="handlePageChange(pagination.page + 1)"
+              :disabled="pagination.page >= pagination.total_pages"
+              class="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
           </div>
         </div>
       </div>
     </div>
   </DefaultLayout>
 </template>
+
+<style scoped>
+</style>

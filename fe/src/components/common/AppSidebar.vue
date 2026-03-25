@@ -118,7 +118,7 @@ const handleNavigation = () => {
           <button
             class="w-full flex items-center justify-between px-6 py-3 text-gray-500 bg-transparent border-none cursor-pointer transition-all duration-200 rounded-lg
                    hover:bg-gray-50 hover:text-gray-900
-                   focus:outline-none"
+                   focus:outline-none text-left"
             :class="{
               'bg-gradient-to-r from-blue-50 to-transparent text-blue-600 border-r-4 border-blue-600': hasActiveChild(item.children)
             }"

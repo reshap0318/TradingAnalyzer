@@ -195,7 +195,19 @@ func (s *Services) SignalSave(
 // SignalDelete deletes a signal by ID
 func (s *Services) SignalDelete(ctx *gin.Context, signalID uint) error {
 	_, err := s.repo.TxManager.WithinTransactionWithResult(func(tx *gorm.DB) (interface{}, error) {
-		_, err := s.repo.Signal.Delete(tx, signalID)
+		// Check if signal is referenced by any trades
+		var tradeCount int64
+		err := tx.Model(&models.Trade{}).Where("signal_log_id = ?", signalID).Count(&tradeCount).Error
+		if err != nil {
+			return nil, fmt.Errorf("failed to check trade references: %w", err)
+		}
+
+		if tradeCount > 0 {
+			return nil, fmt.Errorf("cannot delete signal: referenced by %d trade(s). Delete associated trades first", tradeCount)
+		}
+
+		// Delete signal if no references
+		_, err = s.repo.Signal.Delete(tx, signalID)
 		if err != nil {
 			return nil, err
 		}
@@ -205,6 +217,7 @@ func (s *Services) SignalDelete(ctx *gin.Context, signalID uint) error {
 }
 
 // SignalCleanupOld deletes signals older than specified hours
+// Only deletes signals that are NOT referenced by any trades (no error thrown)
 // Default: 720 hours (30 days)
 func (s *Services) SignalCleanupOld(ctx *gin.Context, olderThanHours int) (int64, error) {
 	if olderThanHours <= 0 {
@@ -215,7 +228,8 @@ func (s *Services) SignalCleanupOld(ctx *gin.Context, olderThanHours int) (int64
 
 	var deletedCount int64
 	_, err := s.repo.TxManager.WithinTransactionWithResult(func(tx *gorm.DB) (interface{}, error) {
-		count, err := s.repo.Signal.DeleteOlderThan(tx, olderThan)
+		// Delete signals that are older than specified time and NOT referenced by trades
+		count, err := s.repo.Signal.DeleteOlderThanWithoutTrades(tx, olderThan)
 		if err != nil {
 			return 0, err
 		}

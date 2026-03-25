@@ -628,6 +628,7 @@ func (s *Services) convertTradeToDTO(trade models.Trade) dtos.TradeData {
 		Side:            trade.Side,
 		Confidence:      trade.Confidence,
 		TotalScore:      trade.TotalScore,
+		SignalLogID:     trade.SignalLogID,
 		IsAggressive:    trade.IsAggressive,
 		TPPrice:         trade.TPPrice,
 		SLPrice:         trade.SLPrice,

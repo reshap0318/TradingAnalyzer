@@ -100,6 +100,7 @@ type TradeData struct {
 	Side            string      `json:"side"`
 	Confidence      float64     `json:"confidence"`
 	TotalScore      float64     `json:"total_score"`
+	SignalLogID     *uint       `json:"signal_log_id,omitempty"`
 	IsAggressive    bool        `json:"is_aggressive"`
 	TPPrice         float64     `json:"tp_price"`
 	SLPrice         float64     `json:"sl_price"`
