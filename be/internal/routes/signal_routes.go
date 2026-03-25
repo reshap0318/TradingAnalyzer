@@ -9,6 +9,18 @@ import (
 func RegisterSignalRoutes(router *gin.RouterGroup, ctrl *controller.Controller) {
 	signalGroup := router.Group("/signal")
 	{
+		// GET /api/signal - List signals with pagination and filters
+		signalGroup.GET("", ctrl.SignalIndex)
+
+		// GET /api/signal/:id - Get signal details with all snapshots
+		signalGroup.GET("/:id", ctrl.SignalDetail)
+
+		// DELETE /api/signal/:id - Delete a signal by ID
+		signalGroup.DELETE("/:id", ctrl.SignalDelete)
+
+		// POST /api/signal/cleanup - Cleanup old signals
+		signalGroup.POST("/cleanup", ctrl.SignalCleanup)
+
 		// POST /api/signal/raws - Get raw OHLCV data for multiple timeframes
 		signalGroup.POST("/raws", ctrl.SignalRawIndex)
 

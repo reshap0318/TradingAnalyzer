@@ -108,7 +108,9 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 		StrategyID: strategy.ID,
 		Capital:    availableUsdtWithFeesReserve,
 	}
-	analyzeRes, err := s.SignalAnalyze(ctx, analyzeReq)
+	
+	// Analyze and save signal to database (saveSignal=true)
+	analyzeRes, _, err := s.SignalAnalyzeAndSave(ctx, analyzeReq, true)
 	if err != nil {
 		return nil, fmt.Errorf("signal analysis failed: %w", err)
 	}

@@ -106,6 +106,8 @@ func runMigration(dsn string, command string) {
 			&models.TradeEntry{},
 			&models.Backtest{},
 			&models.BacktestTrade{},
+			// Signal
+			&models.Signal{},
 		)
 		if err != nil {
 			log.Fatalf("Migration failed: %v", err)
@@ -123,6 +125,8 @@ func runMigration(dsn string, command string) {
 			&models.TradeEntry{},
 			&models.Trade{},
 			&models.Watchlist{},
+			// Signal
+			&models.Signal{},
 			// Strategy (has foreign keys)
 			&models.StrategyMoneyMgmt{},
 			&models.StrategyIndicator{},

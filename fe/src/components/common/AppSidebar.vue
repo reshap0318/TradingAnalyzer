@@ -15,12 +15,13 @@ import {
   PhRobot,
   PhCurrencyCircleDollar,
   PhFlask,
-  PhTestTube
+  PhTestTube,
+  PhWaveform
 } from '@phosphor-icons/vue'
 
 const route = useRoute()
 
-// Menu structure
+// Menu structure with improved hierarchy
 const menuItems = [
   {
     category: 'Dashboard',
@@ -39,13 +40,20 @@ const menuItems = [
     ]
   },
   {
-    category: 'Trading',
+    category: 'Strategy & Analysis',
     icon: PhTrendUp,
     children: [
-      { name: 'Watchlists', icon: PhList, route: '/watchlists' },
       { name: 'Strategies', icon: PhChalkboardTeacher, route: '/strategies' },
+      { name: 'Watchlists', icon: PhList, route: '/watchlists' },
       { name: 'Signal Analyze', icon: PhFlask, route: '/signal-analyze' },
-      { name: 'Backtest', icon: PhTestTube, route: '/backtest' },
+      { name: 'Signals History', icon: PhWaveform, route: '/signals' },
+      { name: 'Backtest', icon: PhTestTube, route: '/backtest' }
+    ]
+  },
+  {
+    category: 'Live Trading',
+    icon: PhRobot,
+    children: [
       { name: 'Bot Control', icon: PhRobot, route: '/bot-control' },
       { name: 'Trade History', icon: PhCurrencyCircleDollar, route: '/trades' }
     ]

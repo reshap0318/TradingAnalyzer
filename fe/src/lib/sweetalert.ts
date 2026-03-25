@@ -99,6 +99,36 @@ export const showInfo = (title: string, text?: string): Promise<SweetAlertResult
 }
 
 /**
+ * Show confirmation dialog with HTML support
+ */
+export const showConfirmWithHtml = (
+  title: string,
+  htmlContent: string,
+  icon: 'warning' | 'info' | 'question' = 'question',
+  confirmText = 'Confirm',
+  cancelText = 'Cancel'
+): Promise<any> => {
+  return Swal.fire({
+    ...defaultConfig,
+    icon,
+    title,
+    html: htmlContent,
+    showCancelButton: true,
+    confirmButtonText: confirmText,
+    cancelButtonText: cancelText,
+    confirmButtonColor: icon === 'warning' ? '#dc2626' : '#3b82f6',
+    preConfirm: () => {
+      // Return any input values from the HTML
+      const hoursInput = document.getElementById('cleanup-hours') as HTMLInputElement
+      if (hoursInput) {
+        return parseInt(hoursInput.value)
+      }
+      return null
+    }
+  })
+}
+
+/**
  * Show confirmation dialog
  */
 export const showConfirm = (

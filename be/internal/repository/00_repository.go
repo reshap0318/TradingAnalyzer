@@ -19,6 +19,7 @@ type Repositories struct {
 	StrategyIndicator   *StrategyIndicatorRepository
 	StrategyMoneyMgmt   *StrategyMoneyMgmtRepository
 	StrategySymbol      *StrategySymbolRepository
+	Signal              *SignalRepository
 }
 
 func NewRepositories(db *gorm.DB) (*Repositories, error) {
@@ -33,6 +34,7 @@ func NewRepositories(db *gorm.DB) (*Repositories, error) {
 	TradeRepo := NewTradeRepository(db)
 	BacktestRepo := NewBacktestRepository(db)
 	BacktestTradeRepo := NewBacktestTradeRepository(db)
+	SignalRepo := NewSignalRepository(db)
 
 	// Strategy repositories
 	StrategyRepo := NewStrategyRepository(db)
@@ -53,6 +55,7 @@ func NewRepositories(db *gorm.DB) (*Repositories, error) {
 		TradeEntry:          tradeEntryRepo,
 		Backtest:            BacktestRepo,
 		BacktestTrade:       BacktestTradeRepo,
+		Signal:              SignalRepo,
 		Strategy:            StrategyRepo,
 		StrategyTimeframe:   StrategyTimeframeRepo,
 		StrategyIndicator:   StrategyIndicatorRepo,

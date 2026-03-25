@@ -13,6 +13,44 @@ import (
 	"github.com/reshap/trading-bot/internal/models"
 )
 
+// SignalAnalyzeAndSave analyzes market data and saves the signal to database
+// This is a wrapper around SignalAnalyze that also saves the result
+// Parameters:
+//   - ctx: Gin context
+//   - req: Signal analyze request
+//   - saveSignal: whether to save the signal to database (default: true)
+//   - strategyID: optional strategy ID to override the request
+//
+// Returns:
+//   - SignalAnalyzeResponse: Analysis result
+//   - Signal: Saved signal model (nil if saveSignal is false)
+//   - error: Any error encountered
+func (s *Services) SignalAnalyzeAndSave(ctx *gin.Context, req *dtos.SignalAnalyzeRequest, saveSignal bool, strategyID ...uint) (*dtos.SignalAnalyzeResponse, *models.Signal, error) {
+	// Perform analysis and get all data (no duplicate fetch!)
+	analyzeRes, strategy, primaryKlines, err := s.signalAnalyzeWithDetails(ctx, req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("signal analysis failed: %w", err)
+	}
+
+	// Save signal if requested
+	var savedSignal *models.Signal
+	if saveSignal {
+		// Override strategy ID if provided
+		if len(strategyID) > 0 && strategyID[0] > 0 {
+			req.StrategyID = strategyID[0]
+		}
+
+		// Save signal (pass pre-fetched strategy and klines - NO DUPLICATE FETCH!)
+		savedSignal, err = s.SignalSave(ctx, analyzeRes, req.Capital, strategy, primaryKlines)
+		if err != nil {
+			// Log error but don't fail the analysis
+			fmt.Printf("[SignalAnalyzeAndSave] Warning: Failed to save signal: %v\n", err)
+		}
+	}
+
+	return analyzeRes, savedSignal, nil
+}
+
 // SignalRawGet retrieves raw OHLCV data for multiple timeframes
 func (s *Services) SignalRawGet(ctx *gin.Context, req *dtos.SignalRawRequest) (res *dtos.SignalRawResponse, err error) {
 	if req.Symbol == "" {
@@ -90,8 +128,18 @@ func (s *Services) SignalRawGet(ctx *gin.Context, req *dtos.SignalRawRequest) (r
 // Request: symbol + strategy_id (optional) + amount (default 50)
 // If strategy_id not provided, uses active strategy
 func (s *Services) SignalAnalyze(ctx *gin.Context, req *dtos.SignalAnalyzeRequest) (res *dtos.SignalAnalyzeResponse, err error) {
+	// Call internal function that returns all data
+	analyzeRes, _, _, err := s.signalAnalyzeWithDetails(ctx, req)
+	return analyzeRes, err
+}
+
+// signalAnalyzeWithDetails analyzes market and returns all data needed for analysis and saving
+// Returns: SignalAnalyzeResponse, Strategy, Primary Klines, Error
+func (s *Services) signalAnalyzeWithDetails(ctx *gin.Context, req *dtos.SignalAnalyzeRequest) (
+	*dtos.SignalAnalyzeResponse, *dtos.StrategyData, []binance.KlineInfo, error) {
+	
 	if req.Symbol == "" {
-		return nil, fmt.Errorf("symbol is required")
+		return nil, nil, nil, fmt.Errorf("symbol is required")
 	}
 
 	// Default capital
@@ -102,22 +150,24 @@ func (s *Services) SignalAnalyze(ctx *gin.Context, req *dtos.SignalAnalyzeReques
 
 	// Get strategy
 	var strategy *dtos.StrategyData
+	var err error
+	
 	if req.StrategyID > 0 {
 		strategy, err = s.StrategyGetByID(ctx, req.StrategyID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get strategy: %v", err)
+			return nil, nil, nil, fmt.Errorf("failed to get strategy: %v", err)
 		}
 	} else {
 		strategy, err = s.StrategyGetActive(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get active strategy: %v", err)
+			return nil, nil, nil, fmt.Errorf("failed to get active strategy: %v", err)
 		}
 	}
 
 	//Fetch thresholds
 	thresholds, err := s.repo.Threshold.FindAll(nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch thresholds: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to fetch thresholds: %w", err)
 	}
 
 	// Get timeframes from strategy
@@ -132,11 +182,19 @@ func (s *Services) SignalAnalyze(ctx *gin.Context, req *dtos.SignalAnalyzeReques
 	// Fetch klines for all timeframes in parallel
 	binanceData, err := s.BinanceClient.GetMultiKlines(req.Symbol, timeframeKlines)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch klines: %v", err)
+		return nil, nil, nil, fmt.Errorf("failed to fetch klines: %v", err)
 	}
 
+	// Get primary klines for snapshot
+	primaryKlines := binanceData[strategy.PrimaryTF]
+
 	// Build final response
-	return s.signalAnalyzeCalculate(req.Symbol, tradCapital, strategy, binanceData, thresholds)
+	analyzeRes, err := s.signalAnalyzeCalculate(req.Symbol, tradCapital, strategy, binanceData, thresholds)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return analyzeRes, strategy, primaryKlines, nil
 }
 
 func (s *Services) signalAnalyzeCalculate(
