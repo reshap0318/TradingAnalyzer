@@ -297,7 +297,7 @@ func LoadConfigDB(srvc ConfigService) *Config {
 				cfg.MM.ORDER_EXPIRATION_HOURS = int8(val)
 			}
 		case "IS_AGRESSIVE":
-			cfg.MM.IS_AGRESSIVE = data.Value == "true"
+			cfg.MM.IS_AGRESSIVE = data.Value == "1"
 		case "BINANCE_TESTNET":
 			cfg.BINANCE.IsTestnet = data.Value == "true"
 			if cfg.BINANCE.IsTestnet {

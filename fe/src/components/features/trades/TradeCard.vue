@@ -16,14 +16,23 @@ import {
   PhStopCircle,
   PhChartLineUp,
   PhInfo,
-  PhClock
+  PhClock,
+  PhArrowRight
 } from '@phosphor-icons/vue'
+import { useRouter } from 'vue-router'
 
 interface ITradeCardProps {
   trade: ITrade
 }
 
-defineProps<ITradeCardProps>()
+const props = defineProps<ITradeCardProps>()
+const router = useRouter()
+
+const handleViewSignal = () => {
+  if (props.trade.signal_log_id) {
+    router.push(`/signals/${props.trade.signal_log_id}`)
+  }
+}
 </script>
 
 <template>
@@ -69,7 +78,16 @@ defineProps<ITradeCardProps>()
         >
           {{ getEntryModeBadge(trade.is_aggressive, trade.orders) }}
         </span>
-        <div class="flex items-center gap-2">
+        <div 
+          v-if="trade.signal_log_id"
+          @click="handleViewSignal"
+          class="flex items-center gap-2 cursor-pointer hover:bg-gray-100 px-3 py-1.5 rounded-lg transition-all duration-200 group"
+        >
+          <PhInfo :size="16" class="text-gray-400 group-hover:text-blue-500 transition-colors" />
+          <span class="text-sm text-gray-600">Confidence: <span class="font-bold">{{ trade.confidence.toFixed(1) }}%</span></span>
+          <PhArrowRight :size="16" class="text-gray-400 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" weight="bold" />
+        </div>
+        <div v-else class="flex items-center gap-2">
           <PhInfo :size="16" class="text-gray-400" />
           <span class="text-sm text-gray-600">Confidence: <span class="font-bold">{{ trade.confidence.toFixed(1) }}%</span></span>
         </div>

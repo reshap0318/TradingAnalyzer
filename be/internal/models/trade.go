@@ -15,9 +15,9 @@ type Trade struct {
 	Side     string `gorm:"column:side;size:10;not null" json:"side"`
 
 	// Signal Quality
-	Confidence float64 `gorm:"column:confidence" json:"confidence"`
-	TotalScore float64 `gorm:"column:total_score;type:DECIMAL(10,3)" json:"total_score"`
-	RawSignal  JSONMap `gorm:"column:raw_signal;type:json" json:"raw_signal"`
+	Confidence  float64 `gorm:"column:confidence" json:"confidence"`
+	TotalScore  float64 `gorm:"column:total_score;type:DECIMAL(10,3)" json:"total_score"`
+	SignalLogID *uint   `gorm:"column:signal_log_id;index" json:"signal_log_id"`
 
 	// Trading Mode
 	IsAggressive bool `gorm:"column:is_aggressive;default:false" json:"is_aggressive"`

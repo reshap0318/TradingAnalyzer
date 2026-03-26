@@ -66,7 +66,7 @@ func SeedConfig(db *gorm.DB) {
 		},
 		{
 			ConfigKey: "IS_AGRESSIVE",
-			Value:     "false", // true | false
+			Value:     "0", // true | false
 			Category:  "MONEY_MANAGEMENT",
 		},
 		{

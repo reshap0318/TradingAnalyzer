@@ -229,18 +229,18 @@ func (s *Services) IndicatorUpdate(ctx *gin.Context, id uint, req *dtos.Indicato
 	}
 
 	// Direct update by ID (efficient - 1 query)
-	updates := &models.Indicators{
-		Name:        req.Name,
-		Description: req.Description,
-		Indicator:   req.Indicator,
-		Role:        req.Role,
-		Params:      params,
-		IsActive:    req.IsActive,
-		Weight:      req.Weight,
-		OrderView:   req.OrderView,
+	updates := map[string]interface{}{
+		"name":        req.Name,
+		"description": req.Description,
+		"indicator":   req.Indicator,
+		"role":        req.Role,
+		"params":      params,
+		"is_active":   req.IsActive,
+		"weight":      req.Weight,
+		"order_view":  req.OrderView,
 	}
 
-	_, err = s.repo.Indicator.Update(nil, &models.Indicators{ID: id}, updates)
+	_, err = s.repo.Indicator.UpdateMap(nil, &models.Indicators{ID: id}, updates)
 	if err != nil {
 		return nil, err
 	}

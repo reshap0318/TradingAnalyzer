@@ -86,9 +86,10 @@ func (s *Services) StrategyCreate(ctx *gin.Context, req *dtos.StrategyRequest) (
 		// 3. Create strategy indicators
 		for _, ind := range req.IndicatorWeights {
 			strategyInd := &models.StrategyIndicator{
-				StrategyID:  strategy.ID,
-				IndicatorID: ind.IndicatorID,
-				Weight:      ind.Weight,
+				StrategyID:    strategy.ID,
+				IndicatorID:   ind.IndicatorID,
+				Weight:        ind.Weight,
+				TimeframeName: ind.TimeframeName,
 			}
 			_, err = s.repo.StrategyIndicator.Create(tx, strategyInd)
 			if err != nil {
@@ -109,7 +110,20 @@ func (s *Services) StrategyCreate(ctx *gin.Context, req *dtos.StrategyRequest) (
 			}
 		}
 
-		// 5. Reload strategy with details
+		// 5. Create strategy symbols
+		for _, sym := range req.Symbols {
+			strategySym := &models.StrategySymbol{
+				StrategyID: strategy.ID,
+				Symbol:     sym.Symbol,
+				IsActive:   sym.IsActive,
+			}
+			_, err = s.repo.StrategySymbol.Create(tx, strategySym)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		// 6. Reload strategy with details
 		strategyWithDetails, err := s.repo.Strategy.FindByIDWithDetails(tx, strategy.ID)
 		if err != nil {
 			return nil, err
@@ -143,13 +157,13 @@ func (s *Services) StrategyUpdate(ctx *gin.Context, id uint, req *dtos.StrategyR
 		}
 
 		// 1. Update main strategy
-		strategy := &models.Strategy{
-			Name:      req.StrategyName,
-			PrimaryTF: req.PrimaryTF,
-			IsActive:  req.IsActive,
+		strategyMap := map[string]interface{}{
+			"strategy_name": req.StrategyName,
+			"primary_tf":    req.PrimaryTF,
+			"is_active":     req.IsActive,
 		}
 
-		_, err = s.repo.Strategy.Update(tx, &models.Strategy{ID: id}, strategy)
+		_, err = s.repo.Strategy.UpdateMap(tx, &models.Strategy{ID: id}, strategyMap)
 		if err != nil {
 			return nil, err
 		}
@@ -170,6 +184,11 @@ func (s *Services) StrategyUpdate(ctx *gin.Context, id uint, req *dtos.StrategyR
 			return nil, err
 		}
 
+		err = s.repo.StrategySymbol.DeleteByStrategyID(tx, id)
+		if err != nil {
+			return nil, err
+		}
+
 		// 3. Create new relationships
 		for _, tf := range req.Timeframes {
 			strategyTF := &models.StrategyTimeframe{
@@ -185,9 +204,10 @@ func (s *Services) StrategyUpdate(ctx *gin.Context, id uint, req *dtos.StrategyR
 
 		for _, ind := range req.IndicatorWeights {
 			strategyInd := &models.StrategyIndicator{
-				StrategyID:  id,
-				IndicatorID: ind.IndicatorID,
-				Weight:      ind.Weight,
+				StrategyID:    id,
+				IndicatorID:   ind.IndicatorID,
+				Weight:        ind.Weight,
+				TimeframeName: ind.TimeframeName,
 			}
 			_, err = s.repo.StrategyIndicator.Create(tx, strategyInd)
 			if err != nil {
@@ -202,6 +222,18 @@ func (s *Services) StrategyUpdate(ctx *gin.Context, id uint, req *dtos.StrategyR
 				Value:      mm.Value,
 			}
 			_, err = s.repo.StrategyMoneyMgmt.Create(tx, strategyMM)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		for _, sym := range req.Symbols {
+			strategySym := &models.StrategySymbol{
+				StrategyID: id,
+				Symbol:     sym.Symbol,
+				IsActive:   sym.IsActive,
+			}
+			_, err = s.repo.StrategySymbol.Create(tx, strategySym)
 			if err != nil {
 				return nil, err
 			}
@@ -251,6 +283,11 @@ func (s *Services) StrategyDelete(ctx *gin.Context, id uint) (res *dtos.Strategy
 		}
 
 		err = s.repo.StrategyMoneyMgmt.DeleteByStrategyID(tx, id)
+		if err != nil {
+			return nil, err
+		}
+
+		err = s.repo.StrategySymbol.DeleteByStrategyID(tx, id)
 		if err != nil {
 			return nil, err
 		}
@@ -305,15 +342,17 @@ func (s *Services) mapStrategyToDTO(strategy models.Strategy) dtos.StrategyData 
 	// Map indicators
 	for _, ind := range strategy.IndicatorWeights {
 		indData := dtos.StrategyIndicatorData{
-			ID:          ind.ID,
-			IndicatorID: ind.IndicatorID,
-			Weight:      ind.Weight,
+			ID:            ind.ID,
+			IndicatorID:   ind.IndicatorID,
+			Weight:        ind.Weight,
+			TimeframeName: ind.TimeframeName,
 		}
 		if ind.Indicator.ID != 0 {
 			indData.IndicatorDetail = &dtos.IndicatorData{
 				ID:          ind.Indicator.ID,
 				Name:        ind.Indicator.Name,
 				Indicator:   ind.Indicator.Indicator,
+				Role:        ind.Indicator.Role,
 				Description: ind.Indicator.Description,
 				IsActive:    ind.Indicator.IsActive,
 				Weight:      ind.Indicator.Weight,
@@ -322,6 +361,15 @@ func (s *Services) mapStrategyToDTO(strategy models.Strategy) dtos.StrategyData 
 			}
 		}
 		dto.IndicatorWeights = append(dto.IndicatorWeights, indData)
+	}
+
+	// Map symbols
+	for _, sym := range strategy.Symbols {
+		dto.Symbols = append(dto.Symbols, dtos.StrategySymbolData{
+			ID:       sym.ID,
+			Symbol:   sym.Symbol,
+			IsActive: sym.IsActive,
+		})
 	}
 
 	return dto
@@ -386,7 +434,7 @@ func (s *Services) parseMMConfigFromStrategy(moneyMgmt []models.StrategyMoneyMgm
 				mm.LEVERAGE = int8(val)
 			}
 		case "IS_AGRESSIVE":
-			mm.IS_AGRESSIVE = cfg.Value == "true"
+			mm.IS_AGRESSIVE = cfg.Value == "1"
 		case "ORDER_EXPIRATION_HOURS":
 			if val, err := helpers.ParseFloat(cfg.Value, 8); err == nil {
 				mm.ORDER_EXPIRATION_HOURS = int8(val)

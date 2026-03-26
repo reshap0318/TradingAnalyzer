@@ -324,21 +324,29 @@ func (s *Services) calculateNextIntervalDelay(interval time.Duration) time.Durat
 func (s *Services) runTradeExecutionCycle(logger *helpers.WorkerLogger) {
 	cycleStart := time.Now()
 
-	// 1. Get all active symbols from watchlist
-	watchlists, err := s.repo.Watchlist.FindAllActive(nil)
+	// 1. Get strategy details to extract active symbols
+	strategy, err := s.repo.Strategy.FindByIDWithDetails(nil, *tradeBotStrategy)
 	if err != nil {
-		logger.Error("Failed to get watchlist: %v", err)
+		logger.Error("Failed to get strategy %d: %v", *tradeBotStrategy, err)
 		return
 	}
 
-	if len(watchlists) == 0 {
-		logger.Warn("No active symbols in watchlist")
+	// Filter active symbols for execution
+	var activeSymbols []string
+	for _, sym := range strategy.Symbols {
+		if sym.IsActive {
+			activeSymbols = append(activeSymbols, sym.Symbol)
+		}
+	}
+
+	if len(activeSymbols) == 0 {
+		logger.Warn("No active symbols configured in the selected strategy")
 		return
 	}
 
-	logger.Success("Found %d active symbols in watchlist", len(watchlists))
-	logger.CycleStart(len(watchlists))
-	logger.Info("Execution list: %s", extractSymbolsFromWatchlist(watchlists))
+	logger.Success("Found %d active symbols in strategy", len(activeSymbols))
+	logger.CycleStart(len(activeSymbols))
+	logger.Info("Execution list: %s", extractSymbolsFormat(activeSymbols))
 
 	// Track trade stats
 	tradesExecuted := 0
@@ -350,14 +358,14 @@ func (s *Services) runTradeExecutionCycle(logger *helpers.WorkerLogger) {
 			logger.Error("PANIC recovered in runTradeExecutionCycle: %v", r)
 		}
 		duration := time.Since(cycleStart)
-		logger.CycleSummary(len(watchlists), tradesExecuted, tradesSkipped, duration)
+		logger.CycleSummary(len(activeSymbols), tradesExecuted, tradesSkipped, duration)
 		tradeBotMutex.Lock()
 		tradeExecutorRunning = false
 		tradeBotMutex.Unlock()
 	}()
 
 	// 2. Execute trade for each symbol
-	for _, wl := range watchlists {
+	for _, symbol := range activeSymbols {
 		// Check if trade bot is still active
 		tradeBotMutex.Lock()
 		if !tradeBotActive {
@@ -367,7 +375,7 @@ func (s *Services) runTradeExecutionCycle(logger *helpers.WorkerLogger) {
 		}
 		tradeBotMutex.Unlock()
 
-		logger.Info("Analyzing & Executing: %s", wl.Symbol)
+		logger.Info("Analyzing & Executing: %s", symbol)
 
 		// 3. Call TradeExecute for each symbol
 		// TradeExecute will:
@@ -375,7 +383,7 @@ func (s *Services) runTradeExecutionCycle(logger *helpers.WorkerLogger) {
 		// - Validate against money management rules
 		// - Execute trade on Binance if signal is valid
 		tradeReq := &dtos.TradeRequest{
-			Symbol:     wl.Symbol,
+			Symbol:     symbol,
 			StrategyID: *tradeBotStrategy,
 		}
 
@@ -386,18 +394,18 @@ func (s *Services) runTradeExecutionCycle(logger *helpers.WorkerLogger) {
 		tradeRes, err := s.TradeExecute(ginCtx, tradeReq)
 
 		if err != nil {
-			logger.Error("Trade execution failed for %s: %v", wl.Symbol, err)
+			logger.Error("Trade execution failed for %s: %v", symbol, err)
 			tradesSkipped++
 		} else if tradeRes != nil && tradeRes.ExecutionInfo.Executed {
-			logger.Trade(true, wl.Symbol, tradeRes.ExecutionInfo.Message)
+			logger.Trade(true, symbol, tradeRes.ExecutionInfo.Message)
 			tradesExecuted++
 		} else {
-			logger.Trade(false, wl.Symbol, tradeRes.ExecutionInfo.Message)
+			logger.Trade(false, symbol, tradeRes.ExecutionInfo.Message)
 			tradesSkipped++
 		}
 
 		// Delay between symbols to avoid rate limiting
-		if len(watchlists) > 1 {
+		if len(activeSymbols) > 1 {
 			time.Sleep(30 * time.Second)
 		}
 	}
@@ -458,15 +466,10 @@ func (s *Services) runTradeMonitorCycle(logger *helpers.WorkerLogger) {
 	logger.Info("Monitor cycle done. Processed: %d, Errors: %d", processed, errors)
 }
 
-// extractSymbolsFromWatchlist extracts symbol names from watchlist slice for logging
-func extractSymbolsFromWatchlist(watchlists []models.Watchlist) string {
-	if len(watchlists) == 0 {
+// extractSymbolsFormat extracts symbol names from string slice for logging
+func extractSymbolsFormat(symbols []string) string {
+	if len(symbols) == 0 {
 		return "0 symbols"
-	}
-
-	symbols := make([]string, 0, len(watchlists))
-	for _, wl := range watchlists {
-		symbols = append(symbols, wl.Symbol)
 	}
 
 	if len(symbols) <= 5 {
@@ -625,6 +628,7 @@ func (s *Services) convertTradeToDTO(trade models.Trade) dtos.TradeData {
 		Side:            trade.Side,
 		Confidence:      trade.Confidence,
 		TotalScore:      trade.TotalScore,
+		SignalLogID:     trade.SignalLogID,
 		IsAggressive:    trade.IsAggressive,
 		TPPrice:         trade.TPPrice,
 		SLPrice:         trade.SLPrice,

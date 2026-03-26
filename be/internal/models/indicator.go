@@ -13,7 +13,7 @@ type Indicators struct {
 	Role        string          `gorm:"column:role;type:varchar(20);not null;default:'FILTER'" json:"role"`
 	Description string          `gorm:"column:description;type:text" json:"description"`
 	Params      json.RawMessage `gorm:"column:params;type:json" json:"params"` // Custom parameters in JSON
-	IsActive    bool            `gorm:"column:is_active;default:true" json:"is_active"`
+	IsActive    bool            `gorm:"column:is_active" json:"is_active"`
 	Weight      float64         `gorm:"column:weight;not null;default:1.0" json:"weight"`
 	OrderView   int             `gorm:"column:order_view;not null;default:0" json:"order_view"`
 	CreatedAt   time.Time       `gorm:"autoCreateTime" json:"created_at"`

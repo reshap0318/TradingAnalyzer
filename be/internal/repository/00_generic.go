@@ -69,6 +69,21 @@ func (r *GenericRepository[T]) Update(tx *gorm.DB, filter *T, update *T) (*T, er
 	return intanceModel, nil
 }
 
+// UpdateMap updates a record by filter using a map for partial updates (supports zero values)
+func (r *GenericRepository[T]) UpdateMap(tx *gorm.DB, filter *T, update map[string]interface{}) (*T, error) {
+	db := r.getDB(tx)
+	var intanceModel *T
+	if err := db.Model(&intanceModel).Where(filter).First(&intanceModel).Error; err != nil {
+		return nil, helpers.ErrNotFound
+	}
+
+	if err := db.Model(&intanceModel).Where(filter).Updates(update).Error; err != nil {
+		return nil, err
+	}
+
+	return intanceModel, nil
+}
+
 // Delete deletes a record by ID
 func (r *GenericRepository[T]) Delete(tx *gorm.DB, id uint) (*T, error) {
 	db := r.getDB(tx)

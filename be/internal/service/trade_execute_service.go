@@ -1,7 +1,6 @@
 package service
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -9,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/reshap/trading-bot/internal/clients/binance"
-	"github.com/reshap/trading-bot/internal/config"
 	"github.com/reshap/trading-bot/internal/dtos"
 	"github.com/reshap/trading-bot/internal/models"
 	"gorm.io/gorm"
@@ -32,7 +30,7 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 	if err != nil {
 		return nil, fmt.Errorf("failed to get active strategy: %w", err)
 	}
-	mmConfig := s.getConfigMM(strategy)
+	mmConfig := strategy.MoneyManagement
 	minBalance := 3.0
 
 	symStat := s.tradeExecuteTodayStat(req.Symbol)
@@ -109,7 +107,9 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 		StrategyID: strategy.ID,
 		Capital:    availableUsdtWithFeesReserve,
 	}
-	analyzeRes, err := s.SignalAnalyze(ctx, analyzeReq)
+	
+	// Analyze and save signal to database (saveSignal=true)
+	analyzeRes, savedSignal, err := s.SignalAnalyzeAndSave(ctx, analyzeReq, true)
 	if err != nil {
 		return nil, fmt.Errorf("signal analysis failed: %w", err)
 	}
@@ -189,7 +189,7 @@ func (s *Services) TradeExecute(ctx *gin.Context, req *dtos.TradeRequest) (*dtos
 	}
 
 	// If valid, Proceed to Execution Preparation
-	return s.tradeExecuteBinance(ctx, req.Symbol, mmConfig, analyzeRes, actualCapitalUsed)
+	return s.tradeExecuteBinance(ctx, req.Symbol, mmConfig, analyzeRes, savedSignal.ID, actualCapitalUsed)
 }
 
 // tradeExecuteTodayStat calculates trading statistics for today
@@ -243,8 +243,9 @@ func (s *Services) tradeExecuteTodayStat(symbol string) dtos.TradeDayStat {
 func (s *Services) tradeExecuteBinance(
 	ctx *gin.Context,
 	symbol string,
-	config *config.MMConfig,
+	config *dtos.MMConfigResponse,
 	analyzeRes *dtos.SignalAnalyzeResponse,
+	signalLogID uint,
 	capitalUsed float64,
 ) (*dtos.TradeResponse, error) {
 	tpPlan := analyzeRes.Signal.TradingPlan
@@ -406,7 +407,7 @@ func (s *Services) tradeExecuteBinance(
 		avgEntryPrice = avgEntryPriceSum / totalFilledQty
 	}
 
-	err = s.tradeExecuteSaveRecord(symbol, side, tpPlan, analyzeRes, capitalUsed, float64(config.LEVERAGE), executedOrders, tpOrderID, slOrderID, avgEntryPrice, totalFilledQty)
+	err = s.tradeExecuteSaveRecord(symbol, side, tpPlan, analyzeRes, signalLogID, capitalUsed, float64(config.LEVERAGE), executedOrders, tpOrderID, slOrderID, avgEntryPrice, totalFilledQty)
 	if err != nil {
 		fmt.Printf("Warning: Trade executed but DB tracking failed: %v", err)
 	}
@@ -436,6 +437,7 @@ func (s *Services) tradeExecuteSaveRecord(
 	side binance.OrderSide,
 	tpPlan *dtos.TradingPlan,
 	analyzeRes *dtos.SignalAnalyzeResponse,
+	signalLogID uint,
 	capitalUsed float64,
 	leverage float64,
 	executedOrders []dtos.OrderInfo,
@@ -454,17 +456,14 @@ func (s *Services) tradeExecuteSaveRecord(
 			}
 		}
 
-		// Convert SignalAnalyzeResponse to JSONMap for RawSignal
-		rawSignal := s.convertAnalyzeResToJSONMap(analyzeRes)
-
-		// Save Parent Trade
+		// Save Parent Trade with SignalLogID reference
 		parentTrade := &models.Trade{
 			Symbol:          symbol,
 			Interval:        analyzeRes.PrimaryTimeframe,
 			Side:            string(side),
 			Confidence:      analyzeRes.Scoring.Confidence,
 			TotalScore:      analyzeRes.Scoring.TotalScore,
-			RawSignal:       rawSignal,
+			SignalLogID:     &signalLogID,
 			IsAggressive:    tpPlan.Mode == "AGGRESSIVE",
 			TPPrice:         tpPlan.TakeProfit,
 			SLPrice:         tpPlan.StopLoss,
@@ -530,23 +529,4 @@ func (s *Services) tradeExecuteSaveRecord(
 	})
 
 	return err
-}
-
-// convertAnalyzeResToJSONMap converts SignalAnalyzeResponse to JSONMap for database storage
-func (s *Services) convertAnalyzeResToJSONMap(analyzeRes *dtos.SignalAnalyzeResponse) models.JSONMap {
-	// Build final JSON map containing the whole analysis result
-	// The struct is marshaled then unmarshaled to generic map type
-	b, err := json.Marshal(analyzeRes)
-	if err != nil {
-		fmt.Printf("Warning: failed to marshal analyze result: %v\n", err)
-		return models.JSONMap{}
-	}
-
-	var jsonMap models.JSONMap
-	if err := json.Unmarshal(b, &jsonMap); err != nil {
-		fmt.Printf("Warning: failed to unmarshal analyze result to JSONMap: %v\n", err)
-		return models.JSONMap{}
-	}
-
-	return jsonMap
 }

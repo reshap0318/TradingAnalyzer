@@ -26,11 +26,13 @@ const (
 	backtestMinCandles      = 200 // Minimum candles needed for indicators
 
 	// Exit reasons
-	exitReasonHitTP      = "HIT_TP"
-	exitReasonHitSL      = "HIT_SL"
-	exitReasonClosedEnd  = "CLOSED_END"
-	exitReasonDeadSignal = "DEAD_SIGNAL"
-	exitReasonExpired    = "EXPIRED"
+	exitReasonHitTP          = "HIT_TP"
+	exitReasonHitSL          = "HIT_SL"
+	exitReasonClosedEnd      = "CLOSED_END"
+	exitReasonDeadSignal     = "DEAD_SIGNAL"
+	exitReasonExpired        = "EXPIRED"
+	exitReasonExpiredTPHit   = "EXPIRED_TP_HIT"
+	exitReasonExpiredSLHit   = "EXPIRED_SL_HIT"
 )
 
 // ============================================================================
@@ -882,10 +884,26 @@ func (s *Services) backtestCreateActiveTrade(
 // backtestCheckTPSL checks if TP or SL is hit on a candle
 func (s *Services) backtestCheckTPSL(trade *activeTrade, candle binance.KlineInfo) string {
 	if trade.TotalQty == 0 {
+		// Evaluasi apakah harga menyentuh TP/SL sebelum entry terfill (Setup Expired)
+		if trade.Side == "BUY" || trade.Side == "STRONG_BUY" {
+			if trade.StopLoss > 0 && candle.Low <= trade.StopLoss {
+				return exitReasonExpiredSLHit
+			}
+			if trade.TakeProfit > 0 && candle.High >= trade.TakeProfit {
+				return exitReasonExpiredTPHit
+			}
+		} else {
+			if trade.StopLoss > 0 && candle.High >= trade.StopLoss {
+				return exitReasonExpiredSLHit
+			}
+			if trade.TakeProfit > 0 && candle.Low <= trade.TakeProfit {
+				return exitReasonExpiredTPHit
+			}
+		}
 		return ""
 	}
 
-	if trade.Side == "BUY" {
+	if trade.Side == "BUY" || trade.Side == "STRONG_BUY" {
 		if trade.StopLoss > 0 && candle.Low <= trade.StopLoss {
 			return exitReasonHitSL
 		}
@@ -1047,6 +1065,11 @@ func (s *Services) backtestCloseTrade(
 	exitTimePtr := &exitTime
 	filledTimePtr := trade.FilledTime
 
+	statusStr := "CLOSED"
+	if exitReason == exitReasonExpiredTPHit || exitReason == exitReasonExpiredSLHit {
+		statusStr = "CANCELLED"
+	}
+
 	return models.BacktestTrade{
 		TradeNum:        trade.TradeNum,
 		Side:            trade.Side,
@@ -1066,7 +1089,7 @@ func (s *Services) backtestCloseTrade(
 		PnL:             helpers.RoundFloat(pnl, 2),
 		PnLPercent:      helpers.RoundFloat(pnlPercent, 2),
 		ExitReason:      exitReason,
-		Status:          "CLOSED",
+		Status:          statusStr,
 		DurationMinutes: durationMinutes,
 		EntriesJSON:     string(entriesJSON),
 		DailyTradeCount: trade.DailyTradeCount,

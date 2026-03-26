@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="64" fill="#0f172a"/>
+  <defs>
+    <linearGradient id="g" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0891b2"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Chart base line -->
+  <line x1="96" y1="400" x2="416" y2="400" stroke="#1e293b" stroke-width="3" stroke-linecap="round"/>
+  <!-- Candlestick bars -->
+  <rect x="120" y="280" width="24" height="120" rx="4" fill="#0891b2" opacity="0.5"/>
+  <rect x="168" y="240" width="24" height="160" rx="4" fill="#0891b2" opacity="0.6"/>
+  <rect x="216" y="300" width="24" height="100" rx="4" fill="#06b6d4" opacity="0.5"/>
+  <rect x="264" y="200" width="24" height="200" rx="4" fill="#06b6d4" opacity="0.7"/>
+  <rect x="312" y="160" width="24" height="240" rx="4" fill="#22d3ee" opacity="0.7"/>
+  <rect x="360" y="120" width="24" height="280" rx="4" fill="#22d3ee" opacity="0.8"/>
+  <!-- Trend line -->
+  <polyline points="132,260 180,220 228,280 276,180 324,140 372,100"
+    fill="none" stroke="url(#g)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <!-- Arrow tip -->
+  <polygon points="372,100 382,108 378,120" fill="#06b6d4" filter="url(#glow)"/>
+</svg>

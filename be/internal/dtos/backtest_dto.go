@@ -127,7 +127,7 @@ type TradeEntry struct {
 
 // TradeExit represents exit information
 type TradeExit struct {
-	Reason    string    `json:"reason"` // HIT_TP, HIT_SL, CLOSED_END, DEAD_SIGNAL, EXPIRED
+	Reason    string    `json:"reason"` // HIT_TP, HIT_SL, CLOSED_END, DEAD_SIGNAL, EXPIRED, EXPIRED_TP_HIT, EXPIRED_SL_HIT
 	Price     float64   `json:"price"`
 	Timestamp time.Time `json:"timestamp"`
 }

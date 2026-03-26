@@ -160,7 +160,7 @@ const handleKeydown = (e: KeyboardEvent) => {
                     :key="strategy.id"
                     :value="strategy.id"
                   >
-                    {{ strategy.strategy_name }}
+                    {{ strategy.strategy_name }} ({{ strategy.primary_tf }})
                   </option>
                 </select>
                 <p v-if="v$.strategy_id.$error" class="mt-1 text-sm text-red-500">

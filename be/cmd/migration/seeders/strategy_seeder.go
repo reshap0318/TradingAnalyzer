@@ -19,10 +19,14 @@ func SeedStrategies(db *gorm.DB) {
 	type indSeed struct {
 		ID     uint
 		Weight float64
+		TF     *string // nil = all TFs, "15m" = only 15m
 	}
 	type mmSeed struct {
 		Param string
 		Value string
+	}
+	type symSeed struct {
+		Symbol string
 	}
 	type strategySeed struct {
 		Name       string
@@ -30,600 +34,353 @@ func SeedStrategies(db *gorm.DB) {
 		Timeframes []tfSeed
 		Indicators []indSeed
 		MoneyMgmt  []mmSeed
+		Symbols    []symSeed
 	}
 
+	// Helper to create *string for TF targeting
+	tf := func(s string) *string { return &s }
+
 	strategies := []strategySeed{
-		// ──────────────────────────────────────────────
-		// 1. Scalper Pro - Ultra short-term, high frequency
-		// ──────────────────────────────────────────────
+		// ==========================================
+		// MICRO & SCALPING STRATEGIES (5m)
+		// ==========================================
+
 		{
-			Name:      "Scalper Pro",
-			PrimaryTF: "1m",
-			Timeframes: []tfSeed{
-				{"1m", 0.50}, {"5m", 0.30}, {"15m", 0.20},
-			},
+			Name:       "Micro Breakout Sniper",
+			PrimaryTF:  "5m",
+			Timeframes: []tfSeed{{"1m", 0.20}, {"5m", 0.50}, {"15m", 0.30}},
 			Indicators: []indSeed{
-				{1, 0.20}, {2, 0.15}, {3, 0.18}, {4, 0.12},
-				{5, 0.15}, {6, 0.10}, {7, 0.05}, {8, 0.02}, {9, 0.03},
+				// 15m: MA confirms macro direction
+				{1, 0.80, tf("15m")}, // MA Driver on 15m
+				{2, 0.20, tf("15m")}, // MACD Driver on 15m
+				// 5m: Volume + BB entry trigger
+				{5, 0.20, tf("5m")}, // BB Filter on 5m (veto 80% if no squeeze)
+				{6, 2.00, tf("5m")}, // Volume Booster on 5m
+				// 1m: Candle precision
+				{7, 1.30, tf("1m")}, // Candle Booster on 1m
 			},
 			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "20"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"LEVERAGE", "10"},
-				{"ORDER_EXPIRATION_HOURS", "1"}, {"IS_AGRESSIVE", "true"},
-				{"MAX_RISK_PER_TRADE", "0.02"},
+				{"MIN_CONFIDENCE", "40"}, {"MAX_DAILY_TRADES", "12"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "4"},
+				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "2.5"},
+				{"RISK_ENTRY_BUFFER", "0.002"}, {"MAX_POSITION_SIZE", "0.10"},
+				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "1"},
+				{"ORDER_EXPIRATION_HOURS", "1"},
+			},
+			Symbols: []symSeed{
+				{"SOLUSDT"}, {"SUIUSDT"}, {"SEIUSDT"}, {"PEPEUSDT"}, {"WIFUSDT"},
+			},
+		},
+		{
+			Name:       "RSI Reversal Catcher",
+			PrimaryTF:  "5m",
+			Timeframes: []tfSeed{{"1m", 0.20}, {"5m", 0.60}, {"15m", 0.20}},
+			Indicators: []indSeed{
+				{1, 0.50, tf("15m")}, {2, 0.50, tf("15m")}, // Drivers on 15m macro
+				{3, 0.10, tf("5m")}, // RSI Filter on 5m (veto 90%)
+				{7, 1.50, tf("5m")}, // Candle Booster on 5m
+				{7, 1.30, tf("1m")}, // Candle Booster on 1m (entry precision)
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "35"}, {"MAX_DAILY_TRADES", "8"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "3"},
+				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.0"},
+				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.05"},
+				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "0"},
+				{"ORDER_EXPIRATION_HOURS", "1"},
+			},
+			Symbols: []symSeed{
+				{"DOGEUSDT"}, {"SHIBUSDT"}, {"FLOKIUSDT"}, {"BONKUSDT"},
+			},
+		},
+		{
+			Name:       "Pure Trend Rider",
+			PrimaryTF:  "5m",
+			Timeframes: []tfSeed{{"5m", 0.70}, {"15m", 0.30}},
+			Indicators: []indSeed{
+				{1, 0.90, nil}, {2, 0.10, nil}, // Drivers on ALL TFs
+				{8, 0.50, tf("5m")},  // ATR Filter on 5m
+				{9, 1.80, tf("15m")}, // Trend Booster on 15m
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "10"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "3"},
+				{"RISK_REWARD_RATIO", "1.8"}, {"RISK_REWARD_TARGET", "3.0"},
+				{"RISK_ENTRY_BUFFER", "0.002"}, {"MAX_POSITION_SIZE", "0.08"},
+				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "1"},
+				{"ORDER_EXPIRATION_HOURS", "2"},
+			},
+			Symbols: []symSeed{
+				{"SOLUSDT"}, {"APTUSDT"}, {"INJUSDT"}, {"JUPUSDT"},
+			},
+		},
+		{
+			Name:       "Stoch Pullback Sniper",
+			PrimaryTF:  "5m",
+			Timeframes: []tfSeed{{"1m", 0.20}, {"5m", 0.50}, {"15m", 0.30}},
+			Indicators: []indSeed{
+				{1, 0.60, tf("15m")}, {2, 0.40, tf("15m")}, // Drivers on 15m
+				{4, 0.20, tf("5m")}, // Stoch Filter on 5m (veto 80%)
+				{6, 1.30, tf("5m")}, // Volume Booster on 5m
+				{7, 1.30, tf("1m")}, // Candle Booster on 1m (entry precision)
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "40"}, {"MAX_DAILY_TRADES", "10"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "3"},
+				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.5"},
+				{"RISK_ENTRY_BUFFER", "0.002"}, {"MAX_POSITION_SIZE", "0.05"},
+				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "0"},
+				{"ORDER_EXPIRATION_HOURS", "1"},
+			},
+			Symbols: []symSeed{
+				{"ETHUSDT"}, {"LINKUSDT"}, {"NEARUSDT"}, {"AVAXUSDT"},
 			},
 		},
 
+		// ==========================================
+		// DAY TRADING STRATEGIES (15m)
+		// ==========================================
+
 		{
-			Name:      "Day Trading Pro",
-			PrimaryTF: "15m",
-			Timeframes: []tfSeed{
-				{"15m", 0.50},
-				{"1h", 0.30},
-				{"4h", 0.20},
-			},
+			Name:       "Day Trading Pro",
+			PrimaryTF:  "15m",
+			Timeframes: []tfSeed{{"5m", 0.20}, {"15m", 0.50}, {"1h", 0.30}},
 			Indicators: []indSeed{
-				{1, 0.30},
-				{2, 0.22},
-				{3, 0.13},
-				{4, 0.10},
-				{5, 0.10},
-				{6, 0.05},
-				{7, 0.05},
-				{8, 0.05},
+				{1, 0.60, nil}, {2, 0.40, nil}, // Drivers on ALL TFs
+				{3, 0.50, tf("15m")}, {4, 0.50, tf("15m")}, // Filters on 15m
+				{5, 0.50, tf("15m")}, {8, 0.80, tf("1h")}, // BB on 15m, ATR on 1h
+				{6, 1.20, tf("15m")}, {7, 1.20, tf("5m")}, // Boosters
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "5"},
 				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "2"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "2.5"},
-				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.20"},
-				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "false"},
+				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.5"},
+				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
+				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "0"},
 				{"ORDER_EXPIRATION_HOURS", "4"},
 			},
+			Symbols: []symSeed{
+				{"ETHUSDT"}, {"SOLUSDT"}, {"LINKUSDT"}, {"AVAXUSDT"}, {"NEARUSDT"},
+			},
 		},
-
-		// ──────────────────────────────────────────────
-		// 2.a Day Trading Pro (MICRO ACCOUNT $37 EDITION)
-		// Fokus: Limit order di S/R (hemat fee maker), leverage agak tinggi buat lolos min. notional order
-		// ──────────────────────────────────────────────
 		{
-			Name:       "Day Trading Pro (Micro $37)",
+			Name:       "Perfect Storm (Anti-Loss)",
 			PrimaryTF:  "15m",
-			Timeframes: []tfSeed{{"5m", 0.10}, {"15m", 0.40}, {"1h", 0.30}, {"4h", 0.20}},
-			Indicators: []indSeed{{1, 0.25}, {2, 0.20}, {3, 0.10}, {4, 0.10}, {5, 0.10}, {6, 0.15}, {7, 0.05}, {8, 0.05}},
+			Timeframes: []tfSeed{{"15m", 0.50}, {"1h", 0.30}, {"4h", 0.20}},
+			Indicators: []indSeed{
+				{1, 0.50, tf("4h")}, {2, 0.50, tf("4h")}, // Drivers only on 4h (macro)
+				{3, 0.10, tf("15m")}, {4, 0.10, tf("15m")}, {5, 0.10, tf("15m")}, // Ultra tight filters on 15m
+				{6, 1.50, tf("15m")}, {7, 1.50, tf("15m")}, {9, 1.50, tf("1h")}, // Boosters
+			},
 			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "65"}, {"MAX_DAILY_TRADES", "3"}, // Hemat peluru!
-				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "2"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "2.5"},
-				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.20"}, // 20% dari $37 = $7.4
-				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "false"}, // Wajib antri di S/R
-				{"ORDER_EXPIRATION_HOURS", "4"},
+				{"MIN_CONFIDENCE", "35"}, {"MAX_DAILY_TRADES", "3"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.02"}, {"MAX_DAILY_LOSS_COUNT", "1"},
+				{"RISK_REWARD_RATIO", "2.5"}, {"RISK_REWARD_TARGET", "4.0"},
+				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.15"},
+				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "0"},
+				{"ORDER_EXPIRATION_HOURS", "6"},
+			},
+			Symbols: []symSeed{
+				{"BTCUSDT"}, {"ETHUSDT"}, {"BNBUSDT"},
 			},
 		},
-
-		// ──────────────────────────────────────────────
-		// 3. Swing Trader - Medium term, ride the wave
-		// Recomendation: BTC, ETH, SOL, BNB, LINK, AVAX
-		// ──────────────────────────────────────────────
 		{
-			Name:       "Swing Trader",
-			PrimaryTF:  "4h",
-			Timeframes: []tfSeed{{"1h", 0.20}, {"4h", 0.50}, {"1d", 0.30}},
-			Indicators: []indSeed{{1, 0.30}, {2, 0.20}, {3, 0.10}, {5, 0.10}, {6, 0.10}, {8, 0.10}, {9, 0.10}},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "65"}, {"MAX_DAILY_TRADES", "3"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "2"},
-				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.0"},
-				{"RISK_ENTRY_BUFFER", "0.005"}, {"MAX_POSITION_SIZE", "0.05"}, // Modal normal, size 5% udah cukup
-				{"LEVERAGE", "3"}, {"IS_AGRESSIVE", "false"}, // Nunggu pullback di TF besar
-				{"ORDER_EXPIRATION_HOURS", "24"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 4. Breakout Hunter - High volatility, volume focused
-		// Recomendation: DOGE, SHIB, PEPE, WIF, BONK, FLOKI
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Breakout Hunter",
-			PrimaryTF:  "15m",
-			Timeframes: []tfSeed{{"5m", 0.20}, {"15m", 0.50}, {"1h", 0.30}},
-			Indicators: []indSeed{{1, 0.10}, {2, 0.10}, {5, 0.30}, {6, 0.30}, {7, 0.10}, {8, 0.10}},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "55"}, {"MAX_DAILY_TRADES", "8"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "3"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "3.0"},
-				{"RISK_ENTRY_BUFFER", "0.002"}, {"MAX_POSITION_SIZE", "0.05"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "true"}, // Hajar market karena breakout biasanya kencang
-				{"ORDER_EXPIRATION_HOURS", "2"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 5. Trend Follower - Mid to long term momentum
-		// Recomendation: INJ, FET, RNDR, TIA, TAO, STX
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Trend Follower",
-			PrimaryTF:  "1h",
-			Timeframes: []tfSeed{{"15m", 0.20}, {"1h", 0.50}, {"4h", 0.30}},
-			Indicators: []indSeed{{1, 0.35}, {2, 0.25}, {6, 0.15}, {8, 0.10}, {9, 0.15}},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "60"}, {"MAX_DAILY_TRADES", "5"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "3"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "2.5"},
-				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.05"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"}, // Sabar nunggu harga retrace ke MA
-				{"ORDER_EXPIRATION_HOURS", "8"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 6. Mean Reversion - Ranging market specialist (Sideways)
-		// Recomendation: ADA, XRP, DOT, MATIC (POL), LTC, TRX
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Mean Reversion",
+			Name:       "Volatility Hunter",
 			PrimaryTF:  "15m",
 			Timeframes: []tfSeed{{"5m", 0.20}, {"15m", 0.60}, {"1h", 0.20}},
-			Indicators: []indSeed{{3, 0.35}, {4, 0.25}, {5, 0.30}, {7, 0.10}},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "12"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "4"},
-				{"RISK_REWARD_RATIO", "1.2"}, {"RISK_REWARD_TARGET", "2.0"},
-				{"RISK_ENTRY_BUFFER", "0.001"}, {"MAX_POSITION_SIZE", "0.03"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"}, // Mutlak false! Beli di support, jual di resis
-				{"ORDER_EXPIRATION_HOURS", "2"},
+			Indicators: []indSeed{
+				{1, 0.70, tf("1h")}, {2, 0.30, tf("1h")}, // Drivers on 1h
+				{6, 1.80, tf("15m")}, // Volume Booster on 15m
+				{8, 0.20, tf("15m")}, // ATR Filter on 15m (no flat market)
+				{7, 1.50, tf("5m")},  // Candle Booster on 5m (entry precision)
 			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 7. Momentum Rider - Catching the fast moves
-		// Recomendation: SEI, SUI, APT, JUP
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Momentum Rider",
-			PrimaryTF:  "5m",
-			Timeframes: []tfSeed{{"1m", 0.20}, {"5m", 0.50}, {"15m", 0.30}},
-			Indicators: []indSeed{{2, 0.30}, {3, 0.20}, {6, 0.30}, {7, 0.10}, {9, 0.10}},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "15"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "4"},
-				{"RISK_REWARD_RATIO", "1.2"}, {"RISK_REWARD_TARGET", "2.0"},
-				{"RISK_ENTRY_BUFFER", "0.001"}, {"MAX_POSITION_SIZE", "0.02"},
-				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "true"}, // Ketinggalan momentum kalau nunggu limit
-				{"ORDER_EXPIRATION_HOURS", "1"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 8. Volatility Surfer - ATR & Volume based
-		// Recomendation: GALA, SAND, MANA, AXS, NEAR, IMX
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Volatility Surfer",
-			PrimaryTF:  "1h",
-			Timeframes: []tfSeed{{"15m", 0.30}, {"1h", 0.50}, {"4h", 0.20}},
-			Indicators: []indSeed{{5, 0.20}, {6, 0.25}, {8, 0.40}, {9, 0.15}},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "55"}, {"MAX_DAILY_TRADES", "6"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "3"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "3.0"},
-				{"RISK_ENTRY_BUFFER", "0.004"}, {"MAX_POSITION_SIZE", "0.05"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "true"},
-				{"ORDER_EXPIRATION_HOURS", "4"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 9. Deep Pullback Catcher - Buying the dip
-		// Recomendation: ETH, SOL, BNB, AVAX, LINK, RNDR
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Deep Pullback",
-			PrimaryTF:  "1h",
-			Timeframes: []tfSeed{{"15m", 0.20}, {"1h", 0.40}, {"4h", 0.40}},
-			Indicators: []indSeed{{1, 0.20}, {3, 0.30}, {4, 0.20}, {5, 0.20}, {7, 0.10}},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "70"}, {"MAX_DAILY_TRADES", "3"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "2"},
-				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "4.0"},
-				{"RISK_ENTRY_BUFFER", "0.005"}, {"MAX_POSITION_SIZE", "0.08"},
-				{"LEVERAGE", "3"}, {"IS_AGRESSIVE", "false"}, // Nunggu di support paling bawah
-				{"ORDER_EXPIRATION_HOURS", "12"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 10. Conservative Hodler - Very safe, spot-like
-		// Recomendation: BTC, ETH, BNB, SOL, XRP
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Conservative Hodler",
-			PrimaryTF:  "1d",
-			Timeframes: []tfSeed{{"4h", 0.20}, {"1d", 0.60}, {"1w", 0.20}},
-			Indicators: []indSeed{{1, 0.40}, {2, 0.20}, {3, 0.10}, {6, 0.10}, {9, 0.20}},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "75"}, {"MAX_DAILY_TRADES", "2"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.02"}, {"MAX_DAILY_LOSS_COUNT", "1"},
-				{"RISK_REWARD_RATIO", "2.5"}, {"RISK_REWARD_TARGET", "5.0"},
-				{"RISK_ENTRY_BUFFER", "0.01"}, {"MAX_POSITION_SIZE", "0.15"},
-				{"LEVERAGE", "1"}, {"IS_AGRESSIVE", "false"},
-				{"ORDER_EXPIRATION_HOURS", "48"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 11. Altcoin Degen - High risk, high reward (Meme coins)
-		// Recomendation: BOME, MEW, MYRO, POPCAT, SLERF, DEGEN
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Altcoin Degen",
-			PrimaryTF:  "5m",
-			Timeframes: []tfSeed{{"1m", 0.30}, {"5m", 0.50}, {"15m", 0.20}},
-			Indicators: []indSeed{{2, 0.20}, {3, 0.20}, {6, 0.30}, {8, 0.20}, {9, 0.10}},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "45"}, {"MAX_DAILY_TRADES", "15"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.08"}, {"MAX_DAILY_LOSS_COUNT", "4"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "4.0"},
-				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.02"}, // Size super kecil karena high risk
-				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "true"},
-				{"ORDER_EXPIRATION_HOURS", "1"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 12. Candle Sniper - Price action pure focus
-		// Recomendation: LDO, SNX, CRV, MKR, AAVE, UNI
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Candle Sniper",
-			PrimaryTF:  "4h",
-			Timeframes: []tfSeed{{"1h", 0.30}, {"4h", 0.60}, {"1d", 0.10}},
-			Indicators: []indSeed{{1, 0.20}, {5, 0.20}, {6, 0.15}, {7, 0.45}}, // Pola candle dominan
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "70"}, {"MAX_DAILY_TRADES", "4"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "2"},
-				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.0"},
-				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.06"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"}, // Limit order pas candle konfirmasi
-				{"ORDER_EXPIRATION_HOURS", "8"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 13. Micro Trend - Catching intra-day waves
-		// Recomendation: SUI, SEI, APT, FTM, MNT, TIA
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Micro Trend",
-			PrimaryTF:  "15m",
-			Timeframes: []tfSeed{{"5m", 0.25}, {"15m", 0.50}, {"1h", 0.25}},
-			Indicators: []indSeed{{1, 0.30}, {2, 0.20}, {3, 0.15}, {6, 0.20}, {9, 0.15}},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "55"}, {"MAX_DAILY_TRADES", "8"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "3"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "2.5"},
-				{"RISK_ENTRY_BUFFER", "0.002"}, {"MAX_POSITION_SIZE", "0.04"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "true"}, // Agresif tangkap wave kecil
-				{"ORDER_EXPIRATION_HOURS", "2"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 14. Weekend Warrior - Low volume / algorithmic trading
-		// Recomendation: LTC, BCH, ETC, XMR, ZEC, DOGE
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Weekend Warrior",
-			PrimaryTF:  "1h",
-			Timeframes: []tfSeed{{"15m", 0.20}, {"1h", 0.50}, {"4h", 0.30}},
-			Indicators: []indSeed{{1, 0.20}, {3, 0.30}, {4, 0.20}, {5, 0.30}},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "6"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "2"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "2.5"},
-				{"RISK_ENTRY_BUFFER", "0.002"}, {"MAX_POSITION_SIZE", "0.04"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"}, // Market sepi mending nunggu limit
-				{"ORDER_EXPIRATION_HOURS", "8"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "2"},
+				{"RISK_REWARD_RATIO", "1.8"}, {"RISK_REWARD_TARGET", "3.0"},
+				{"RISK_ENTRY_BUFFER", "0.004"}, {"MAX_POSITION_SIZE", "0.10"},
+				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "1"},
+				{"ORDER_EXPIRATION_HOURS", "2"},
+			},
+			Symbols: []symSeed{
+				{"SUIUSDT"}, {"APTUSDT"}, {"SEIUSDT"}, {"JUPUSDT"},
 			},
 		},
-
-		// ──────────────────────────────────────────────
-		// 15. Golden Cross Seeker - Pure Moving Average logic
-		// Recomendation: BTC, ETH, BNB, SOL, LINK, AVAX
-		// ──────────────────────────────────────────────
 		{
-			Name:       "Golden Cross Seeker",
-			PrimaryTF:  "1d",
-			Timeframes: []tfSeed{{"4h", 0.30}, {"1d", 0.70}},
-			Indicators: []indSeed{{1, 0.60}, {6, 0.20}, {9, 0.20}},
+			Name:       "BB Squeeze Master",
+			PrimaryTF:  "15m",
+			Timeframes: []tfSeed{{"15m", 0.60}, {"1h", 0.40}},
+			Indicators: []indSeed{
+				{1, 0.80, tf("1h")}, {2, 0.20, tf("1h")}, // Drivers on 1h
+				{5, 0.10, tf("15m")}, // BB Filter on 15m (veto 90%)
+				{6, 1.50, tf("15m")}, // Volume Booster on 15m
+			},
 			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "70"}, {"MAX_DAILY_TRADES", "2"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "1"},
+				{"MIN_CONFIDENCE", "40"}, {"MAX_DAILY_TRADES", "4"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "2"},
+				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.5"},
+				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
+				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "1"},
+				{"ORDER_EXPIRATION_HOURS", "2"},
+			},
+			Symbols: []symSeed{
+				{"ETHUSDT"}, {"SOLUSDT"}, {"INJUSDT"}, {"RNDRUSDT"},
+			},
+		},
+		{
+			Name:       "Price Action Purity",
+			PrimaryTF:  "15m",
+			Timeframes: []tfSeed{{"15m", 0.80}, {"1h", 0.20}},
+			Indicators: []indSeed{
+				{1, 0.90, tf("1h")}, {2, 0.10, tf("1h")}, // Drivers on 1h
+				{7, 2.00, tf("15m")}, // Candle Booster on 15m (2x)
+				{8, 0.60, tf("1h")},  // ATR Filter on 1h (avoid flat market)
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "45"}, {"MAX_DAILY_TRADES", "5"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "2"},
 				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "4.0"},
-				{"RISK_ENTRY_BUFFER", "0.005"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "2"}, {"IS_AGRESSIVE", "true"}, // Begitu cross, hajar 1 market, 1 antri
-				{"ORDER_EXPIRATION_HOURS", "48"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 16. Safe Swing - Low lev, high confirmation
-		// Recomendation: BTC, ETH, XRP, ADA, DOT, AVAX, LINK
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Safe Swing",
-			PrimaryTF:  "4h",
-			Timeframes: []tfSeed{{"1h", 0.20}, {"4h", 0.50}, {"1d", 0.30}},
-			Indicators: []indSeed{{1, 0.20}, {2, 0.20}, {3, 0.15}, {6, 0.15}, {7, 0.15}, {9, 0.15}},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "70"}, {"MAX_DAILY_TRADES", "3"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "2"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "3.0"},
-				{"RISK_ENTRY_BUFFER", "0.004"}, {"MAX_POSITION_SIZE", "0.08"},
-				{"LEVERAGE", "3"}, {"IS_AGRESSIVE", "false"}, // Wajib limit order
-				{"ORDER_EXPIRATION_HOURS", "24"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 17. The Sniper - One shot one kill
-		// Recomendation: BTC, ETH, SOL, BNB, INJ, AVAX
-		// ──────────────────────────────────────────────
-		{
-			Name:       "The Sniper",
-			PrimaryTF:  "15m",
-			Timeframes: []tfSeed{{"5m", 0.10}, {"15m", 0.60}, {"1h", 0.30}},
-			Indicators: []indSeed{{2, 0.20}, {3, 0.20}, {5, 0.20}, {6, 0.20}, {7, 0.20}},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "80"}, {"MAX_DAILY_TRADES", "3"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.02"}, {"MAX_DAILY_LOSS_COUNT", "1"}, // Kalah 1x stop trade hari itu
-				{"RISK_REWARD_RATIO", "2.5"}, {"RISK_REWARD_TARGET", "4.0"},
-				{"RISK_ENTRY_BUFFER", "0.001"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"}, // Cuma open limit order di pucuk / lembah
-				{"ORDER_EXPIRATION_HOURS", "2"},
-			},
-		},
-
-		{
-			Name:      "Micro Scalper (Aggressive)",
-			PrimaryTF: "5m",
-			Timeframes: []tfSeed{
-				{"1m", 0.20}, {"5m", 0.60}, {"15m", 0.20},
-			},
-			Indicators: []indSeed{
-				{1, 0.35}, // MA (Trend)
-				{2, 0.30}, // MACD (Momentum)
-				{6, 0.20}, // Volume (Penting buat TF kecil)
-				{8, 0.15}, // ATR (Buat ukur volatilitas)
-			},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "45"},   // LONGGARIN! Biar skor 45 aja udah berani nembak.
-				{"MAX_DAILY_TRADES", "10"}, // Naikin biar target harian tercapai
-				{"MAX_DAILY_LOSS_PERCENT", "0.08"},
-				{"MAX_DAILY_LOSS_COUNT", "4"},
-				{"RISK_REWARD_RATIO", "1.2"}, // Turunin batas R:R karena di TF kecil jaraknya sempit
-				{"RISK_REWARD_TARGET", "2.0"},
-				{"RISK_ENTRY_BUFFER", "0.001"},
-				{"MAX_POSITION_SIZE", "0.20"},
-				{"LEVERAGE", "10"},
-				{"IS_AGRESSIVE", "true"}, // Biar langsung market execution, TF kecil antri limit sering ditinggal
-				{"ORDER_EXPIRATION_HOURS", "1"},
-			},
-		},
-
-		{
-			Name:      "Active Day Trader",
-			PrimaryTF: "15m",
-			Timeframes: []tfSeed{
-				{"5m", 0.30}, {"15m", 0.50}, {"1h", 0.20},
-			},
-			Indicators: []indSeed{
-				{1, 0.30},
-				{2, 0.30},
-				{5, 0.20},
-				{6, 0.10},
-				{8, 0.10},
-			},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "50"},
-				{"MAX_DAILY_TRADES", "8"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.06"},
-				{"MAX_DAILY_LOSS_COUNT", "3"},
-				{"RISK_REWARD_RATIO", "1.5"},
-				{"RISK_REWARD_TARGET", "2.5"},
-				{"RISK_ENTRY_BUFFER", "0.002"},
-				{"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "5"},
-				{"IS_AGRESSIVE", "true"},
-				{"ORDER_EXPIRATION_HOURS", "2"},
-			},
-		},
-
-		{
-			Name:      "Sniper 15m (Unleashed)",
-			PrimaryTF: "15m",
-			Timeframes: []tfSeed{
-				{"5m", 0.40}, {"15m", 0.60},
-			},
-			Indicators: []indSeed{
-				{1, 0.40},
-				{2, 0.40},
-				{6, 0.20},
-			},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "50"},
-				{"MAX_DAILY_TRADES", "5"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.05"}, {"MAX_DAILY_LOSS_COUNT", "2"},
-				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "2.5"},
-				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.20"},
-				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "true"},
-				{"ORDER_EXPIRATION_HOURS", "2"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 18. The Pure Driver (Trend Master)
-		// 100% mengandalkan Penentu Arah (MA & MACD). Cocok untuk tren panjang super kuat.
-		// ──────────────────────────────────────────────
-		{
-			Name:       "The Pure Driver",
-			PrimaryTF:  "15m",
-			Timeframes: []tfSeed{{"15m", 0.60}, {"1h", 0.40}},
-			Indicators: []indSeed{
-				{1, 0.60}, // MA
-				{2, 0.40}, // MACD
-			},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "55"}, {"MAX_DAILY_TRADES", "8"}, // Confidence diturunkan drastis agar sinyal meledak
-				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "3"}, // Stop loss diperketat (3% account loss)
-				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.5"}, // Wajib untung 2x lipat dari resiko!
-				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "true"},
-				{"ORDER_EXPIRATION_HOURS", "2"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 19. Driver + Volume (The Breakout)
-		// Trend follower yang wajib dikonfirmasi oleh ledakan transaksi.
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Driver + Volume",
-			PrimaryTF:  "15m",
-			Timeframes: []tfSeed{{"15m", 0.50}, {"1h", 0.50}},
-			Indicators: []indSeed{
-				{1, 0.50}, // MA
-				{2, 0.30}, // MACD
-				{6, 0.20}, // Volume
-			},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "8"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "3"},
-				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.5"},
-				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "true"},
-				{"ORDER_EXPIRATION_HOURS", "2"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 20. Driver + RSI (The Safe Pullback)
-		// Ikut tren, tapi direm sedikit oleh RSI agar tidak terburu-buru masuk pucuk.
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Driver + RSI",
-			PrimaryTF:  "15m",
-			Timeframes: []tfSeed{{"15m", 0.60}, {"1h", 0.40}},
-			Indicators: []indSeed{
-				{1, 0.50}, // MA
-				{2, 0.30}, // MACD
-				{3, 0.20}, // RSI
-			},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "48"}, {"MAX_DAILY_TRADES", "8"}, 
-				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "3"},
-				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.5"},
-				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"},
-				{"ORDER_EXPIRATION_HOURS", "2"},
-			},
-		},
-
-		// ──────────────────────────────────────────────
-		// 21. Driver + Bollinger (The Squeeze)
-		// Memanfaatkan volatilitas rentang Bollinger saat tren dimulai.
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Driver + Bollinger",
-			PrimaryTF:  "1h",
-			Timeframes: []tfSeed{{"1h", 0.70}, {"4h", 0.30}},
-			Indicators: []indSeed{
-				{1, 0.50}, // MA
-				{2, 0.30}, // MACD
-				{5, 0.20}, // Bollinger Bands
-			},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "52"}, {"MAX_DAILY_TRADES", "6"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "2"},
-				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.5"},
-				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"},
+				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.08"},
+				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "0"},
 				{"ORDER_EXPIRATION_HOURS", "4"},
 			},
+			Symbols: []symSeed{
+				{"BTCUSDT"}, {"ETHUSDT"}, {"LINKUSDT"}, {"AAVEUSDT"},
+			},
 		},
-
-		// ──────────────────────────────────────────────
-		// 22. Pure Oscillator (The Knife Catcher V2)
-		// Murni menangkap dasar market. Batas confidence diturunkan drastis karena sifat Oscillator.
-		// ──────────────────────────────────────────────
 		{
-			Name:       "Pure Oscillator",
+			Name:       "Extreme Scalper (10x Leverage)",
 			PrimaryTF:  "15m",
-			Timeframes: []tfSeed{{"5m", 0.40}, {"15m", 0.60}},
+			Timeframes: []tfSeed{{"1m", 0.10}, {"5m", 0.40}, {"15m", 0.50}},
 			Indicators: []indSeed{
-				{3, 0.40}, // RSI
-				{4, 0.40}, // Stochastic
-				{5, 0.20}, // Bollinger Bands
+				{1, 0.50, nil}, {2, 0.50, nil}, // Drivers on ALL TFs
+				{5, 0.20, tf("5m")}, // BB Filter on 5m
+				{6, 1.80, tf("5m")}, // Volume Booster on 5m
+				{7, 1.50, tf("1m")}, // Candle Booster on 1m (scalp precision)
 			},
 			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "38"}, // Ekstrem rendah agar sinyal sekecil apapun masuk tahap filter RR
-				{"MAX_DAILY_TRADES", "15"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "4"},
-				{"RISK_REWARD_RATIO", "1.8"}, {"RISK_REWARD_TARGET", "3.0"}, // Oscillator rawan TP jauh, jadi RR direndahkan dikit
-				{"RISK_ENTRY_BUFFER", "0.003"}, {"MAX_POSITION_SIZE", "0.05"}, // Lot kecil, tembak banyak
-				{"LEVERAGE", "5"}, {"IS_AGRESSIVE", "false"},
-				{"ORDER_EXPIRATION_HOURS", "2"},
+				{"MIN_CONFIDENCE", "40"}, {"MAX_DAILY_TRADES", "15"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.08"}, {"MAX_DAILY_LOSS_COUNT", "4"},
+				{"RISK_REWARD_RATIO", "1.5"}, {"RISK_REWARD_TARGET", "2.5"},
+				{"RISK_ENTRY_BUFFER", "0.002"}, {"MAX_POSITION_SIZE", "0.05"},
+				{"LEVERAGE", "10"}, {"IS_AGRESSIVE", "1"},
+				{"ORDER_EXPIRATION_HOURS", "1"},
+			},
+			Symbols: []symSeed{
+				{"PEPEUSDT"}, {"WIFUSDT"}, {"DOGEUSDT"}, {"BONKUSDT"},
 			},
 		},
 
-		// ──────────────────────────────────────────────
-		// 23. The Price Action Sniper
-		// Kombinasi konfirmasi pergerakan Candlestick dan Trend jangka menengah.
-		// ──────────────────────────────────────────────
-		{
-			Name:       "Price Action Sniper",
-			PrimaryTF:  "4h",
-			Timeframes: []tfSeed{{"4h", 0.60}, {"1d", 0.40}},
-			Indicators: []indSeed{
-				{1, 0.40}, // MA
-				{2, 0.20}, // MACD
-				{7, 0.30}, // Candle Patterns
-				{8, 0.10}, // ATR
-			},
-			MoneyMgmt: []mmSeed{
-				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "4"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "2"},
-				{"RISK_REWARD_RATIO", "2.5"}, {"RISK_REWARD_TARGET", "4.5"}, // 1 trade = untung 2.5x modal risk!
-				{"RISK_ENTRY_BUFFER", "0.005"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "3"}, {"IS_AGRESSIVE", "false"},
-				{"ORDER_EXPIRATION_HOURS", "12"},
-			},
-		},
+		// ==========================================
+		// SWING & TREND CONTINUATION (1h)
+		// ==========================================
 
-		// ──────────────────────────────────────────────
-		// 24. Steady Swing Trend V2
-		// Versi perbaikan untuk amunisi jangka panjang. Semua indikator terkalibrasi normal 100%.
-		// ──────────────────────────────────────────────
 		{
-			Name:       "Steady Swing Trend V2",
-			PrimaryTF:  "4h",
-			Timeframes: []tfSeed{{"4h", 0.50}, {"1d", 0.50}},
+			Name:       "Steady Swing Trend",
+			PrimaryTF:  "1h",
+			Timeframes: []tfSeed{{"15m", 0.20}, {"1h", 0.50}, {"4h", 0.30}},
 			Indicators: []indSeed{
-				{1, 0.50}, // MA Dominan
-				{2, 0.20}, // MACD Konfirmator
-				{9, 0.20}, // Trend Bonus
-				{8, 0.10}, // ATR Volatilitas
+				{1, 0.70, tf("4h")}, {2, 0.30, tf("4h")}, // Drivers on 4h
+				{8, 0.60, tf("1h")},  // ATR Filter on 1h
+				{9, 1.50, tf("4h")},  // Trend Booster on 4h
+				{6, 1.30, tf("15m")}, // Volume Booster on 15m (entry confirmation)
 			},
 			MoneyMgmt: []mmSeed{
 				{"MIN_CONFIDENCE", "55"}, {"MAX_DAILY_TRADES", "3"},
-				{"MAX_DAILY_LOSS_PERCENT", "0.02"}, {"MAX_DAILY_LOSS_COUNT", "1"}, // Kalah 1x hari ini langsung puasa
-				{"RISK_REWARD_RATIO", "3.0"}, {"RISK_REWARD_TARGET", "5.0"}, // Sangat ekstrem, menang 1x tutup loss sebulan
+				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "2"},
+				{"RISK_REWARD_RATIO", "2.5"}, {"RISK_REWARD_TARGET", "4.5"},
 				{"RISK_ENTRY_BUFFER", "0.005"}, {"MAX_POSITION_SIZE", "0.10"},
-				{"LEVERAGE", "2"}, {"IS_AGRESSIVE", "false"},
+				{"LEVERAGE", "3"}, {"IS_AGRESSIVE", "0"},
+				{"ORDER_EXPIRATION_HOURS", "12"},
+			},
+			Symbols: []symSeed{
+				{"BTCUSDT"}, {"ETHUSDT"}, {"FETUSDT"}, {"TAOUSDT"},
+			},
+		},
+		{
+			Name:       "Deep Valley Catcher",
+			PrimaryTF:  "1h",
+			Timeframes: []tfSeed{{"15m", 0.20}, {"1h", 0.50}, {"4h", 0.30}},
+			Indicators: []indSeed{
+				{1, 0.50, tf("4h")}, {2, 0.50, tf("4h")}, // Drivers on 4h
+				{3, 0.20, tf("1h")},  // RSI Filter on 1h (veto 80%)
+				{7, 1.50, tf("15m")}, // Candle Booster on 15m (reversal precision)
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "40"}, {"MAX_DAILY_TRADES", "2"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.02"}, {"MAX_DAILY_LOSS_COUNT", "1"},
+				{"RISK_REWARD_RATIO", "3.0"}, {"RISK_REWARD_TARGET", "6.0"},
+				{"RISK_ENTRY_BUFFER", "0.005"}, {"MAX_POSITION_SIZE", "0.15"},
+				{"LEVERAGE", "2"}, {"IS_AGRESSIVE", "0"},
+				{"ORDER_EXPIRATION_HOURS", "24"},
+			},
+			Symbols: []symSeed{
+				{"BTCUSDT"}, {"ETHUSDT"}, {"SOLUSDT"}, {"AVAXUSDT"},
+			},
+		},
+		{
+			Name:       "Pure Institutional MA",
+			PrimaryTF:  "1h",
+			Timeframes: []tfSeed{{"1h", 0.60}, {"4h", 0.40}},
+			Indicators: []indSeed{
+				{1, 1.00, tf("4h")}, // Solo MA Driver on 4h
+				{6, 1.50, tf("1h")}, // Volume Booster on 1h
+				{9, 1.50, tf("4h")}, // Trend Booster on 4h (alignment bonus)
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "3"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.03"}, {"MAX_DAILY_LOSS_COUNT", "2"},
+				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "4.0"},
+				{"RISK_ENTRY_BUFFER", "0.005"}, {"MAX_POSITION_SIZE", "0.10"},
+				{"LEVERAGE", "3"}, {"IS_AGRESSIVE", "0"},
+				{"ORDER_EXPIRATION_HOURS", "8"},
+			},
+			Symbols: []symSeed{
+				{"BTCUSDT"}, {"ETHUSDT"}, {"BNBUSDT"},
+			},
+		},
+		{
+			Name:       "Safe Hodl Entry",
+			PrimaryTF:  "1h",
+			Timeframes: []tfSeed{{"1h", 0.40}, {"4h", 0.40}, {"1d", 0.20}},
+			Indicators: []indSeed{
+				{1, 0.60, tf("1d")}, {2, 0.40, tf("1d")}, // Drivers on Daily
+				{3, 0.60, tf("4h")}, {4, 0.60, tf("4h")}, // Soft Filters on 4h
+				{9, 1.20, tf("1d")}, // Trend Booster on Daily
+				{6, 1.20, tf("1h")}, // Volume Booster on 1h (momentum confirmation)
+				{5, 0.50, tf("1h")}, // BB Filter on 1h (band protection)
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "65"}, {"MAX_DAILY_TRADES", "1"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.02"}, {"MAX_DAILY_LOSS_COUNT", "1"},
+				{"RISK_REWARD_RATIO", "2.5"}, {"RISK_REWARD_TARGET", "5.0"},
+				{"RISK_ENTRY_BUFFER", "0.008"}, {"MAX_POSITION_SIZE", "0.20"},
+				{"LEVERAGE", "2"}, {"IS_AGRESSIVE", "0"},
 				{"ORDER_EXPIRATION_HOURS", "48"},
+			},
+			Symbols: []symSeed{
+				{"BTCUSDT"}, {"ETHUSDT"}, {"XRPUSDT"}, {"ADAUSDT"},
+			},
+		},
+		{
+			Name:       "MACD Cross Confirm",
+			PrimaryTF:  "1h",
+			Timeframes: []tfSeed{{"1h", 0.70}, {"4h", 0.30}},
+			Indicators: []indSeed{
+				{1, 0.20, tf("4h")}, {2, 0.80, tf("1h")}, // MA macro on 4h, MACD momentum on 1h
+				{8, 0.60, tf("1h")}, // ATR Filter on 1h
+				{6, 1.30, tf("1h")}, // Volume Booster on 1h
+			},
+			MoneyMgmt: []mmSeed{
+				{"MIN_CONFIDENCE", "50"}, {"MAX_DAILY_TRADES", "4"},
+				{"MAX_DAILY_LOSS_PERCENT", "0.04"}, {"MAX_DAILY_LOSS_COUNT", "2"},
+				{"RISK_REWARD_RATIO", "2.0"}, {"RISK_REWARD_TARGET", "3.0"},
+				{"RISK_ENTRY_BUFFER", "0.004"}, {"MAX_POSITION_SIZE", "0.08"},
+				{"LEVERAGE", "3"}, {"IS_AGRESSIVE", "1"},
+				{"ORDER_EXPIRATION_HOURS", "4"},
+			},
+			Symbols: []symSeed{
+				{"LINKUSDT"}, {"INJUSDT"}, {"RNDRUSDT"}, {"FETUSDT"},
 			},
 		},
 	}
@@ -655,9 +412,10 @@ func SeedStrategies(db *gorm.DB) {
 
 			for _, ind := range s.Indicators {
 				if err := db.Create(&models.StrategyIndicator{
-					StrategyID:  strategy.ID,
-					IndicatorID: ind.ID,
-					Weight:      ind.Weight,
+					StrategyID:    strategy.ID,
+					IndicatorID:   ind.ID,
+					Weight:        ind.Weight,
+					TimeframeName: ind.TF,
 				}).Error; err != nil {
 					log.Printf("  Failed to create indicator %d: %v", ind.ID, err)
 				}
@@ -673,6 +431,16 @@ func SeedStrategies(db *gorm.DB) {
 				}
 			}
 
+			for _, sym := range s.Symbols {
+				if err := db.Create(&models.StrategySymbol{
+					StrategyID: strategy.ID,
+					Symbol:     sym.Symbol,
+					IsActive:   true,
+				}).Error; err != nil {
+					log.Printf("  Failed to create Symbol %s: %v", sym.Symbol, err)
+				}
+			}
+
 			fmt.Printf("✓ Created strategy: %s (Primary: %s)\n", s.Name, s.PrimaryTF)
 		} else if result.Error != nil {
 			log.Printf("Failed to check strategy '%s': %v", s.Name, result.Error)
@@ -681,8 +449,8 @@ func SeedStrategies(db *gorm.DB) {
 		}
 	}
 
-	// db.Model(&models.Strategy{}).Where("strategy_name != ?", "Day Trading Pro").Update("is_active", false)
+	// Active one by default
 	db.Model(&models.Strategy{}).Where("strategy_name = ?", "Day Trading Pro").Update("is_active", true)
 
-	fmt.Println("✓ Updated strategy IsActive (Day Trading Pro = true, others = false)")
+	fmt.Println("✓ Updated strategy IsActive (Day Trading Pro = true)")
 }

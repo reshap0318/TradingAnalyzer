@@ -168,6 +168,21 @@ onMounted(() => {
               </div>
             </div>
 
+            <!-- Symbols -->
+            <div v-if="(strategy as any).symbols?.length" class="mb-4">
+              <p class="text-xs text-gray-500 mb-2">Symbols</p>
+              <div class="flex flex-wrap gap-1.5">
+                <span
+                  v-for="sym in (strategy as any).symbols"
+                  :key="sym.symbol"
+                  class="px-2 py-0.5 text-xs font-medium rounded-full"
+                  :class="sym.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
+                >
+                  {{ sym.symbol }}
+                </span>
+              </div>
+            </div>
+
             <!-- Actions -->
             <div class="flex items-center gap-2 pt-4 border-t border-gray-100">
               <button

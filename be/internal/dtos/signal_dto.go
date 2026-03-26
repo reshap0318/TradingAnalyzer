@@ -93,6 +93,7 @@ type TimeframeSignalData struct {
 // IndicatorBreakdown represents breakdown for a single indicator
 type IndicatorBreakdown struct {
 	Name         string      `json:"name"`
+	Role         string      `json:"role"`
 	RawSignal    int         `json:"rawSignal"`
 	Weight       float64     `json:"weight"`
 	Contribution float64     `json:"contribution"`
@@ -136,4 +137,122 @@ type RawData struct {
 	Low       float64 `json:"low"`
 	Close     float64 `json:"close"`
 	Volume    float64 `json:"volume"`
+}
+
+// ============== Signal Management DTOs ==============
+
+// SignalIndexRequest represents the request for listing signals with pagination and filters
+type SignalIndexRequest struct {
+	Symbol         string `form:"symbol"`          // Optional: filter by symbol
+	StrategyID     uint   `form:"strategy_id"`     // Optional: filter by strategy ID
+	SignalCategory string `form:"signal_category"` // Optional: BUY/SELL/STRONG_BUY/STRONG_SELL/WAIT
+	SignalValid    *bool  `form:"signal_valid"`    // Optional: filter by validity
+	StartTime      string `form:"start_time"`      // Optional: RFC3339 format
+	EndTime        string `form:"end_time"`        // Optional: RFC3339 format
+	
+	// Pagination
+	Page     int `form:"page" binding:"min=1"`     // Default: 1
+	PageSize int `form:"page_size" binding:"min=1,max=100"` // Default: 20, Max: 100
+}
+
+// SignalIndexResponse represents the paginated response for signal list
+type SignalIndexResponse struct {
+	Signals  []SignalData `json:"signals"`
+	Pagination struct {
+		Page       int   `json:"page"`
+		PageSize   int   `json:"page_size"`
+		TotalItems int64 `json:"total_items"`
+		TotalPages int   `json:"total_pages"`
+	} `json:"pagination"`
+}
+
+// SignalData represents a single signal in the response
+type SignalData struct {
+	ID                uint      `json:"id"`
+	Symbol            string    `json:"symbol"`
+	StrategyID        uint      `json:"strategy_id"`
+	SignalCategory    string    `json:"signal_category"`
+	SignalValid       bool      `json:"signal_valid"`
+	TotalScore        float64   `json:"total_score"`
+	Confidence        float64   `json:"confidence"`
+	CurrentPrice      float64   `json:"current_price"`
+	PrimaryTimeframe  string    `json:"primary_timeframe"`
+	TPPrice           float64   `json:"tp_price"`
+	SLPrice           float64   `json:"sl_price"`
+	SupportPrice      float64   `json:"support_price"`
+	ResistancePrice   float64   `json:"resistance_price"`
+	RiskRewardRatio   float64   `json:"risk_reward_ratio"`
+	AvgEntryPrice     float64   `json:"avg_entry_price"`
+	EntryMode         string    `json:"entry_mode"`
+	TradingCapital    float64   `json:"trading_capital"`
+	TotalPositionValue float64  `json:"total_position_value"`
+	MaxRiskUSDT       float64   `json:"max_risk_usdt"`
+	TargetProfitUSDT  float64   `json:"target_profit_usdt"`
+	Leverage          int       `json:"leverage"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+	
+	// Snapshots (JSON) - optional, only include if requested
+	StrategySnapshot  interface{} `json:"strategy_snapshot,omitempty"`
+	OHLCSnapshot      interface{} `json:"ohlc_snapshot,omitempty"`
+	IndicatorValues   interface{} `json:"indicator_values,omitempty"`
+	EntryLevels       interface{} `json:"entry_levels,omitempty"`
+}
+
+// SignalDetailRequest represents the request for getting signal details
+type SignalDetailRequest struct {
+	SignalID uint `uri:"id" binding:"required,min=1"`
+}
+
+// SignalDetailResponse represents the response for signal details (includes all snapshots)
+type SignalDetailResponse struct {
+	Signal
+}
+
+// Signal represents complete signal data with all snapshots
+type Signal struct {
+	ID                uint                 `json:"id"`
+	Symbol            string               `json:"symbol"`
+	StrategyID        uint                 `json:"strategy_id"`
+	SignalCategory    string               `json:"signal_category"`
+	SignalValid       bool                 `json:"signal_valid"`
+	TotalScore        float64              `json:"total_score"`
+	Confidence        float64              `json:"confidence"`
+	CurrentPrice      float64              `json:"current_price"`
+	PrimaryTimeframe  string               `json:"primary_timeframe"`
+	TPPrice           float64              `json:"tp_price"`
+	SLPrice           float64              `json:"sl_price"`
+	SupportPrice      float64              `json:"support_price"`
+	ResistancePrice   float64              `json:"resistance_price"`
+	RiskRewardRatio   float64              `json:"risk_reward_ratio"`
+	AvgEntryPrice     float64              `json:"avg_entry_price"`
+	EntryMode         string               `json:"entry_mode"`
+	TradingCapital    float64              `json:"trading_capital"`
+	TotalPositionValue float64             `json:"total_position_value"`
+	TotalPositionQty  float64              `json:"total_position_qty"`
+	MaxRiskUSDT       float64              `json:"max_risk_usdt"`
+	MaxRiskPercent    float64              `json:"max_risk_percent"`
+	TargetProfitUSDT  float64              `json:"target_profit_usdt"`
+	TargetProfitPercent float64            `json:"target_profit_percent"`
+	EffectiveLeverage float64              `json:"effective_leverage"`
+	Leverage          int                  `json:"leverage"`
+	BufferPercent     float64              `json:"buffer_percent"`
+	StrategySnapshot  map[string]interface{} `json:"strategy_snapshot"`
+	OHLCSnapshot      map[string]interface{} `json:"ohlc_snapshot"`
+	IndicatorValues   []map[string]interface{} `json:"indicator_values"`
+	EntryLevels       []map[string]interface{} `json:"entry_levels"`
+	CreatedAt         time.Time            `json:"created_at"`
+	UpdatedAt         time.Time            `json:"updated_at"`
+}
+
+// SignalCleanupRequest represents the request for cleaning up old signals
+type SignalCleanupRequest struct {
+	OlderThanHours int `json:"older_than_hours" binding:"required,min=1,max=720"` // Max 30 days (720 hours)
+}
+
+// SignalCleanupResponse represents the response for cleanup operation
+type SignalCleanupResponse struct {
+	DeletedCount int64 `json:"deleted_count"`
+	OlderThanHours int  `json:"older_than_hours"`
+	Message      string `json:"message"`
 }
