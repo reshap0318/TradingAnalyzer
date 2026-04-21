@@ -199,49 +199,56 @@ func LoadConfig() *Config {
 		{CATEGORY: "STRONG_SELL", MAX: -70, MIN: -100, ACTION: "SELL"},
 	}
 
-	// Indicators config - default values
+	// --- MACD: Balanced Momentum ---
 	config.INDICATORS.MACD = IndicatorMACD{
-		FAST:   12,
-		SLOW:   26,
-		SIGNAL: 9,
+		FAST:   8, // Dipercepat sedikit dari standar
+		SLOW:   21,
+		SIGNAL: 5,
 	}
 
+	// --- RSI: Strategic Filter ---
 	config.INDICATORS.RSI = IndicatorRSI{
-		PERIOD:     14,
+		PERIOD:     10, // Menyeimbangkan lag dan noise
 		OVERBOUGHT: 70,
 		OVERSOLD:   30,
 	}
 
+	// --- STOCHASTIC: Swing Confirmation ---
 	config.INDICATORS.STOCHASTIC = IndicatorStochastic{
-		K_PERIOD:   14,
+		K_PERIOD:   14, // Standar industry untuk 15m
 		D_PERIOD:   3,
 		SMOOTH:     3,
 		OVERBOUGHT: 80,
 		OVERSOLD:   20,
 	}
 
+	// --- BOLLINGER: Trend Channel ---
 	config.INDICATORS.BOLLINGER = IndicatorBollinger{
-		PERIOD:  20,
+		PERIOD:  18, // Mengikuti struktur tren 15m lebih baik
 		STD_DEV: 2.0,
 	}
 
+	// --- ATR: Stable Risk Calculation ---
 	config.INDICATORS.ATR = IndicatorATR{
-		PERIOD: 14,
+		PERIOD: 10, // Memberikan jarak SL yang lebih konsisten
 	}
 
+	// --- VOLUME: Trend Confirmation ---
 	config.INDICATORS.VOLUME = IndicatorVolume{
-		MA_PERIOD: 20,
+		MA_PERIOD: 10, // Mendeteksi akumulasi volume jangka menengah
 	}
 
+	// --- MOVING AVERAGE: Trend Integrity ---
 	config.INDICATORS.MOVING_AVERAGE = IndicatorMovingAverage{
 		SMA_PERIODS: []int{20, 50, 200},
-		EMA_PERIODS: []int{12, 26},
+		EMA_PERIODS: []int{12, 26}, // Mengikuti tren medium-term
 	}
 
+	// --- SUPPORT & RESISTANCE: Zone Map ---
 	config.INDICATORS.SUPPORT_RESIST = SRConfig{
-		LOOKBACK_PERIODS: 200,
-		TOLERANCE:        0.006,
-		MIN_TOUCHES:      2,
+		LOOKBACK_PERIODS: 200,   // Mengambil histori harga yang lebih luas
+		TOLERANCE:        0.005, // Toleransi 0.5% cukup untuk intra-day
+		MIN_TOUCHES:      3,
 	}
 
 	return &config

@@ -2491,7 +2491,6 @@ Supported parameters for strategy money management:
 | `RISK_REWARD_RATIO` | float32 | Minimum R:R ratio |
 | `RISK_REWARD_TARGET` | float32 | Target R:R ratio |
 | `MAX_POSITION_SIZE` | float32 | Maximum position size % of balance |
-| `MAX_RISK_PER_TRADE` | float32 | Maximum risk % per trade |
 | `LEVERAGE` | int8 | Leverage to use |
 | `IS_AGRESSIVE` | bool | Aggressive mode (true/false) |
 | `ORDER_EXPIRATION_HOURS` | int8 | Order expiration in hours |
