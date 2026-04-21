@@ -45,11 +45,6 @@ func SeedConfig(db *gorm.DB) {
 			Category:  "MONEY_MANAGEMENT",
 		},
 		{
-			ConfigKey: "MAX_RISK_PER_TRADE",
-			Value:     "0.04",
-			Category:  "MONEY_MANAGEMENT",
-		},
-		{
 			ConfigKey: "RISK_REWARD_RATIO",
 			Value:     "1.5",
 			Category:  "MONEY_MANAGEMENT",
